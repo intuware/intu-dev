@@ -1,7 +1,7 @@
 {
-  "name": "@intuware/intu-dev",
-  "version": "0.1.1",
-  "description": "Git-native healthcare interoperability engine CLI",
+  "name": "intu-dev",
+  "version": "0.1.2",
+  "description": "Git-native, AI-friendly healthcare interoperability framework. Build, version, and deploy integration pipelines with YAML config and TypeScript transformers.",
   "bin": {
     "intu": "./bin/intu.js"
   },
