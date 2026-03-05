@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/intuware/intu/internal/auth"
 	"github.com/intuware/intu/internal/message"
 	"github.com/intuware/intu/pkg/config"
 )
@@ -39,11 +41,22 @@ func (t *TCPSource) Start(ctx context.Context, handler MessageHandler) error {
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", addr, err)
 	}
-	t.listener = ln
 
+	tlsEnabled := false
+	if t.cfg.TLS != nil && t.cfg.TLS.Enabled {
+		tlsCfg, tlsErr := auth.BuildTLSConfig(t.cfg.TLS)
+		if tlsErr != nil {
+			ln.Close()
+			return fmt.Errorf("TCP TLS config: %w", tlsErr)
+		}
+		ln = tls.NewListener(ln, tlsCfg)
+		tlsEnabled = true
+	}
+
+	t.listener = ln
 	ctx, t.cancel = context.WithCancel(ctx)
 
-	t.logger.Info("TCP listener started", "addr", addr, "mode", t.cfg.Mode)
+	t.logger.Info("TCP listener started", "addr", addr, "mode", t.cfg.Mode, "tls", tlsEnabled)
 
 	t.wg.Add(1)
 	go func() {
@@ -112,8 +125,16 @@ func (t *TCPSource) handleConn(ctx context.Context, conn net.Conn, handler Messa
 		}
 
 		msg := message.New("", data)
-		if err := handler(ctx, msg); err != nil {
-			t.logger.Error("handler error", "error", err)
+		handlerErr := handler(ctx, msg)
+		if handlerErr != nil {
+			t.logger.Error("handler error", "error", handlerErr)
+		}
+
+		if t.cfg.Mode == "mllp" && t.cfg.ACK != nil && t.cfg.ACK.Auto {
+			ack := t.buildMLLPACK(data, handlerErr)
+			if ack != nil {
+				conn.Write(ack)
+			}
 		}
 
 		conn.SetDeadline(time.Now().Add(timeout))
@@ -157,6 +178,43 @@ func readRawTCP(reader *bufio.Reader) ([]byte, error) {
 		return nil, err
 	}
 	return bytes.TrimSpace(line), nil
+}
+
+func (t *TCPSource) buildMLLPACK(msgData []byte, handlerErr error) []byte {
+	ackCode := "AA"
+	if t.cfg.ACK.SuccessCode != "" {
+		ackCode = t.cfg.ACK.SuccessCode
+	}
+	if handlerErr != nil {
+		ackCode = "AE"
+		if t.cfg.ACK.ErrorCode != "" {
+			ackCode = t.cfg.ACK.ErrorCode
+		}
+	}
+
+	controlID := extractHL7ControlID(msgData)
+
+	ack := fmt.Sprintf("MSH|^~\\&|INTU|INTU|||||ACK||P|2.5\rMSA|%s|%s\r", ackCode, controlID)
+
+	var buf bytes.Buffer
+	buf.WriteByte(mllpStartBlock)
+	buf.WriteString(ack)
+	buf.WriteByte(mllpEndBlock)
+	buf.WriteByte(mllpCarriageReturn)
+	return buf.Bytes()
+}
+
+func extractHL7ControlID(data []byte) string {
+	lines := bytes.Split(data, []byte("\r"))
+	for _, line := range lines {
+		if bytes.HasPrefix(line, []byte("MSH")) {
+			fields := bytes.Split(line, []byte("|"))
+			if len(fields) > 9 {
+				return string(fields[9])
+			}
+		}
+	}
+	return "0"
 }
 
 func (t *TCPSource) Stop(ctx context.Context) error {

@@ -47,6 +47,13 @@ func (f *FHIRSource) Start(ctx context.Context, handler MessageHandler) error {
 	})
 
 	mux.HandleFunc(basePath+"/", func(w http.ResponseWriter, r *http.Request) {
+		if !authenticateHTTP(r, f.cfg.Auth) {
+			w.Header().Set("Content-Type", "application/fhir+json")
+			w.WriteHeader(http.StatusUnauthorized)
+			writeOperationOutcome(w, "error", "security", "Unauthorized")
+			return
+		}
+
 		if r.Method != http.MethodPost && r.Method != http.MethodPut {
 			f.handleFHIRRead(w, r, basePath)
 			return
@@ -144,6 +151,16 @@ func (f *FHIRSource) Start(ctx context.Context, handler MessageHandler) error {
 	}
 	f.listener = ln
 
+	tlsEnabled := false
+	if f.cfg.TLS != nil && f.cfg.TLS.Enabled {
+		ln, err = applyTLSToListener(ln, f.server, f.cfg.TLS)
+		if err != nil {
+			f.listener.Close()
+			return fmt.Errorf("FHIR TLS: %w", err)
+		}
+		tlsEnabled = true
+	}
+
 	go func() {
 		if err := f.server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			f.logger.Error("FHIR server error", "error", err)
@@ -154,6 +171,7 @@ func (f *FHIRSource) Start(ctx context.Context, handler MessageHandler) error {
 		"addr", addr,
 		"base_path", basePath,
 		"version", version,
+		"tls", tlsEnabled,
 	)
 	return nil
 }

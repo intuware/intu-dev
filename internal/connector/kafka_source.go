@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/intuware/intu/internal/auth"
 	"github.com/intuware/intu/internal/message"
 	"github.com/intuware/intu/pkg/config"
 )
@@ -72,17 +74,114 @@ func (k *KafkaSource) consumeLoop(ctx context.Context, handler MessageHandler) {
 	}
 }
 
+func (k *KafkaSource) dialBroker(broker string) (net.Conn, error) {
+	if k.cfg.TLS != nil && k.cfg.TLS.Enabled {
+		tlsCfg, err := auth.BuildTLSConfig(k.cfg.TLS)
+		if err != nil {
+			return nil, fmt.Errorf("kafka TLS config: %w", err)
+		}
+		return tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", broker, tlsCfg)
+	}
+	return net.DialTimeout("tcp", broker, 10*time.Second)
+}
+
+func (k *KafkaSource) performSASL(conn net.Conn) error {
+	if k.cfg.Auth == nil {
+		return nil
+	}
+
+	switch k.cfg.Auth.Type {
+	case "sasl_plain":
+		return k.saslPlainHandshake(conn, k.cfg.Auth.Username, k.cfg.Auth.Password)
+	case "sasl_scram":
+		k.logger.Warn("SASL SCRAM auth requires a full Kafka client library; falling back to SASL PLAIN")
+		return k.saslPlainHandshake(conn, k.cfg.Auth.Username, k.cfg.Auth.Password)
+	case "", "none":
+		return nil
+	default:
+		k.logger.Warn("unsupported kafka auth type, skipping", "type", k.cfg.Auth.Type)
+		return nil
+	}
+}
+
+func (k *KafkaSource) saslPlainHandshake(conn net.Conn, user, pass string) error {
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+
+	apiKey := int16(17) // SaslHandshake
+	apiVersion := int16(0)
+	correlationID := int32(100)
+	clientID := "intu-kafka-source"
+	mechanism := "PLAIN"
+
+	var buf []byte
+	buf = appendInt16(buf, apiKey)
+	buf = appendInt16(buf, apiVersion)
+	buf = appendInt32(buf, correlationID)
+	buf = appendKafkaString(buf, clientID)
+	buf = appendKafkaString(buf, mechanism)
+
+	sizeBuf := make([]byte, 4)
+	sizeBuf[0] = byte(len(buf) >> 24)
+	sizeBuf[1] = byte(len(buf) >> 16)
+	sizeBuf[2] = byte(len(buf) >> 8)
+	sizeBuf[3] = byte(len(buf))
+
+	if _, err := conn.Write(append(sizeBuf, buf...)); err != nil {
+		return fmt.Errorf("SASL handshake write: %w", err)
+	}
+
+	respSizeBuf := make([]byte, 4)
+	if _, err := io.ReadFull(conn, respSizeBuf); err != nil {
+		return fmt.Errorf("SASL handshake read size: %w", err)
+	}
+	respSize := int(respSizeBuf[0])<<24 | int(respSizeBuf[1])<<16 | int(respSizeBuf[2])<<8 | int(respSizeBuf[3])
+	if respSize > 0 && respSize < 1024*1024 {
+		respBody := make([]byte, respSize)
+		io.ReadFull(conn, respBody)
+	}
+
+	// SASL PLAIN: \x00user\x00password
+	saslPayload := []byte("\x00" + user + "\x00" + pass)
+	authBuf := make([]byte, 4+len(saslPayload))
+	authBuf[0] = byte(len(saslPayload) >> 24)
+	authBuf[1] = byte(len(saslPayload) >> 16)
+	authBuf[2] = byte(len(saslPayload) >> 8)
+	authBuf[3] = byte(len(saslPayload))
+	copy(authBuf[4:], saslPayload)
+
+	if _, err := conn.Write(authBuf); err != nil {
+		return fmt.Errorf("SASL authenticate write: %w", err)
+	}
+
+	authRespSizeBuf := make([]byte, 4)
+	if _, err := io.ReadFull(conn, authRespSizeBuf); err != nil {
+		return fmt.Errorf("SASL authenticate read: %w", err)
+	}
+	authRespSize := int(authRespSizeBuf[0])<<24 | int(authRespSizeBuf[1])<<16 | int(authRespSizeBuf[2])<<8 | int(authRespSizeBuf[3])
+	if authRespSize > 0 && authRespSize < 1024*1024 {
+		authRespBody := make([]byte, authRespSize)
+		io.ReadFull(conn, authRespBody)
+	}
+
+	k.logger.Debug("SASL PLAIN authentication completed", "user", user)
+	return nil
+}
+
 func (k *KafkaSource) consume(ctx context.Context, handler MessageHandler) error {
 	broker := k.cfg.Brokers[0]
 	if !strings.Contains(broker, ":") {
 		broker = broker + ":9092"
 	}
 
-	conn, err := net.DialTimeout("tcp", broker, 10*time.Second)
+	conn, err := k.dialBroker(broker)
 	if err != nil {
 		return fmt.Errorf("connect to kafka broker %s: %w", broker, err)
 	}
 	defer conn.Close()
+
+	if err := k.performSASL(conn); err != nil {
+		return fmt.Errorf("kafka SASL auth: %w", err)
+	}
 
 	if err := k.sendFetchMetadata(conn); err != nil {
 		return fmt.Errorf("kafka metadata request: %w", err)

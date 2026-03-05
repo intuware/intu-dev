@@ -50,11 +50,9 @@ func (h *HTTPSource) Start(ctx context.Context, handler MessageHandler) error {
 			return
 		}
 
-		if h.cfg.Auth != nil {
-			if !h.authenticate(r) {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
+		if !authenticateHTTP(r, h.cfg.Auth) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
 		}
 
 		body, err := io.ReadAll(r.Body)
@@ -98,7 +96,17 @@ func (h *HTTPSource) Start(ctx context.Context, handler MessageHandler) error {
 	}
 	h.listener = ln
 
-	h.logger.Info("HTTP listener started", "addr", addr, "path", path)
+	tlsEnabled := false
+	if h.cfg.TLS != nil && h.cfg.TLS.Enabled {
+		ln, err = applyTLSToListener(ln, h.server, h.cfg.TLS)
+		if err != nil {
+			h.listener.Close()
+			return fmt.Errorf("HTTP TLS: %w", err)
+		}
+		tlsEnabled = true
+	}
+
+	h.logger.Info("HTTP listener started", "addr", addr, "path", path, "tls", tlsEnabled)
 
 	go func() {
 		if err := h.server.Serve(ln); err != nil && err != http.ErrServerClosed {
@@ -107,33 +115,6 @@ func (h *HTTPSource) Start(ctx context.Context, handler MessageHandler) error {
 	}()
 
 	return nil
-}
-
-func (h *HTTPSource) authenticate(r *http.Request) bool {
-	if h.cfg.Auth == nil {
-		return true
-	}
-
-	switch h.cfg.Auth.Type {
-	case "bearer":
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		return token == h.cfg.Auth.Token
-	case "basic":
-		user, pass, ok := r.BasicAuth()
-		return ok && user == h.cfg.Auth.Username && pass == h.cfg.Auth.Password
-	case "api_key":
-		if h.cfg.Auth.Header != "" {
-			return r.Header.Get(h.cfg.Auth.Header) == h.cfg.Auth.Key
-		}
-		if h.cfg.Auth.QueryParam != "" {
-			return r.URL.Query().Get(h.cfg.Auth.QueryParam) == h.cfg.Auth.Key
-		}
-		return false
-	case "none", "":
-		return true
-	default:
-		return true
-	}
 }
 
 func (h *HTTPSource) Stop(ctx context.Context) error {

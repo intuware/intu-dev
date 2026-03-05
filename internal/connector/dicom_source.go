@@ -2,15 +2,18 @@ package connector
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/intuware/intu/internal/auth"
 	"github.com/intuware/intu/internal/message"
 	"github.com/intuware/intu/pkg/config"
 )
@@ -33,6 +36,18 @@ func (d *DICOMSource) Start(ctx context.Context, handler MessageHandler) error {
 	if err != nil {
 		return fmt.Errorf("DICOM listen on %s: %w", addr, err)
 	}
+
+	tlsEnabled := false
+	if d.cfg.TLS != nil && d.cfg.TLS.Enabled {
+		tlsCfg, tlsErr := auth.BuildTLSConfig(d.cfg.TLS)
+		if tlsErr != nil {
+			ln.Close()
+			return fmt.Errorf("DICOM TLS config: %w", tlsErr)
+		}
+		ln = tls.NewListener(ln, tlsCfg)
+		tlsEnabled = true
+	}
+
 	d.listener = ln
 	ctx, d.cancel = context.WithCancel(ctx)
 
@@ -67,6 +82,7 @@ func (d *DICOMSource) Start(ctx context.Context, handler MessageHandler) error {
 	d.logger.Info("DICOM source (SCP) started",
 		"addr", addr,
 		"ae_title", aeTitle,
+		"tls", tlsEnabled,
 	)
 	return nil
 }
@@ -95,7 +111,13 @@ func (d *DICOMSource) handleConnection(ctx context.Context, conn net.Conn, handl
 
 		switch pduType {
 		case 0x01:
-			d.logger.Debug("DICOM A-ASSOCIATE-RQ received", "size", len(pduData))
+			callingAE := d.extractCallingAETitle(pduData)
+			d.logger.Debug("DICOM A-ASSOCIATE-RQ received", "size", len(pduData), "calling_ae", callingAE)
+			if !d.validateCallingAETitle(callingAE) {
+				d.logger.Warn("DICOM A-ASSOCIATE rejected: unauthorized calling AE Title", "calling_ae", callingAE)
+				d.sendAssociateRJ(conn)
+				return
+			}
 			d.sendAssociateAC(conn)
 
 		case 0x04:
@@ -155,6 +177,38 @@ func (d *DICOMSource) readPDU(conn net.Conn) (byte, []byte, error) {
 	}
 
 	return pduType, data, nil
+}
+
+func (d *DICOMSource) extractCallingAETitle(data []byte) string {
+	// A-ASSOCIATE-RQ: bytes 0-1=protocol version, 2-3=reserved,
+	// 4-19=called AE title (16 bytes), 20-35=calling AE title (16 bytes)
+	if len(data) < 36 {
+		return ""
+	}
+	return strings.TrimSpace(string(data[20:36]))
+}
+
+func (d *DICOMSource) validateCallingAETitle(callingAE string) bool {
+	if len(d.cfg.CallingAETitles) == 0 {
+		return true
+	}
+	for _, allowed := range d.cfg.CallingAETitles {
+		if strings.EqualFold(allowed, callingAE) {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *DICOMSource) sendAssociateRJ(conn net.Conn) {
+	pdu := make([]byte, 10)
+	pdu[0] = 0x03 // A-ASSOCIATE-RJ
+	pdu[1] = 0x00
+	binary.BigEndian.PutUint32(pdu[2:6], 4)
+	pdu[7] = 0x01 // result: rejected-permanent
+	pdu[8] = 0x01 // source: DICOM UL service-user
+	pdu[9] = 0x03 // reason: calling AE title not recognized
+	conn.Write(pdu)
 }
 
 func (d *DICOMSource) sendAssociateAC(conn net.Conn) {

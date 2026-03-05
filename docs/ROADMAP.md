@@ -43,13 +43,25 @@
 | `intu validate` | ✅ Implemented |
 | Structured JSON logging (4 levels) | ✅ Implemented |
 | npm cross-platform binary distribution | ✅ Implemented |
+| **Source Connectors (12 types)** | ✅ Implemented |
+| HTTP Listener (with TLS, bearer/basic/api_key/mTLS auth) | ✅ Implemented |
+| TCP/MLLP Listener (with TLS, MLLP ACK/NACK) | ✅ Implemented |
+| SFTP Listener (password/key auth, passphrase) | ✅ Implemented |
+| File Reader (local, poll, move/error dirs) | ✅ Implemented |
+| Database Reader (Postgres/MySQL/MSSQL/SQLite, poll, post-process) | ✅ Implemented |
+| Kafka Consumer (TLS, SASL PLAIN auth) | ✅ Implemented |
+| Email Reader (IMAP/POP3, TLS with full cert support) | ✅ Implemented |
+| DICOM SCP (TLS, AE Title validation, A-ASSOCIATE/P-DATA/A-RELEASE) | ✅ Implemented |
+| SOAP Listener (TLS, auth, WSDL generation) | ✅ Implemented |
+| FHIR R4 Listener (TLS, auth, capability statement, subscriptions) | ✅ Implemented |
+| IHE Profiles: XDS Repository/Registry, PIX, PDQ (TLS, auth) | ✅ Implemented |
+| Channel Reader (inter-channel via ChannelBus) | ✅ Implemented |
+| **TLS on all network connectors** | ✅ Implemented |
+| **Auth (bearer, basic, api_key, mTLS) on HTTP-based sources** | ✅ Implemented |
+| **Shared auth infrastructure** (`internal/auth/`, `internal/connector/http_auth.go`) | ✅ Implemented |
 | Runtime engine (`intu serve`) | ❌ Stub only |
 | Actual message processing | ❌ Not implemented |
-| Listener execution | ❌ Not implemented |
-| Destination dispatch | ❌ Not implemented |
-| Auth beyond static bearer token | ❌ Not implemented |
 | Any data-type parsing (HL7, FHIR, CSV…) | ❌ Not implemented |
-| SFTP / TCP / MLLP / File / DB connectors | ❌ Not implemented |
 | Error handling / retry / DLQ | ❌ Not implemented |
 | Message storage / audit | ❌ Not implemented |
 | Dashboard / alerting | ❌ Not implemented |

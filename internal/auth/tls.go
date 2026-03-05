@@ -4,10 +4,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
 	"os"
 
 	"github.com/intuware/intu/pkg/config"
 )
+
+func DialTLS(dialer *net.Dialer, network, addr string, cfg *tls.Config) (net.Conn, error) {
+	return tls.DialWithDialer(dialer, network, addr, cfg)
+}
 
 func BuildTLSConfig(cfg *config.TLSConfig) (*tls.Config, error) {
 	if cfg == nil {
