@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validators - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="index.html">Docs</a>
+                <span class="sep">/</span>
+                <span class="current">Validators</span>
+            </div>
+
+            <h1><span class="gradient-text">Validators</span></h1>
+            <p class="subtitle">Validate incoming messages before transformation</p>
+
+            <h2>Overview</h2>
+            <p>
+                Validators are TypeScript functions that run <strong>before</strong> the transformer in a channel's
+                processing pipeline. They inspect the structure and content of incoming messages and either accept
+                them silently (by returning <code>void</code>) or reject them (by throwing an <code>Error</code>).
+            </p>
+            <p>
+                When a validator throws, the message is immediately rejected &mdash; it never reaches the transformer
+                or any destination. If error handling is configured for the channel (e.g. a dead-letter queue), the
+                rejected message and the error details are forwarded there for later inspection.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>
+                Validators are declared in a channel's <code>channel.yaml</code>. There are two equivalent ways
+                to wire a validator into the pipeline.
+            </p>
+
+            <h3>Explicit validator block</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>validator:
+  runtime: node
+  entrypoint: validator.ts</code></pre>
+            </div>
+
+            <h3>Pipeline shorthand</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>pipeline:
+  validator: validator.ts</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                Both forms are functionally identical. The pipeline shorthand is more concise when you have
+                multiple pipeline stages declared together.
+            </div>
+
+            <h2>Writing a Validator</h2>
+            <p>
+                A validator is a named export called <code>validate</code>. It receives the parsed message and
+                an optional context object. If the function returns normally, the message is accepted. If the
+                function throws an <code>Error</code>, the message is rejected.
+            </p>
+
+            <h3>Function signature</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function validate(msg: unknown, ctx?: { channelId: string; correlationId: string }): void {
+  // Throw an error to reject the message
+  // Return void to accept
+}</code></pre>
+            </div>
+
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>msg</code></td>
+                        <td><code>unknown</code></td>
+                        <td>The incoming message, automatically parsed according to <code>data_types.inbound</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>ctx.channelId</code></td>
+                        <td><code>string</code></td>
+                        <td>The name of the channel processing this message</td>
+                    </tr>
+                    <tr>
+                        <td><code>ctx.correlationId</code></td>
+                        <td><code>string</code></td>
+                        <td>Unique correlation ID for distributed tracing</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Examples</h2>
+
+            <h3>Basic Object Validation</h3>
+            <p>Reject anything that is not a non-null object:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function validate(msg: unknown): void {
+  if (!msg || typeof msg !== "object") {
+    throw new Error("Message must be a non-null object");
+  }
+}</code></pre>
+            </div>
+
+            <h3>HL7 ADT Message Validation</h3>
+            <p>Ensure required segments and fields are present on an HL7v2 ADT message:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function validate(msg: unknown): void {
+  const m = msg as Record&lt;string, any&gt;;
+
+  if (!m.MSH) throw new Error("Missing MSH segment");
+  if (!m.PID) throw new Error("Missing PID segment");
+  if (!m.PID["3.1"]) throw new Error("Missing patient ID (PID-3.1)");
+  if (!m.EVN) throw new Error("Missing EVN segment");
+}</code></pre>
+            </div>
+
+            <h3>FHIR Resource Validation</h3>
+            <p>Validate that a FHIR resource has the required type and mandatory fields:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function validate(msg: unknown): void {
+  const resource = msg as Record&lt;string, any&gt;;
+
+  if (!resource.resourceType) {
+    throw new Error("Missing resourceType");
+  }
+
+  if (resource.resourceType === "Patient") {
+    if (!resource.identifier?.length) {
+      throw new Error("Patient must have at least one identifier");
+    }
+    if (!resource.name?.length) {
+      throw new Error("Patient must have at least one name");
+    }
+  }
+}</code></pre>
+            </div>
+
+            <h3>Lab Result Validation</h3>
+            <p>Check that a lab result message has all the required fields and a well-formed results array:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function validate(msg: unknown): void {
+  const lab = msg as Record&lt;string, any&gt;;
+
+  if (!lab.orderId) throw new Error("Missing orderId");
+  if (!lab.patientId) throw new Error("Missing patientId");
+  if (!lab.results || !Array.isArray(lab.results)) {
+    throw new Error("results must be an array");
+  }
+
+  for (const result of lab.results) {
+    if (!result.code) throw new Error("Each result must have a code");
+    if (result.value === undefined) throw new Error("Each result must have a value");
+  }
+}</code></pre>
+            </div>
+
+            <h2>Error Handling</h2>
+            <p>When a validator throws an <code>Error</code>, intu handles the rejection as follows:</p>
+            <ol>
+                <li>The message is <strong>rejected</strong> and does not proceed to the transformer or any destination.</li>
+                <li>The error is <strong>logged</strong> with the original message payload and the thrown error message.</li>
+                <li>If <code>error_handling.dlq</code> is configured in the channel's YAML, the message is forwarded to the <strong>dead-letter queue</strong> along with error metadata.</li>
+                <li>The <code>message</code> property of the thrown <code>Error</code> is included in the error log entry, so use descriptive messages to make debugging easier.</li>
+            </ol>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>error_handling:
+  dlq:
+    ref: kafka-dlq
+    include_original: true
+    include_error: true</code></pre>
+            </div>
+
+            <div class="callout callout-tip">
+                <strong>Tip</strong>
+                Always include clear, specific messages in your thrown errors. Messages like
+                <code>"Missing patient ID (PID-3.1)"</code> are far easier to triage than generic
+                <code>"Validation failed"</code> strings.
+            </div>
+
+            <h2>Data Types</h2>
+            <p>
+                When <code>data_types.inbound</code> is set in <code>channel.yaml</code>, intu automatically
+                parses the raw incoming payload <strong>before</strong> it reaches the validator. The
+                <code>msg</code> argument your validator receives is already the parsed representation.
+            </p>
+
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Data Type</th>
+                        <th>Parsed As</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>raw</code></td>
+                        <td>Raw string &mdash; no parsing applied</td>
+                    </tr>
+                    <tr>
+                        <td><code>json</code></td>
+                        <td>Parsed JSON object</td>
+                    </tr>
+                    <tr>
+                        <td><code>xml</code></td>
+                        <td>Parsed XML represented as a JSON structure</td>
+                    </tr>
+                    <tr>
+                        <td><code>csv</code></td>
+                        <td>Parsed CSV as an array of objects (header row becomes keys)</td>
+                    </tr>
+                    <tr>
+                        <td><code>hl7v2</code></td>
+                        <td>Parsed HL7v2 message as a JSON structure with segment/field accessors</td>
+                    </tr>
+                    <tr>
+                        <td><code>fhir_r4</code></td>
+                        <td>Parsed FHIR R4 resource (JSON)</td>
+                    </tr>
+                    <tr>
+                        <td><code>x12</code></td>
+                        <td>Parsed X12 transaction as a JSON structure</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>data_types:
+  inbound: hl7v2
+  outbound: fhir_r4</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                If <code>data_types.inbound</code> is not set, the message is passed to the validator
+                as a raw string. Your validator is then responsible for any parsing it needs.
+            </div>
+
+            <div class="docs-footer">
+                <a href="index.html">&larr; Getting Started</a>
+                <a href="transformers.html">Transformers &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='.';window.DOCS_PAGE='validators';</script>
+    <script src="assets/nav.js"></script>
+</body>
+</html>

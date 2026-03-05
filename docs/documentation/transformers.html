@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transformers - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="index.html">Docs</a>
+                <span class="sep">/</span>
+                <span class="current">Transformers</span>
+            </div>
+
+            <h1><span class="gradient-text">Transformers</span></h1>
+            <p class="subtitle">Transform messages with pure TypeScript functions</p>
+
+            <h2>Overview</h2>
+            <p>
+                Transformers are the core of intu's processing pipeline. They are pure TypeScript functions
+                that receive a message and a context object, then return the transformed message. The contract
+                is simple: JSON in, JSON out.
+            </p>
+            <p>
+                Because transformers are plain functions with no side-effect requirements, they are easy to
+                unit test, compose, and reason about. intu compiles them with <code>tsc</code> so you get
+                full type safety during development.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>
+                Transformers are declared in a channel's <code>channel.yaml</code>. There are two equivalent
+                ways to wire a transformer into the pipeline.
+            </p>
+
+            <h3>Explicit transformer block</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>transformer:
+  runtime: node
+  entrypoint: transformer.ts</code></pre>
+            </div>
+
+            <h3>Pipeline shorthand</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>pipeline:
+  transformer: transformer.ts</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                Both forms are functionally identical. The pipeline shorthand is more concise when you have
+                multiple pipeline stages declared together.
+            </div>
+
+            <h2>Function Signature</h2>
+            <p>
+                A transformer is a named export called <code>transform</code>. It receives the parsed message
+                and a context object, and must return the transformed message.
+            </p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function transform(
+  msg: unknown,
+  ctx: {
+    channelId: string;
+    correlationId: string;
+    messageId: string;
+    timestamp: string;
+    inboundDataType?: string;
+    outboundDataType?: string;
+    sourceType?: string;
+  }
+): unknown {
+  // Return the transformed message
+}</code></pre>
+            </div>
+
+            <h2>Context Object</h2>
+            <p>
+                The second argument passed to every transformer is a context object containing metadata about
+                the current message and channel. Use it for tracing, routing, and conditional logic.
+            </p>
+
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>channelId</code></td>
+                        <td><code>string</code></td>
+                        <td>The name of the channel processing this message</td>
+                    </tr>
+                    <tr>
+                        <td><code>correlationId</code></td>
+                        <td><code>string</code></td>
+                        <td>Unique correlation ID for distributed tracing across systems</td>
+                    </tr>
+                    <tr>
+                        <td><code>messageId</code></td>
+                        <td><code>string</code></td>
+                        <td>Unique identifier for this specific message</td>
+                    </tr>
+                    <tr>
+                        <td><code>timestamp</code></td>
+                        <td><code>string</code></td>
+                        <td>ISO 8601 timestamp of when the message was received</td>
+                    </tr>
+                    <tr>
+                        <td><code>inboundDataType</code></td>
+                        <td><code>string?</code></td>
+                        <td>Set when <code>data_types.inbound</code> is configured in the channel YAML</td>
+                    </tr>
+                    <tr>
+                        <td><code>outboundDataType</code></td>
+                        <td><code>string?</code></td>
+                        <td>Set when <code>data_types.outbound</code> is configured in the channel YAML</td>
+                    </tr>
+                    <tr>
+                        <td><code>sourceType</code></td>
+                        <td><code>string?</code></td>
+                        <td>The listener type that received the message (e.g. <code>http</code>, <code>tcp</code>, <code>kafka</code>)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Examples</h2>
+
+            <h3>Basic Transform</h3>
+            <p>Add processing metadata to every message:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function transform(msg: unknown, ctx: { channelId: string; correlationId: string }): unknown {
+  return {
+    ...(msg as object),
+    processedAt: new Date().toISOString(),
+    source: ctx.channelId,
+  };
+}</code></pre>
+            </div>
+
+            <h3>HL7v2 to FHIR R4</h3>
+            <p>Convert an HL7v2 ADT message into a FHIR R4 Patient resource:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function transform(msg: unknown): unknown {
+  const hl7 = msg as Record&lt;string, any&gt;;
+
+  return {
+    resourceType: "Patient",
+    id: hl7.PID?.["3.1"],
+    identifier: [{
+      system: "urn:oid:2.16.840.1.113883.19.5",
+      value: hl7.PID?.["3.1"]
+    }],
+    name: [{
+      family: hl7.PID?.["5.1"],
+      given: [hl7.PID?.["5.2"]]
+    }],
+    gender: mapGender(hl7.PID?.["8"]),
+    birthDate: formatDate(hl7.PID?.["7.1"]),
+    address: [{
+      line: [hl7.PID?.["11.1"]],
+      city: hl7.PID?.["11.3"],
+      state: hl7.PID?.["11.4"],
+      postalCode: hl7.PID?.["11.5"]
+    }]
+  };
+}
+
+function mapGender(code: string): string {
+  const map: Record&lt;string, string&gt; = { M: "male", F: "female", O: "other", U: "unknown" };
+  return map[code] || "unknown";
+}
+
+function formatDate(hl7Date: string): string {
+  if (!hl7Date || hl7Date.length &lt; 8) return "";
+  return `${hl7Date.slice(0, 4)}-${hl7Date.slice(4, 6)}-${hl7Date.slice(6, 8)}`;
+}</code></pre>
+            </div>
+
+            <h3>CSV Lab Results to JSON</h3>
+            <p>Map parsed CSV rows into a FHIR Observation bundle:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function transform(msg: unknown): unknown {
+  const rows = msg as Array&lt;Record&lt;string, string&gt;&gt;;
+
+  return {
+    bundle: rows.map(row =&gt; ({
+      resourceType: "Observation",
+      status: "final",
+      code: {
+        coding: [{ system: "http://loinc.org", code: row.loincCode, display: row.testName }]
+      },
+      subject: { reference: `Patient/${row.patientId}` },
+      valueQuantity: {
+        value: parseFloat(row.value),
+        unit: row.unit,
+        system: "http://unitsofmeasure.org"
+      },
+      effectiveDateTime: row.collectionDate
+    }))
+  };
+}</code></pre>
+            </div>
+
+            <h3>Message Routing</h3>
+            <p>
+                Use <code>ctx._routeTo</code> to dynamically route messages to specific destinations based
+                on message content:
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function transform(msg: unknown, ctx: any): unknown {
+  const m = msg as Record&lt;string, any&gt;;
+  const transformed = {
+    ...m,
+    processedAt: new Date().toISOString(),
+  };
+
+  // Route critical results to both the main output and alerting
+  if (m.priority === "STAT" || m.abnormalFlag === "H") {
+    ctx._routeTo = ["kafka-output", "alert-http"];
+  } else {
+    ctx._routeTo = ["kafka-output"];
+  }
+
+  return transformed;
+}</code></pre>
+            </div>
+
+            <div class="callout callout-tip">
+                <strong>Tip</strong>
+                The <code>ctx._routeTo</code> array overrides the default destination list for this message
+                only. Destination names must match the <code>name</code> field in the channel's
+                <code>destinations</code> configuration.
+            </div>
+
+            <h3>Using Shared Libraries</h3>
+            <p>
+                Import reusable utilities from the project's <code>lib/</code> directory to keep
+                transformers focused and DRY:
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { formatTimestamp, generateId } from "../../lib/index";
+
+export function transform(msg: unknown, ctx: { channelId: string; correlationId: string }): unknown {
+  return {
+    ...(msg as object),
+    processedAt: formatTimestamp(new Date()),
+    internalId: generateId(),
+    source: ctx.channelId,
+  };
+}</code></pre>
+            </div>
+
+            <h2>Pipeline</h2>
+            <p>
+                The transformer is one stage in a larger processing pipeline. Understanding the full order
+                helps you decide where to place logic and how to structure your TypeScript files.
+            </p>
+
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Order</th>
+                        <th>Stage</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td><strong>Preprocessor</strong></td>
+                        <td>Runs on the raw payload before any parsing occurs</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td><strong>Parse</strong></td>
+                        <td>Automatic parsing based on <code>data_types.inbound</code></td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td><strong>Validator</strong></td>
+                        <td>Validates message structure; rejects invalid messages</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td><strong>Source Filter</strong></td>
+                        <td>Optionally drops messages before transformation</td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td><strong>Transformer</strong></td>
+                        <td>Main transformation logic</td>
+                    </tr>
+                    <tr>
+                        <td>6</td>
+                        <td><strong>Destination Filters</strong></td>
+                        <td>Per-destination message filtering</td>
+                    </tr>
+                    <tr>
+                        <td>7</td>
+                        <td><strong>Destination Transformers</strong></td>
+                        <td>Per-destination message transformation</td>
+                    </tr>
+                    <tr>
+                        <td>8</td>
+                        <td><strong>Send</strong></td>
+                        <td>Deliver the message to each destination</td>
+                    </tr>
+                    <tr>
+                        <td>9</td>
+                        <td><strong>Postprocessor</strong></td>
+                        <td>Runs after all destinations have been processed</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Pipeline YAML</h3>
+            <p>Declare all pipeline stages together in the channel's <code>channel.yaml</code>:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>pipeline:
+  preprocessor: preprocess.ts
+  validator: validator.ts
+  source_filter: filter.ts
+  transformer: transformer.ts
+  postprocessor: postprocess.ts</code></pre>
+            </div>
+
+            <h2>Filter Functions</h2>
+            <p>
+                Source filters run after validation and before transformation. They decide whether a message
+                should continue through the pipeline or be silently dropped. Return <code>true</code> to
+                keep the message, <code>false</code> to drop it.
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>export function filter(msg: unknown, ctx: { channelId: string }): boolean {
+  const m = msg as Record&lt;string, any&gt;;
+  // Return true to keep, false to drop
+  return m.messageType === "ADT^A01";
+}</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                Dropped messages are not sent to the dead-letter queue. If you need to track rejected messages,
+                use a validator instead of a filter.
+            </div>
+
+            <h2>Destination-level Transformers</h2>
+            <p>
+                When a channel has multiple destinations that require different output formats, you can
+                configure per-destination filters and transformers. These run after the main transformer
+                and allow each destination to receive a tailored payload.
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>destinations:
+  - name: kafka-output
+    ref: kafka-output
+    filter: dest-filter.ts
+    transformer: dest-transformer.ts
+
+  - name: alert-http
+    ref: alert-endpoint
+    transformer: alert-transformer.ts</code></pre>
+            </div>
+            <p>
+                The destination filter receives the output of the main transformer and can drop the message
+                for that specific destination without affecting other destinations. The destination transformer
+                receives the (possibly filtered) output and returns a destination-specific payload.
+            </p>
+
+            <h2>Compilation</h2>
+            <p>
+                Transformers, validators, filters, and all other TypeScript pipeline files must be compiled
+                before the project can be deployed. The <code>intu build</code> command handles this.
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu build --dir .</code></pre>
+            </div>
+            <p>
+                Under the hood, <code>intu build</code> runs <code>npm run build</code>, which invokes
+                <code>tsc</code> using the project's <code>tsconfig.json</code>. Compiled JavaScript files
+                are written to the <code>dist/</code> directory.
+            </p>
+
+            <div class="callout callout-tip">
+                <strong>Tip</strong>
+                Run <code>intu validate --dir .</code> before building to catch configuration errors early.
+                The validate command checks YAML structure and file references without compiling TypeScript.
+            </div>
+
+            <div class="docs-footer">
+                <a href="validators.html">&larr; Validators</a>
+                <a href="schema.html">Schema Reference &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='.';window.DOCS_PAGE='transformers';</script>
+    <script src="assets/nav.js"></script>
+</body>
+</html>
