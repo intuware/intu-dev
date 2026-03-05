@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/intuware/intu/internal/cluster"
 	"github.com/intuware/intu/internal/connector"
 	"github.com/intuware/intu/internal/runtime"
 	"github.com/intuware/intu/pkg/config"
@@ -31,6 +32,13 @@ func newServeCmd() *cobra.Command {
 			}
 
 			logger.Info("config loaded", "name", cfg.Runtime.Name, "profile", profile)
+
+			if cfg.Runtime.Health != nil {
+				hc := cluster.NewHealthChecker(cfg.Runtime.Health, logger)
+				if err := hc.Start(); err != nil {
+					logger.Warn("health check server failed to start", "error", err)
+				}
+			}
 
 			factory := connector.NewFactory(logger)
 			engine := runtime.NewDefaultEngine(dir, cfg, factory, logger)
