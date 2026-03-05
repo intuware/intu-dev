@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP Source - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <nav class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Sources</a>
+                <span class="sep">/</span>
+                <span class="current">HTTP</span>
+            </nav>
+
+            <h1><span class="gradient-text">HTTP Source</span></h1>
+            <p class="subtitle">Start an HTTP server to receive messages via REST endpoints. Supports TLS, multiple authentication methods, and configurable route paths.</p>
+
+            <h2>Overview</h2>
+            <p>The HTTP source creates an embedded HTTP server that listens for incoming requests on a specified port and path. When a request arrives matching the configured methods, intu passes the request body to the channel's validator and transformer pipeline.</p>
+            <p>This source is well suited for receiving real-time event notifications, webhook callbacks, and REST-based integrations from EHR systems, lab information systems, and other healthcare applications that push data over HTTP.</p>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                When deploying in production, enable TLS and configure an appropriate authentication method to protect PHI in transit.
+            </div>
+
+            <h2>Configuration</h2>
+            <p>The HTTP source is configured within the <code>listener</code> block of a <code>channel.yaml</code> file. Set <code>type</code> to <code>http</code> and provide the connection details under the <code>http</code> key.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>listener:
+  type: http
+  http:
+    port: 8080
+    path: /api/v1/adt
+    methods: [POST]
+    tls:
+      cert_file: /etc/intu/certs/server.crt
+      key_file: /etc/intu/certs/server.key
+    auth:
+      type: bearer
+      token: ${ADT_AUTH_TOKEN}</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The TCP port the HTTP server listens on. Must be between 1 and 65535.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">path</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">The URL path to listen on. Defaults to <code>/</code>. Supports path parameters such as <code>/api/v1/:resource</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">methods</span>
+                    <span class="prop-type">string[]</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Allowed HTTP methods. Valid values are <code>GET</code>, <code>POST</code>, and <code>PUT</code>. Defaults to <code>[POST]</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">TLS configuration for HTTPS. Contains <code>cert_file</code> and <code>key_file</code> paths. When provided, the server requires HTTPS connections.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Authentication configuration. Supported types: <code>basic</code>, <code>bearer</code>, <code>api_key</code>, <code>oauth2</code>, <code>mtls</code>. Each type requires its own set of sub-properties.</div>
+                </div>
+            </div>
+
+            <h3>Auth Type Details</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Properties</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>basic</code></td>
+                        <td><code>username</code>, <code>password</code></td>
+                        <td>HTTP Basic authentication with username and password.</td>
+                    </tr>
+                    <tr>
+                        <td><code>bearer</code></td>
+                        <td><code>token</code></td>
+                        <td>Bearer token authentication via the Authorization header.</td>
+                    </tr>
+                    <tr>
+                        <td><code>api_key</code></td>
+                        <td><code>header</code>, <code>key</code></td>
+                        <td>API key sent in a custom request header.</td>
+                    </tr>
+                    <tr>
+                        <td><code>oauth2</code></td>
+                        <td><code>issuer</code>, <code>audience</code>, <code>jwks_url</code></td>
+                        <td>OAuth 2.0 JWT validation against a JWKS endpoint.</td>
+                    </tr>
+                    <tr>
+                        <td><code>mtls</code></td>
+                        <td><code>ca_file</code></td>
+                        <td>Mutual TLS with client certificate verification.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Complete Example</h2>
+            <p>A full <code>channel.yaml</code> that receives HL7 ADT messages via HTTP POST, validates the payload, transforms it, and forwards it to a Kafka destination.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: adt-inbound
+enabled: true
+
+listener:
+  type: http
+  http:
+    port: 8080
+    path: /api/v1/adt
+    methods: [POST]
+    auth:
+      type: bearer
+      token: ${ADT_AUTH_TOKEN}
+
+validator:
+  runtime: node
+  entrypoint: validator.ts
+
+transformer:
+  runtime: node
+  entrypoint: transformer.ts
+
+destinations:
+  - kafka-output</code></pre>
+            </div>
+
+            <h2>TypeScript Transformer Example</h2>
+            <p>This transformer receives an HL7 ADT (Admit/Discharge/Transfer) message from the HTTP source and maps it to a FHIR R4 Patient resource.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+
+interface HL7Segment {
+  fields: string[];
+}
+
+function parseHL7(raw: string): Map&lt;string, HL7Segment[]&gt; {
+  const segments = new Map&lt;string, HL7Segment[]&gt;();
+  const lines = raw.split("\r");
+  for (const line of lines) {
+    const fields = line.split("|");
+    const name = fields[0];
+    if (!segments.has(name)) segments.set(name, []);
+    segments.get(name)!.push({ fields });
+  }
+  return segments;
+}
+
+export default function transform(msg: Message): TransformResult {
+  const hl7 = parseHL7(msg.body as string);
+  const pid = hl7.get("PID")?.[0]?.fields;
+
+  if (!pid) {
+    return { success: false, error: "Missing PID segment" };
+  }
+
+  const nameParts = (pid[5] || "").split("^");
+  const patient = {
+    resourceType: "Patient",
+    identifier: [
+      {
+        system: "urn:oid:2.16.840.1.113883.19.5",
+        value: pid[3]?.split("^")[0] || "",
+      },
+    ],
+    name: [
+      {
+        family: nameParts[0] || "",
+        given: [nameParts[1] || ""],
+      },
+    ],
+    gender: mapGender(pid[8]),
+    birthDate: formatHL7Date(pid[7]),
+  };
+
+  return {
+    success: true,
+    body: JSON.stringify(patient),
+    contentType: "application/fhir+json",
+  };
+}
+
+function mapGender(code: string | undefined): string {
+  switch (code) {
+    case "M": return "male";
+    case "F": return "female";
+    case "O": return "other";
+    default:  return "unknown";
+  }
+}
+
+function formatHL7Date(raw: string | undefined): string | undefined {
+  if (!raw || raw.length &lt; 8) return undefined;
+  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+}</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="tcp.html">Next: TCP / MLLP Source &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='source-http';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IHE Source - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <nav class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Sources</a>
+                <span class="sep">/</span>
+                <span class="current">IHE</span>
+            </nav>
+
+            <h1><span class="gradient-text">IHE Source</span></h1>
+            <p class="subtitle">Implement IHE (Integrating the Healthcare Enterprise) profiles such as XDS.b, PIX, and PDQ for standards-based healthcare data exchange.</p>
+
+            <h2>Overview</h2>
+            <p>The IHE source implements server-side actors for IHE integration profiles. IHE profiles define specific implementations of healthcare standards (HL7, DICOM, FHIR) for particular use cases such as cross-enterprise document sharing, patient identity management, and patient demographics querying.</p>
+            <p>Each profile defines a set of transactions between actors. The IHE source acts as the receiving actor (e.g. Document Repository in XDS.b, PIX Manager in PIX, Demographics Supplier in PDQ) and processes incoming transactions through the intu pipeline.</p>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                IHE profiles are complex interoperability specifications. Review the IHE Technical Framework documentation for your chosen profile to understand the full set of requirements and message formats.
+            </div>
+
+            <h2>Configuration</h2>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>listener:
+  type: ihe
+  ihe:
+    profile: PIX
+    port: 8080
+    tls:
+      cert_file: /etc/intu/certs/ihe.crt
+      key_file: /etc/intu/certs/ihe.key
+    auth:
+      type: basic
+      username: ${IHE_USER}
+      password: ${IHE_PASS}</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">profile</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The IHE integration profile to implement. Supported values: <code>XDS.b</code>, <code>PIX</code>, <code>PDQ</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The TCP port to listen on for incoming IHE transactions.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">TLS configuration for encrypted transport. Required by the IHE Audit Trail and Node Authentication (ATNA) profile. Contains <code>cert_file</code> and <code>key_file</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Authentication configuration. Supports <code>basic</code>, <code>bearer</code>, and <code>saml</code> types depending on the profile.</div>
+                </div>
+            </div>
+
+            <h3>Supported Profiles</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Profile</th>
+                        <th>Full Name</th>
+                        <th>Actor Role</th>
+                        <th>Key Transactions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>XDS.b</code></td>
+                        <td>Cross-Enterprise Document Sharing</td>
+                        <td>Document Repository / Registry</td>
+                        <td>ITI-41 (Provide and Register), ITI-42 (Register), ITI-43 (Retrieve)</td>
+                    </tr>
+                    <tr>
+                        <td><code>PIX</code></td>
+                        <td>Patient Identifier Cross-referencing</td>
+                        <td>PIX Manager</td>
+                        <td>ITI-8 (Patient Identity Feed), ITI-9 (PIX Query)</td>
+                    </tr>
+                    <tr>
+                        <td><code>PDQ</code></td>
+                        <td>Patient Demographics Query</td>
+                        <td>Demographics Supplier</td>
+                        <td>ITI-21 (Patient Demographics Query), ITI-22 (Patient Demographics and Visit Query)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Complete Example</h2>
+            <p>An IHE PIX Manager that receives patient identity feed transactions (ITI-8) and cross-references patient identifiers across assigning authorities.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: pix-manager-inbound
+enabled: true
+
+listener:
+  type: ihe
+  ihe:
+    profile: PIX
+    port: 8080
+    tls:
+      cert_file: /etc/intu/certs/ihe.crt
+      key_file: /etc/intu/certs/ihe.key
+    auth:
+      type: basic
+      username: ${IHE_USER}
+      password: ${IHE_PASS}
+
+validator:
+  runtime: node
+  entrypoint: validator.ts
+
+transformer:
+  runtime: node
+  entrypoint: transformer.ts
+
+destinations:
+  - master-patient-index
+  - audit-repository</code></pre>
+            </div>
+
+            <h2>TypeScript Transformer Example</h2>
+            <p>This transformer processes a PIX Patient Identity Feed (ITI-8) message, which arrives as an HL7v2 ADT message, and produces a cross-reference record for the master patient index.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+
+interface PatientIdentifier {
+  value: string;
+  assigningAuthority: string;
+  identifierType: string;
+}
+
+interface CrossReferenceRecord {
+  action: "add" | "update" | "merge";
+  identifiers: PatientIdentifier[];
+  demographics: {
+    familyName: string;
+    givenName: string;
+    dateOfBirth: string;
+    gender: string;
+  };
+  mergedFrom?: PatientIdentifier;
+  sourceSystem: string;
+  timestamp: string;
+}
+
+export default function transform(msg: Message): TransformResult {
+  const raw = msg.body as string;
+  const segments = raw.split("\r").filter(Boolean);
+  const segmentMap = new Map&lt;string, string[]&gt;();
+
+  for (const seg of segments) {
+    const fields = seg.split("|");
+    segmentMap.set(fields[0], fields);
+  }
+
+  const msh = segmentMap.get("MSH");
+  const evn = segmentMap.get("EVN");
+  const pid = segmentMap.get("PID");
+  const mrg = segmentMap.get("MRG");
+
+  if (!msh || !pid) {
+    return { success: false, error: "Missing required MSH or PID segment" };
+  }
+
+  const eventType = msh[8]?.split("^")[1] || "";
+  const action = resolveAction(eventType);
+
+  const identifiers = parseIdentifiers(pid[3] || "");
+  const nameParts = (pid[5] || "").split("^");
+
+  const record: CrossReferenceRecord = {
+    action,
+    identifiers,
+    demographics: {
+      familyName: nameParts[0] || "",
+      givenName: nameParts[1] || "",
+      dateOfBirth: formatDate(pid[7] || ""),
+      gender: pid[8] || "",
+    },
+    sourceSystem: msh[3] || "",
+    timestamp: evn?.[2] || msh[6] || new Date().toISOString(),
+  };
+
+  if (action === "merge" &amp;&amp; mrg) {
+    const mergedIds = parseIdentifiers(mrg[1] || "");
+    if (mergedIds.length &gt; 0) {
+      record.mergedFrom = mergedIds[0];
+    }
+  }
+
+  return {
+    success: true,
+    body: JSON.stringify(record),
+    contentType: "application/json",
+  };
+}
+
+function resolveAction(eventType: string): "add" | "update" | "merge" {
+  switch (eventType) {
+    case "A01":
+    case "A04":
+    case "A28":
+      return "add";
+    case "A08":
+    case "A31":
+      return "update";
+    case "A40":
+      return "merge";
+    default:
+      return "update";
+  }
+}
+
+function parseIdentifiers(field: string): PatientIdentifier[] {
+  return field.split("~").map((id) =&gt; {
+    const parts = id.split("^");
+    return {
+      value: parts[0] || "",
+      assigningAuthority: parts[3]?.split("&amp;")[0] || "",
+      identifierType: parts[4] || "",
+    };
+  });
+}
+
+function formatDate(hl7Date: string): string {
+  if (hl7Date.length &lt; 8) return "";
+  return `${hl7Date.slice(0, 4)}-${hl7Date.slice(4, 6)}-${hl7Date.slice(6, 8)}`;
+}</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="fhir.html">&larr; Previous: FHIR Source</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='source-ihe';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

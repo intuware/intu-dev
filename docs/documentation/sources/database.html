@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Source - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <nav class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Sources</a>
+                <span class="sep">/</span>
+                <span class="current">Database</span>
+            </nav>
+
+            <h1><span class="gradient-text">Database Source</span></h1>
+            <p class="subtitle">Poll a relational database for new or updated records using SQL queries on a configurable interval.</p>
+
+            <h2>Overview</h2>
+            <p>The Database source periodically executes a SQL query against a relational database and feeds each result row into the channel pipeline. This pattern is common in healthcare systems where clinical applications write data to databases but do not support event-based notifications.</p>
+            <p>After successfully reading and processing rows, an optional <code>post_process_statement</code> can be executed to mark records as processed, preventing duplicate reads on the next poll cycle.</p>
+
+            <div class="callout callout-warning">
+                <strong>Warning</strong>
+                Always include a filter condition in your query (e.g. <code>WHERE processed = false</code>) and use the <code>post_process_statement</code> to mark rows as processed. Without this, rows will be re-read on every poll cycle.
+            </div>
+
+            <h2>Configuration</h2>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>listener:
+  type: database
+  database:
+    driver: postgres
+    dsn: postgres://${DB_USER}:${DB_PASS}@db.internal:5432/clinical?sslmode=require
+    poll_interval: 60s
+    query: |
+      SELECT id, patient_mrn, order_code, order_date, status
+      FROM orders
+      WHERE processed = false
+      ORDER BY order_date ASC
+      LIMIT 100
+    post_process_statement: |
+      UPDATE orders SET processed = true WHERE id = ANY($1)</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">driver</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Database driver. One of <code>postgres</code>, <code>mysql</code>, <code>mssql</code>, or <code>oracle</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">dsn</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Data Source Name (connection string). Supports environment variable interpolation for credentials.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">poll_interval</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">How often to execute the query. Accepts Go duration strings such as <code>30s</code>, <code>1m</code>, <code>5m</code>. Defaults to <code>60s</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">query</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">SQL SELECT query to execute on each poll cycle. Each row returned is passed as a separate message into the channel pipeline.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">post_process_statement</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">SQL statement executed after successful processing of a batch. Typically used to mark rows as processed. Receives the list of processed row IDs as a parameter.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">TLS configuration for encrypted database connections. Contains <code>ca_file</code>, <code>cert_file</code>, and <code>key_file</code>.</div>
+                </div>
+            </div>
+
+            <h3>Supported Drivers</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Driver</th>
+                        <th>DSN Format</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>postgres</code></td>
+                        <td><code>postgres://user:pass@host:5432/db</code></td>
+                        <td>Supports <code>sslmode</code> parameter for TLS.</td>
+                    </tr>
+                    <tr>
+                        <td><code>mysql</code></td>
+                        <td><code>user:pass@tcp(host:3306)/db</code></td>
+                        <td>Append <code>?tls=true</code> for encrypted connections.</td>
+                    </tr>
+                    <tr>
+                        <td><code>mssql</code></td>
+                        <td><code>sqlserver://user:pass@host:1433?database=db</code></td>
+                        <td>Common in on-premises healthcare environments.</td>
+                    </tr>
+                    <tr>
+                        <td><code>oracle</code></td>
+                        <td><code>oracle://user:pass@host:1521/service</code></td>
+                        <td>Requires Oracle client libraries at runtime.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Complete Example</h2>
+            <p>Poll a PostgreSQL database for unprocessed pharmacy orders every 60 seconds and forward them as FHIR MedicationRequest resources.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: pharmacy-order-poll
+enabled: true
+
+listener:
+  type: database
+  database:
+    driver: postgres
+    dsn: postgres://${DB_USER}:${DB_PASS}@db.internal:5432/pharmacy?sslmode=require
+    poll_interval: 60s
+    query: |
+      SELECT id, patient_mrn, drug_code, drug_name, dosage,
+             frequency, prescriber_npi, order_date
+      FROM medication_orders
+      WHERE processed = false
+      ORDER BY order_date ASC
+      LIMIT 100
+    post_process_statement: |
+      UPDATE medication_orders SET processed = true WHERE id = ANY($1)
+
+validator:
+  runtime: node
+  entrypoint: validator.ts
+
+transformer:
+  runtime: node
+  entrypoint: transformer.ts
+
+destinations:
+  - fhir-pharmacy-api</code></pre>
+            </div>
+
+            <h2>TypeScript Transformer Example</h2>
+            <p>This transformer maps a database row representing a medication order into a FHIR MedicationRequest resource.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+
+interface MedicationOrderRow {
+  id: number;
+  patient_mrn: string;
+  drug_code: string;
+  drug_name: string;
+  dosage: string;
+  frequency: string;
+  prescriber_npi: string;
+  order_date: string;
+}
+
+export default function transform(msg: Message): TransformResult {
+  let row: MedicationOrderRow;
+  try {
+    row = JSON.parse(msg.body as string);
+  } catch {
+    return { success: false, error: "Failed to parse database row" };
+  }
+
+  const medicationRequest = {
+    resourceType: "MedicationRequest",
+    identifier: [
+      {
+        system: "urn:oid:1.2.3.4.5.6.7",
+        value: String(row.id),
+      },
+    ],
+    status: "active",
+    intent: "order",
+    medicationCodeableConcept: {
+      coding: [
+        {
+          system: "http://www.nlm.nih.gov/research/umls/rxnorm",
+          code: row.drug_code,
+          display: row.drug_name,
+        },
+      ],
+    },
+    subject: {
+      identifier: {
+        system: "urn:oid:2.16.840.1.113883.19.5",
+        value: row.patient_mrn,
+      },
+    },
+    authoredOn: row.order_date,
+    requester: {
+      identifier: {
+        system: "http://hl7.org/fhir/sid/us-npi",
+        value: row.prescriber_npi,
+      },
+    },
+    dosageInstruction: [
+      {
+        text: `${row.dosage} ${row.frequency}`,
+        timing: {
+          code: {
+            text: row.frequency,
+          },
+        },
+        doseAndRate: [
+          {
+            doseQuantity: {
+              value: parseFloat(row.dosage) || 0,
+              unit: "mg",
+              system: "http://unitsofmeasure.org",
+              code: "mg",
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  return {
+    success: true,
+    body: JSON.stringify(medicationRequest),
+    contentType: "application/fhir+json",
+  };
+}</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="kafka.html">&larr; Previous: Kafka Source</a>
+                <a href="sftp.html">Next: SFTP Source &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='source-database';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

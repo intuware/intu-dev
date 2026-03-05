@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCP / MLLP Source - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <nav class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Sources</a>
+                <span class="sep">/</span>
+                <span class="current">TCP / MLLP</span>
+            </nav>
+
+            <h1><span class="gradient-text">TCP / MLLP Source</span></h1>
+            <p class="subtitle">Listen for raw TCP or MLLP (Minimal Lower Layer Protocol) connections. MLLP is the standard transport protocol for HL7v2 messages in healthcare.</p>
+
+            <h2>Overview</h2>
+            <p>The TCP source opens a socket listener that accepts inbound connections and reads data from connected clients. In <code>raw</code> mode, the source reads data until the connection closes or a timeout is reached. In <code>mllp</code> mode, it uses MLLP framing to delimit individual HL7v2 messages within a persistent connection.</p>
+            <p>MLLP wraps each message with a start block character (<code>0x0B</code>), followed by the message content, an end block character (<code>0x1C</code>), and a carriage return (<code>0x0D</code>). This framing allows multiple messages to flow over a single TCP connection, which is the standard transport mechanism in hospital integration engines.</p>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                Most HL7v2 interfaces in production healthcare environments use MLLP on port 2575. Set <code>mode: mllp</code> and configure acknowledgment settings for standard HL7v2 interoperability.
+            </div>
+
+            <h2>Configuration</h2>
+            <p>Configure the TCP source within the <code>listener</code> block of <code>channel.yaml</code>. Set <code>type</code> to <code>tcp</code> and provide options under the <code>tcp</code> key.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>listener:
+  type: tcp
+  tcp:
+    port: 2575
+    mode: mllp
+    max_connections: 50
+    timeout_ms: 30000
+    tls:
+      cert_file: /etc/intu/certs/server.crt
+      key_file: /etc/intu/certs/server.key
+    ack:
+      auto: true
+      success_code: AA
+      error_code: AE
+      reject_code: AR</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The TCP port to listen on. The standard MLLP port is 2575.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">mode</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Transport mode. <code>raw</code> reads until connection close; <code>mllp</code> uses MLLP framing. Defaults to <code>raw</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">max_connections</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Maximum number of concurrent TCP connections. Additional connections are queued until a slot becomes available.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">timeout_ms</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Idle timeout in milliseconds. Connections with no data for this duration are closed. Defaults to 30000 (30 seconds).</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">TLS configuration. Contains <code>cert_file</code> and <code>key_file</code> paths. Enables encrypted transport for the TCP listener.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">ack</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Acknowledgment settings for MLLP mode. Controls automatic ACK generation after message processing.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">response</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Custom response configuration. Allows sending a static or template-based response back to the client after processing.</div>
+                </div>
+            </div>
+
+            <h3>ACK Properties</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Property</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>auto</code></td>
+                        <td><code>bool</code></td>
+                        <td>When true, automatically generate an HL7 ACK message after processing. Defaults to <code>true</code> in MLLP mode.</td>
+                    </tr>
+                    <tr>
+                        <td><code>success_code</code></td>
+                        <td><code>string</code></td>
+                        <td>ACK code for successful processing. Typically <code>AA</code> (Application Accept).</td>
+                    </tr>
+                    <tr>
+                        <td><code>error_code</code></td>
+                        <td><code>string</code></td>
+                        <td>ACK code when an error occurs during processing. Typically <code>AE</code> (Application Error).</td>
+                    </tr>
+                    <tr>
+                        <td><code>reject_code</code></td>
+                        <td><code>string</code></td>
+                        <td>ACK code when the message is rejected. Typically <code>AR</code> (Application Reject).</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Complete Example</h2>
+            <p>An MLLP listener on port 2575 that receives HL7v2 ADT messages, validates them, transforms the data, and forwards it to a database destination.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: hl7-mllp-inbound
+enabled: true
+
+listener:
+  type: tcp
+  tcp:
+    port: 2575
+    mode: mllp
+    max_connections: 100
+    timeout_ms: 60000
+    ack:
+      auto: true
+      success_code: AA
+      error_code: AE
+      reject_code: AR
+
+validator:
+  runtime: node
+  entrypoint: validator.ts
+
+transformer:
+  runtime: node
+  entrypoint: transformer.ts
+
+destinations:
+  - patient-db</code></pre>
+            </div>
+
+            <h2>TypeScript Transformer Example</h2>
+            <p>This transformer parses an HL7v2 message received over MLLP and extracts patient demographic fields from the PID segment.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+
+interface PatientDemographics {
+  mrn: string;
+  familyName: string;
+  givenName: string;
+  dateOfBirth: string;
+  gender: string;
+  address: {
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+  };
+  phone: string;
+}
+
+export default function transform(msg: Message): TransformResult {
+  const raw = msg.body as string;
+  const segments = raw.split("\r").filter(Boolean);
+  const segmentMap = new Map&lt;string, string[][]&gt;();
+
+  for (const seg of segments) {
+    const fields = seg.split("|");
+    const name = fields[0];
+    if (!segmentMap.has(name)) segmentMap.set(name, []);
+    segmentMap.get(name)!.push(fields);
+  }
+
+  const msh = segmentMap.get("MSH")?.[0];
+  const pid = segmentMap.get("PID")?.[0];
+
+  if (!msh || !pid) {
+    return { success: false, error: "Missing MSH or PID segment" };
+  }
+
+  const nameParts = (pid[5] || "").split("^");
+  const addrParts = (pid[11] || "").split("^");
+
+  const patient: PatientDemographics = {
+    mrn: pid[3]?.split("^")[0] || "",
+    familyName: nameParts[0] || "",
+    givenName: nameParts[1] || "",
+    dateOfBirth: formatDate(pid[7]),
+    gender: pid[8] || "",
+    address: {
+      street: addrParts[0] || "",
+      city: addrParts[2] || "",
+      state: addrParts[3] || "",
+      zip: addrParts[4] || "",
+    },
+    phone: pid[13]?.split("^")[0] || "",
+  };
+
+  return {
+    success: true,
+    body: JSON.stringify(patient),
+    contentType: "application/json",
+  };
+}
+
+function formatDate(hl7Date: string | undefined): string {
+  if (!hl7Date || hl7Date.length &lt; 8) return "";
+  return `${hl7Date.slice(0, 4)}-${hl7Date.slice(4, 6)}-${hl7Date.slice(6, 8)}`;
+}</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="http.html">&larr; Previous: HTTP Source</a>
+                <a href="file.html">Next: File Source &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='source-tcp';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

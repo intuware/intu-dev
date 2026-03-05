@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Source - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <nav class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Sources</a>
+                <span class="sep">/</span>
+                <span class="current">File</span>
+            </nav>
+
+            <h1><span class="gradient-text">File Source</span></h1>
+            <p class="subtitle">Poll a directory for new files across local filesystem, FTP, S3, and SMB storage backends.</p>
+
+            <h2>Overview</h2>
+            <p>The File source watches a directory for new or modified files at a configurable poll interval. When a matching file is detected, its contents are read and passed into the channel pipeline. After successful processing, files can be moved to an archive directory; on failure, they are routed to an error directory.</p>
+            <p>This source supports four storage schemes: <code>local</code> for filesystem directories, <code>ftp</code> for FTP/FTPS servers, <code>s3</code> for Amazon S3 buckets, and <code>smb</code> for Windows/Samba network shares. Each scheme has its own authentication and connection sub-properties.</p>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                File-based integrations are common in batch processing scenarios such as nightly lab result imports, insurance claim file drops, and radiology report exports.
+            </div>
+
+            <h2>Configuration</h2>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>listener:
+  type: file
+  file:
+    scheme: local
+    directory: /data/incoming
+    file_pattern: "*.hl7"
+    poll_interval: 30s
+    move_to: /data/archive
+    error_dir: /data/errors
+    sort_by: date</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">scheme</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Storage backend. One of <code>local</code>, <code>ftp</code>, <code>s3</code>, or <code>smb</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">directory</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Path to the directory to watch. For <code>local</code>, this is an absolute filesystem path. For remote schemes, this is the remote directory path.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">file_pattern</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Glob pattern to filter files. Examples: <code>*.hl7</code>, <code>*.csv</code>, <code>LAB_*.txt</code>. Defaults to <code>*</code> (all files).</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">poll_interval</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">How often to check for new files. Accepts Go duration strings such as <code>10s</code>, <code>1m</code>, <code>5m</code>. Defaults to <code>30s</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">move_to</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Directory to move files after successful processing. If not set, processed files remain in the source directory.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">error_dir</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Directory to move files that fail processing. Useful for manual review and reprocessing workflows.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">sort_by</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Determines the order files are processed. One of <code>name</code>, <code>date</code>, or <code>size</code>. Defaults to <code>name</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">ftp</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">FTP connection settings. Required when <code>scheme</code> is <code>ftp</code>. Contains <code>host</code>, <code>port</code>, <code>username</code>, <code>password</code>, and <code>tls</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">s3</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">S3 connection settings. Required when <code>scheme</code> is <code>s3</code>. Contains <code>bucket</code>, <code>region</code>, <code>prefix</code>, and <code>auth</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">smb</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">SMB/CIFS connection settings. Required when <code>scheme</code> is <code>smb</code>. Contains <code>host</code>, <code>share</code>, <code>username</code>, <code>password</code>, and <code>domain</code>.</div>
+                </div>
+            </div>
+
+            <h3>S3 Sub-Properties</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Property</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>bucket</code></td>
+                        <td><code>string</code></td>
+                        <td>S3 bucket name.</td>
+                    </tr>
+                    <tr>
+                        <td><code>region</code></td>
+                        <td><code>string</code></td>
+                        <td>AWS region (e.g. <code>us-east-1</code>).</td>
+                    </tr>
+                    <tr>
+                        <td><code>prefix</code></td>
+                        <td><code>string</code></td>
+                        <td>Key prefix to filter objects within the bucket.</td>
+                    </tr>
+                    <tr>
+                        <td><code>auth</code></td>
+                        <td><code>object</code></td>
+                        <td>Contains <code>access_key_id</code> and <code>secret_access_key</code>, or uses IAM role when omitted.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Complete Example</h2>
+            <p>Poll a local directory for HL7 files every 30 seconds, archive processed files, and route failures to an error directory.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: lab-file-import
+enabled: true
+
+listener:
+  type: file
+  file:
+    scheme: local
+    directory: /data/incoming
+    file_pattern: "*.hl7"
+    poll_interval: 30s
+    move_to: /data/archive
+    error_dir: /data/errors
+    sort_by: date
+
+validator:
+  runtime: node
+  entrypoint: validator.ts
+
+transformer:
+  runtime: node
+  entrypoint: transformer.ts
+
+destinations:
+  - lab-results-db</code></pre>
+            </div>
+
+            <h2>TypeScript Transformer Example</h2>
+            <p>This transformer processes a batch file containing multiple HL7v2 messages separated by newlines. Each message is parsed and combined into a FHIR Bundle.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+
+interface FHIRBundleEntry {
+  resource: {
+    resourceType: string;
+    code: { coding: { system: string; code: string; display: string }[] };
+    valueString?: string;
+    subject: { reference: string };
+    effectiveDateTime: string;
+  };
+}
+
+export default function transform(msg: Message): TransformResult {
+  const fileContent = msg.body as string;
+  const messages = fileContent.split("\n\n").filter(Boolean);
+  const entries: FHIRBundleEntry[] = [];
+
+  for (const raw of messages) {
+    const segments = raw.split("\r").filter(Boolean);
+    const obxSegments = segments.filter((s) =&gt; s.startsWith("OBX|"));
+    const pid = segments.find((s) =&gt; s.startsWith("PID|"));
+
+    if (!pid) continue;
+
+    const pidFields = pid.split("|");
+    const patientId = pidFields[3]?.split("^")[0] || "unknown";
+
+    for (const obx of obxSegments) {
+      const fields = obx.split("|");
+      entries.push({
+        resource: {
+          resourceType: "Observation",
+          code: {
+            coding: [
+              {
+                system: "http://loinc.org",
+                code: fields[3]?.split("^")[0] || "",
+                display: fields[3]?.split("^")[1] || "",
+              },
+            ],
+          },
+          valueString: fields[5] || "",
+          subject: { reference: `Patient/${patientId}` },
+          effectiveDateTime: formatDateTime(fields[14]),
+        },
+      });
+    }
+  }
+
+  const bundle = {
+    resourceType: "Bundle",
+    type: "batch",
+    entry: entries.map((e) =&gt; ({ resource: e.resource })),
+  };
+
+  return {
+    success: true,
+    body: JSON.stringify(bundle),
+    contentType: "application/fhir+json",
+  };
+}
+
+function formatDateTime(dt: string | undefined): string {
+  if (!dt || dt.length &lt; 8) return new Date().toISOString();
+  const date = `${dt.slice(0, 4)}-${dt.slice(4, 6)}-${dt.slice(6, 8)}`;
+  if (dt.length &gt;= 12) {
+    return `${date}T${dt.slice(8, 10)}:${dt.slice(10, 12)}:00Z`;
+  }
+  return `${date}T00:00:00Z`;
+}</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="tcp.html">&larr; Previous: TCP / MLLP Source</a>
+                <a href="kafka.html">Next: Kafka Source &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='source-file';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

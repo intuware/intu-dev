@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SFTP Source - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <nav class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Sources</a>
+                <span class="sep">/</span>
+                <span class="current">SFTP</span>
+            </nav>
+
+            <h1><span class="gradient-text">SFTP Source</span></h1>
+            <p class="subtitle">Poll an SFTP server for new files with support for password and private key authentication.</p>
+
+            <h2>Overview</h2>
+            <p>The SFTP source connects to a remote SFTP server and polls a specified directory for new files at a configurable interval. When files matching the pattern are found, their contents are downloaded and passed into the channel pipeline.</p>
+            <p>SFTP is widely used in healthcare for secure file transfers between organizations, particularly for batch lab results, insurance claims, pharmacy data feeds, and clinical document exchange. Unlike plain FTP, SFTP encrypts all data in transit over SSH.</p>
+
+            <div class="callout callout-tip">
+                <strong>Tip</strong>
+                Use private key authentication instead of passwords for automated integrations. Store the key path in an environment variable for portability across environments.
+            </div>
+
+            <h2>Configuration</h2>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>listener:
+  type: sftp
+  sftp:
+    host: sftp.lab-corp.example.com
+    port: 22
+    poll_interval: 5m
+    directory: /outbound/results
+    file_pattern: "*.csv"
+    move_to: /outbound/archive
+    error_dir: /outbound/errors
+    auth:
+      type: private_key
+      username: intu-service
+      private_key_path: ${SFTP_KEY_PATH}
+    sort_by: date</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">host</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Hostname or IP address of the SFTP server.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">SSH port. Defaults to <code>22</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">poll_interval</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">How often to check for new files. Accepts Go duration strings such as <code>30s</code>, <code>5m</code>. Defaults to <code>1m</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">directory</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Remote directory path to poll for files.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">file_pattern</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Glob pattern to filter files. Examples: <code>*.csv</code>, <code>RESULTS_*.txt</code>. Defaults to <code>*</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">move_to</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Remote directory to move files after successful processing.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">error_dir</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Remote directory to move files that fail processing.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Authentication configuration. Supported types: <code>password</code> and <code>private_key</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">sort_by</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Order in which files are processed. One of <code>name</code>, <code>date</code>, or <code>size</code>. Defaults to <code>name</code>.</div>
+                </div>
+            </div>
+
+            <h3>Auth Sub-Properties</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Properties</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>password</code></td>
+                        <td><code>username</code>, <code>password</code></td>
+                        <td>Standard username/password authentication over SSH.</td>
+                    </tr>
+                    <tr>
+                        <td><code>private_key</code></td>
+                        <td><code>username</code>, <code>private_key_path</code>, <code>passphrase</code> (optional)</td>
+                        <td>SSH key-based authentication. The passphrase is only required if the key is encrypted.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Complete Example</h2>
+            <p>Poll a remote SFTP server for CSV lab result files every 5 minutes, archive processed files, and route failures to an error directory.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: sftp-lab-results
+enabled: true
+
+listener:
+  type: sftp
+  sftp:
+    host: sftp.lab-corp.example.com
+    port: 22
+    poll_interval: 5m
+    directory: /outbound/results
+    file_pattern: "*.csv"
+    move_to: /outbound/archive
+    error_dir: /outbound/errors
+    auth:
+      type: private_key
+      username: intu-service
+      private_key_path: ${SFTP_KEY_PATH}
+    sort_by: date
+
+validator:
+  runtime: node
+  entrypoint: validator.ts
+
+transformer:
+  runtime: node
+  entrypoint: transformer.ts
+
+destinations:
+  - lab-results-fhir</code></pre>
+            </div>
+
+            <h2>TypeScript Transformer Example</h2>
+            <p>This transformer parses a CSV file containing lab results and converts each row into a FHIR DiagnosticReport resource.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+
+interface LabResult {
+  patientMrn: string;
+  testCode: string;
+  testName: string;
+  value: string;
+  unit: string;
+  referenceRange: string;
+  status: string;
+  collectedDate: string;
+}
+
+function parseCsv(content: string): LabResult[] {
+  const lines = content.trim().split("\n");
+  const headers = lines[0].split(",").map((h) =&gt; h.trim());
+  const results: LabResult[] = [];
+
+  for (let i = 1; i &lt; lines.length; i++) {
+    const values = lines[i].split(",").map((v) =&gt; v.trim());
+    results.push({
+      patientMrn: values[headers.indexOf("patient_mrn")] || "",
+      testCode: values[headers.indexOf("test_code")] || "",
+      testName: values[headers.indexOf("test_name")] || "",
+      value: values[headers.indexOf("value")] || "",
+      unit: values[headers.indexOf("unit")] || "",
+      referenceRange: values[headers.indexOf("reference_range")] || "",
+      status: values[headers.indexOf("status")] || "",
+      collectedDate: values[headers.indexOf("collected_date")] || "",
+    });
+  }
+
+  return results;
+}
+
+export default function transform(msg: Message): TransformResult {
+  const csvContent = msg.body as string;
+  const results = parseCsv(csvContent);
+
+  if (results.length === 0) {
+    return { success: false, error: "No lab results found in CSV" };
+  }
+
+  const bundle = {
+    resourceType: "Bundle",
+    type: "batch",
+    entry: results.map((lab) =&gt; ({
+      resource: {
+        resourceType: "DiagnosticReport",
+        status: lab.status === "final" ? "final" : "preliminary",
+        code: {
+          coding: [
+            {
+              system: "http://loinc.org",
+              code: lab.testCode,
+              display: lab.testName,
+            },
+          ],
+        },
+        subject: {
+          identifier: {
+            system: "urn:oid:2.16.840.1.113883.19.5",
+            value: lab.patientMrn,
+          },
+        },
+        effectiveDateTime: lab.collectedDate,
+        result: [
+          {
+            display: `${lab.testName}: ${lab.value} ${lab.unit}`,
+          },
+        ],
+      },
+    })),
+  };
+
+  return {
+    success: true,
+    body: JSON.stringify(bundle),
+    contentType: "application/fhir+json",
+  };
+}</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="database.html">&larr; Previous: Database Source</a>
+                <a href="channel.html">Next: Channel Source &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='source-sftp';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

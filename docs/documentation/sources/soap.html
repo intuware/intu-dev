@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOAP Source - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <nav class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Sources</a>
+                <span class="sep">/</span>
+                <span class="current">SOAP</span>
+            </nav>
+
+            <h1><span class="gradient-text">SOAP Source</span></h1>
+            <p class="subtitle">Expose a SOAP web service endpoint to receive XML-based messages from legacy healthcare systems.</p>
+
+            <h2>Overview</h2>
+            <p>The SOAP source creates an HTTP server that exposes a SOAP web service endpoint. It parses incoming SOAP envelopes, extracts the body payload, and passes it into the channel pipeline for validation and transformation.</p>
+            <p>Many healthcare systems, particularly older EHR platforms, clinical document repositories, and public health reporting systems, still rely on SOAP-based web services for interoperability. This source enables intu to act as a SOAP service provider, receiving CDA documents, IHE transactions, and other XML-based clinical data.</p>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                If you provide a WSDL file via <code>wsdl_path</code>, intu will serve it at the endpoint's <code>?wsdl</code> URL, allowing clients to auto-discover the service contract.
+            </div>
+
+            <h2>Configuration</h2>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>listener:
+  type: soap
+  soap:
+    port: 8443
+    wsdl_path: ./schemas/clinical-document.wsdl
+    service_name: ClinicalDocumentService
+    tls:
+      cert_file: /etc/intu/certs/server.crt
+      key_file: /etc/intu/certs/server.key
+    auth:
+      type: basic
+      username: ${SOAP_USER}
+      password: ${SOAP_PASS}</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The TCP port the SOAP server listens on.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">wsdl_path</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a WSDL file that defines the service contract. When provided, the WSDL is served at the endpoint URL with a <code>?wsdl</code> query parameter.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">service_name</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">The SOAP service name. Used for logging and WSDL service identification. Defaults to the channel <code>id</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">TLS configuration for HTTPS. Contains <code>cert_file</code> and <code>key_file</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Authentication for the SOAP endpoint. Supports <code>basic</code> (username/password) and <code>wsse</code> (WS-Security UsernameToken) types.</div>
+                </div>
+            </div>
+
+            <h3>Auth Type Details</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Properties</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>basic</code></td>
+                        <td><code>username</code>, <code>password</code></td>
+                        <td>HTTP Basic authentication applied to the SOAP endpoint.</td>
+                    </tr>
+                    <tr>
+                        <td><code>wsse</code></td>
+                        <td><code>username</code>, <code>password</code>, <code>nonce</code> (bool)</td>
+                        <td>WS-Security UsernameToken profile. When <code>nonce</code> is true, a nonce and timestamp are required in the security header.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Complete Example</h2>
+            <p>A SOAP endpoint that receives CDA (Clinical Document Architecture) documents from an EHR system and transforms them into FHIR DocumentReference resources.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: cda-document-receiver
+enabled: true
+
+listener:
+  type: soap
+  soap:
+    port: 8443
+    wsdl_path: ./schemas/clinical-document.wsdl
+    service_name: ClinicalDocumentService
+    tls:
+      cert_file: /etc/intu/certs/server.crt
+      key_file: /etc/intu/certs/server.key
+    auth:
+      type: basic
+      username: ${SOAP_USER}
+      password: ${SOAP_PASS}
+
+validator:
+  runtime: node
+  entrypoint: validator.ts
+
+transformer:
+  runtime: node
+  entrypoint: transformer.ts
+
+destinations:
+  - fhir-document-store
+  - audit-log</code></pre>
+            </div>
+
+            <h2>TypeScript Transformer Example</h2>
+            <p>This transformer processes a SOAP XML payload containing a CDA document and extracts key metadata into a FHIR DocumentReference resource.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+
+function extractElement(xml: string, tag: string): string {
+  const regex = new RegExp(`&lt;${tag}[^&gt;]*&gt;([^&lt;]*)&lt;/${tag}&gt;`);
+  const match = xml.match(regex);
+  return match ? match[1].trim() : "";
+}
+
+function extractAttribute(xml: string, tag: string, attr: string): string {
+  const regex = new RegExp(`&lt;${tag}[^&gt;]*${attr}="([^"]*)"[^&gt;]*/?&gt;`);
+  const match = xml.match(regex);
+  return match ? match[1] : "";
+}
+
+export default function transform(msg: Message): TransformResult {
+  const soapXml = msg.body as string;
+
+  const bodyMatch = soapXml.match(
+    /&lt;(?:\w+:)?Body[^&gt;]*&gt;([\s\S]*?)&lt;\/(?:\w+:)?Body&gt;/
+  );
+  if (!bodyMatch) {
+    return { success: false, error: "Could not extract SOAP Body" };
+  }
+  const bodyContent = bodyMatch[1];
+
+  const documentId = extractAttribute(bodyContent, "id", "root");
+  const title = extractElement(bodyContent, "title");
+  const effectiveTime = extractAttribute(bodyContent, "effectiveTime", "value");
+  const patientId = extractAttribute(bodyContent, "patientRole", "extension")
+    || extractAttribute(bodyContent, "id", "extension");
+  const authorName = extractElement(bodyContent, "assignedPerson");
+
+  const typeCode = extractAttribute(bodyContent, "code", "code");
+  const typeSystem = extractAttribute(bodyContent, "code", "codeSystem");
+  const typeDisplay = extractAttribute(bodyContent, "code", "displayName");
+
+  const documentReference = {
+    resourceType: "DocumentReference",
+    masterIdentifier: {
+      system: "urn:ietf:rfc:3986",
+      value: `urn:oid:${documentId}`,
+    },
+    status: "current",
+    type: {
+      coding: [
+        {
+          system: mapOidToUri(typeSystem),
+          code: typeCode,
+          display: typeDisplay,
+        },
+      ],
+    },
+    subject: {
+      identifier: {
+        system: "urn:oid:2.16.840.1.113883.19.5",
+        value: patientId,
+      },
+    },
+    date: formatCdaDate(effectiveTime),
+    description: title,
+    content: [
+      {
+        attachment: {
+          contentType: "text/xml",
+          data: Buffer.from(bodyContent).toString("base64"),
+        },
+        format: {
+          system: "urn:oid:1.3.6.1.4.1.19376.1.2.3",
+          code: "urn:ihe:iti:xds:2017:mimeTypeSufficient",
+        },
+      },
+    ],
+  };
+
+  return {
+    success: true,
+    body: JSON.stringify(documentReference),
+    contentType: "application/fhir+json",
+  };
+}
+
+function mapOidToUri(oid: string): string {
+  const oidMap: Record&lt;string, string&gt; = {
+    "2.16.840.1.113883.6.1": "http://loinc.org",
+    "2.16.840.1.113883.6.96": "http://snomed.info/sct",
+  };
+  return oidMap[oid] || `urn:oid:${oid}`;
+}
+
+function formatCdaDate(raw: string): string {
+  if (!raw || raw.length &lt; 8) return new Date().toISOString();
+  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+}</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="dicom.html">&larr; Previous: DICOM Source</a>
+                <a href="fhir.html">Next: FHIR Source &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='source-soap';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

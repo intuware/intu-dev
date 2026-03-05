@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Source - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <nav class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Sources</a>
+                <span class="sep">/</span>
+                <span class="current">Email</span>
+            </nav>
+
+            <h1><span class="gradient-text">Email Source</span></h1>
+            <p class="subtitle">Poll an email inbox for messages via IMAP or POP3 with attachment extraction and filtering.</p>
+
+            <h2>Overview</h2>
+            <p>The Email source connects to a mail server using IMAP or POP3 and periodically checks for new messages. When new emails arrive that match the configured filter criteria, their body content and optionally their attachments are extracted and fed into the channel pipeline.</p>
+            <p>Email-based integrations still exist in many healthcare organizations, particularly for receiving lab results, clinical reports, or referral documents from external providers who lack modern API or file-based integration capabilities.</p>
+
+            <div class="callout callout-warning">
+                <strong>Warning</strong>
+                Enable TLS for all email connections to protect PHI. Use application-specific passwords or OAuth tokens instead of primary account credentials when possible.
+            </div>
+
+            <h2>Configuration</h2>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>listener:
+  type: email
+  email:
+    protocol: imap
+    host: mail.clinic.example.com
+    port: 993
+    poll_interval: 2m
+    tls:
+      enabled: true
+    auth:
+      username: ${EMAIL_USER}
+      password: ${EMAIL_PASS}
+    folder: INBOX
+    filter: "UNSEEN SUBJECT \"HL7 Report\""
+    read_attachments: true
+    delete_after_read: false</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">protocol</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Email protocol. One of <code>imap</code> or <code>pop3</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">host</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Hostname or IP address of the mail server.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Mail server port. Defaults to <code>993</code> for IMAP with TLS or <code>995</code> for POP3 with TLS.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">poll_interval</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">How often to check for new messages. Accepts Go duration strings. Defaults to <code>1m</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">TLS configuration. Contains <code>enabled</code> (bool), <code>ca_file</code>, and <code>skip_verify</code> options.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Authentication credentials. Contains <code>username</code> and <code>password</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">folder</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Mail folder to monitor. Defaults to <code>INBOX</code>. IMAP only.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">filter</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">IMAP search filter string to select specific messages. Examples: <code>UNSEEN</code>, <code>SUBJECT "Lab Results"</code>, <code>FROM "lab@example.com"</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">read_attachments</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">When <code>true</code>, extract and process email attachments instead of the email body. Each attachment is processed as a separate message. Defaults to <code>false</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">delete_after_read</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">When <code>true</code>, delete emails after successful processing. Defaults to <code>false</code> (emails are marked as read instead).</div>
+                </div>
+            </div>
+
+            <h2>Complete Example</h2>
+            <p>Poll an IMAP inbox every 2 minutes for unread emails with HL7 attachments from a specific sender.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: email-hl7-import
+enabled: true
+
+listener:
+  type: email
+  email:
+    protocol: imap
+    host: mail.clinic.example.com
+    port: 993
+    poll_interval: 2m
+    tls:
+      enabled: true
+    auth:
+      username: ${EMAIL_USER}
+      password: ${EMAIL_PASS}
+    folder: INBOX
+    filter: "UNSEEN FROM \"results@labcorp.example.com\""
+    read_attachments: true
+    delete_after_read: false
+
+validator:
+  runtime: node
+  entrypoint: validator.ts
+
+transformer:
+  runtime: node
+  entrypoint: transformer.ts
+
+destinations:
+  - results-db
+  - audit-log</code></pre>
+            </div>
+
+            <h2>TypeScript Transformer Example</h2>
+            <p>This transformer extracts HL7 content from an email attachment (provided as a base64-encoded string in the message metadata) and maps lab observation segments to FHIR Observation resources.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+
+interface Observation {
+  resourceType: string;
+  status: string;
+  code: {
+    coding: { system: string; code: string; display: string }[];
+  };
+  valueQuantity?: {
+    value: number;
+    unit: string;
+    system: string;
+    code: string;
+  };
+  valueString?: string;
+  subject: { reference: string };
+  effectiveDateTime: string;
+  referenceRange?: { text: string }[];
+}
+
+export default function transform(msg: Message): TransformResult {
+  const content = msg.body as string;
+  const segments = content.split("\r").filter(Boolean);
+
+  const pid = segments.find((s) =&gt; s.startsWith("PID|"));
+  if (!pid) {
+    return { success: false, error: "No PID segment found in attachment" };
+  }
+
+  const pidFields = pid.split("|");
+  const patientId = pidFields[3]?.split("^")[0] || "unknown";
+
+  const obxSegments = segments.filter((s) =&gt; s.startsWith("OBX|"));
+  const observations: Observation[] = obxSegments.map((obx) =&gt; {
+    const fields = obx.split("|");
+    const valueType = fields[2] || "ST";
+    const testId = fields[3]?.split("^") || [];
+    const rawValue = fields[5] || "";
+    const units = fields[6] || "";
+    const refRange = fields[7] || "";
+    const timestamp = fields[14] || "";
+
+    const obs: Observation = {
+      resourceType: "Observation",
+      status: "final",
+      code: {
+        coding: [
+          {
+            system: "http://loinc.org",
+            code: testId[0] || "",
+            display: testId[1] || "",
+          },
+        ],
+      },
+      subject: { reference: `Patient/${patientId}` },
+      effectiveDateTime: formatTimestamp(timestamp),
+    };
+
+    if (valueType === "NM" &amp;&amp; !isNaN(parseFloat(rawValue))) {
+      obs.valueQuantity = {
+        value: parseFloat(rawValue),
+        unit: units,
+        system: "http://unitsofmeasure.org",
+        code: units,
+      };
+    } else {
+      obs.valueString = rawValue;
+    }
+
+    if (refRange) {
+      obs.referenceRange = [{ text: refRange }];
+    }
+
+    return obs;
+  });
+
+  const bundle = {
+    resourceType: "Bundle",
+    type: "transaction",
+    entry: observations.map((obs) =&gt; ({
+      resource: obs,
+      request: { method: "POST", url: "Observation" },
+    })),
+  };
+
+  return {
+    success: true,
+    body: JSON.stringify(bundle),
+    contentType: "application/fhir+json",
+  };
+}
+
+function formatTimestamp(ts: string): string {
+  if (!ts || ts.length &lt; 8) return new Date().toISOString();
+  const d = `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`;
+  if (ts.length &gt;= 12) return `${d}T${ts.slice(8, 10)}:${ts.slice(10, 12)}:00Z`;
+  return `${d}T00:00:00Z`;
+}</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="channel.html">&larr; Previous: Channel Source</a>
+                <a href="dicom.html">Next: DICOM Source &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='source-email';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DICOM Source - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <nav class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Sources</a>
+                <span class="sep">/</span>
+                <span class="current">DICOM</span>
+            </nav>
+
+            <h1><span class="gradient-text">DICOM Source</span></h1>
+            <p class="subtitle">Receive DICOM images and structured data via the DICOM protocol using a C-STORE SCP (Service Class Provider).</p>
+
+            <h2>Overview</h2>
+            <p>The DICOM source implements a DICOM C-STORE SCP that receives medical images and associated metadata from modalities, PACS systems, and other DICOM-capable devices. When a DICOM object is received, its metadata is extracted and passed into the channel pipeline for transformation and routing.</p>
+            <p>DICOM (Digital Imaging and Communications in Medicine) is the universal standard for medical imaging. Radiology departments, cardiology labs, pathology scanners, and many other clinical systems produce DICOM data. This source enables intu to participate in imaging workflows by receiving studies as they are acquired or forwarded.</p>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                The DICOM source processes metadata (patient demographics, study details, series information) by default. Image pixel data is stored separately and a reference path is included in the message body.
+            </div>
+
+            <h2>Configuration</h2>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>listener:
+  type: dicom
+  dicom:
+    port: 4104
+    ae_title: INTU_SCP
+    calling_ae_titles:
+      - CT_SCANNER_1
+      - MR_SCANNER_2
+      - PACS_PRIMARY
+    tls:
+      cert_file: /etc/intu/certs/dicom.crt
+      key_file: /etc/intu/certs/dicom.key</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The TCP port the DICOM SCP listens on. Common ports include <code>104</code> (requires root) and <code>4104</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">ae_title</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">The Application Entity (AE) title for this SCP. Used by remote systems to identify and verify the destination. Defaults to <code>INTU_SCP</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">calling_ae_titles</span>
+                    <span class="prop-type">string[]</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Whitelist of allowed calling AE titles. Only connections from listed AE titles are accepted. When omitted, all AE titles are allowed.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">TLS configuration for DICOM TLS (formerly known as DICOM Secure Transport). Contains <code>cert_file</code> and <code>key_file</code>.</div>
+                </div>
+            </div>
+
+            <h3>DICOM Concepts</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Term</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>AE Title</code></td>
+                        <td>Application Entity Title, a unique identifier for a DICOM node on the network.</td>
+                    </tr>
+                    <tr>
+                        <td><code>C-STORE</code></td>
+                        <td>DICOM service for storing (sending) composite objects such as images to an SCP.</td>
+                    </tr>
+                    <tr>
+                        <td><code>SCP</code></td>
+                        <td>Service Class Provider: the receiver/server side of a DICOM operation.</td>
+                    </tr>
+                    <tr>
+                        <td><code>SCU</code></td>
+                        <td>Service Class User: the sender/client side of a DICOM operation.</td>
+                    </tr>
+                    <tr>
+                        <td><code>SOP Class</code></td>
+                        <td>Specifies the type of DICOM object (e.g. CT Image, MR Image, Structured Report).</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Complete Example</h2>
+            <p>A DICOM listener that receives radiology images from approved scanners and routes the study metadata to a FHIR ImagingStudy destination.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: dicom-radiology-ingest
+enabled: true
+
+listener:
+  type: dicom
+  dicom:
+    port: 4104
+    ae_title: INTU_SCP
+    calling_ae_titles:
+      - CT_SCANNER_1
+      - MR_SCANNER_2
+      - PACS_PRIMARY
+
+validator:
+  runtime: node
+  entrypoint: validator.ts
+
+transformer:
+  runtime: node
+  entrypoint: transformer.ts
+
+destinations:
+  - fhir-imaging-api
+  - pacs-archive</code></pre>
+            </div>
+
+            <h2>TypeScript Transformer Example</h2>
+            <p>This transformer extracts DICOM metadata from the received object and maps it to a FHIR ImagingStudy resource.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+
+interface DicomMetadata {
+  studyInstanceUid: string;
+  seriesInstanceUid: string;
+  sopInstanceUid: string;
+  sopClassUid: string;
+  modality: string;
+  studyDate: string;
+  studyTime: string;
+  studyDescription: string;
+  patientId: string;
+  patientName: string;
+  accessionNumber: string;
+  referringPhysician: string;
+  bodyPartExamined: string;
+  numberOfFrames: number;
+  storagePath: string;
+}
+
+export default function transform(msg: Message): TransformResult {
+  let dicom: DicomMetadata;
+  try {
+    dicom = JSON.parse(msg.body as string);
+  } catch {
+    return { success: false, error: "Failed to parse DICOM metadata" };
+  }
+
+  const imagingStudy = {
+    resourceType: "ImagingStudy",
+    identifier: [
+      {
+        system: "urn:dicom:uid",
+        value: `urn:oid:${dicom.studyInstanceUid}`,
+      },
+    ],
+    status: "available",
+    subject: {
+      identifier: {
+        system: "urn:oid:2.16.840.1.113883.19.5",
+        value: dicom.patientId,
+      },
+      display: dicom.patientName,
+    },
+    started: formatDicomDateTime(dicom.studyDate, dicom.studyTime),
+    description: dicom.studyDescription,
+    referrer: dicom.referringPhysician
+      ? { display: dicom.referringPhysician }
+      : undefined,
+    series: [
+      {
+        uid: dicom.seriesInstanceUid,
+        modality: {
+          system: "http://dicom.nema.org/resources/ontology/DCM",
+          code: dicom.modality,
+        },
+        bodySite: dicom.bodyPartExamined
+          ? {
+              system: "http://snomed.info/sct",
+              display: dicom.bodyPartExamined,
+            }
+          : undefined,
+        instance: [
+          {
+            uid: dicom.sopInstanceUid,
+            sopClass: {
+              system: "urn:ietf:rfc:3986",
+              code: `urn:oid:${dicom.sopClassUid}`,
+            },
+            numberOfFrames: dicom.numberOfFrames || 1,
+          },
+        ],
+      },
+    ],
+    endpoint: [
+      {
+        reference: dicom.storagePath,
+      },
+    ],
+  };
+
+  return {
+    success: true,
+    body: JSON.stringify(imagingStudy),
+    contentType: "application/fhir+json",
+  };
+}
+
+function formatDicomDateTime(date: string, time: string): string {
+  if (!date || date.length &lt; 8) return new Date().toISOString();
+  const d = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+  if (time &amp;&amp; time.length &gt;= 4) {
+    const h = time.slice(0, 2);
+    const m = time.slice(2, 4);
+    const s = time.length &gt;= 6 ? time.slice(4, 6) : "00";
+    return `${d}T${h}:${m}:${s}Z`;
+  }
+  return `${d}T00:00:00Z`;
+}</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="email.html">&larr; Previous: Email Source</a>
+                <a href="soap.html">Next: SOAP Source &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='source-dicom';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FHIR Source - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <nav class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Sources</a>
+                <span class="sep">/</span>
+                <span class="current">FHIR</span>
+            </nav>
+
+            <h1><span class="gradient-text">FHIR Source</span></h1>
+            <p class="subtitle">Expose a FHIR-compliant REST endpoint or subscribe to FHIR Subscriptions for real-time clinical data exchange.</p>
+
+            <h2>Overview</h2>
+            <p>The FHIR source creates a FHIR-compliant HTTP server that receives FHIR resources via standard REST interactions (create, update) or through FHIR Subscription notifications. It supports both FHIR R4 and STU3 versions.</p>
+            <p>FHIR (Fast Healthcare Interoperability Resources) is the modern standard for healthcare data exchange. This source enables intu to receive data from EHR systems, health information exchanges, patient portals, and other FHIR-enabled applications using the native FHIR protocol.</p>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                When using <code>subscription_type</code>, intu registers as a FHIR Subscription endpoint and receives push notifications whenever matching resources are created or updated on the remote FHIR server.
+            </div>
+
+            <h2>Configuration</h2>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>listener:
+  type: fhir
+  fhir:
+    port: 8090
+    base_path: /fhir
+    version: R4
+    subscription_type: rest-hook
+    tls:
+      cert_file: /etc/intu/certs/fhir.crt
+      key_file: /etc/intu/certs/fhir.key
+    auth:
+      type: oauth2
+      issuer: https://auth.hospital.example.com
+      audience: intu-fhir-endpoint
+      jwks_url: https://auth.hospital.example.com/.well-known/jwks.json</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The TCP port the FHIR server listens on.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">base_path</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Base URL path for the FHIR endpoint. Defaults to <code>/fhir</code>. Resource-specific routes are appended automatically (e.g. <code>/fhir/Patient</code>).</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">version</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">FHIR specification version. Supported values: <code>R4</code> (default), <code>STU3</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">subscription_type</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">FHIR Subscription channel type. Supported values: <code>rest-hook</code> (HTTP callbacks), <code>websocket</code>. When omitted, the source operates as a standard FHIR REST endpoint.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">TLS configuration for HTTPS. Contains <code>cert_file</code> and <code>key_file</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth</span>
+                    <span class="prop-type">object</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Authentication configuration. Supports <code>bearer</code>, <code>oauth2</code>, and <code>smart</code> (SMART on FHIR) types.</div>
+                </div>
+            </div>
+
+            <h3>Subscription Types</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th>Use Case</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>rest-hook</code></td>
+                        <td>Receives HTTP POST notifications when subscribed resources change.</td>
+                        <td>Real-time event-driven workflows where the FHIR server supports Subscriptions.</td>
+                    </tr>
+                    <tr>
+                        <td><code>websocket</code></td>
+                        <td>Maintains a persistent WebSocket connection for streaming notifications.</td>
+                        <td>Low-latency scenarios requiring immediate notification delivery.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Complete Example</h2>
+            <p>A FHIR R4 endpoint that receives Patient resources via REST interactions and forwards them to an internal system after validation and transformation.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: fhir-patient-ingest
+enabled: true
+
+listener:
+  type: fhir
+  fhir:
+    port: 8090
+    base_path: /fhir
+    version: R4
+    tls:
+      cert_file: /etc/intu/certs/fhir.crt
+      key_file: /etc/intu/certs/fhir.key
+    auth:
+      type: oauth2
+      issuer: https://auth.hospital.example.com
+      audience: intu-fhir-endpoint
+      jwks_url: https://auth.hospital.example.com/.well-known/jwks.json
+
+validator:
+  runtime: node
+  entrypoint: validator.ts
+
+transformer:
+  runtime: node
+  entrypoint: transformer.ts
+
+destinations:
+  - master-patient-index
+  - audit-trail</code></pre>
+            </div>
+
+            <h2>TypeScript Transformer Example</h2>
+            <p>This transformer validates an incoming FHIR Bundle, extracts Patient and related resources, and produces a normalized output for the master patient index.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+
+interface FHIRResource {
+  resourceType: string;
+  id?: string;
+  [key: string]: unknown;
+}
+
+interface FHIRBundle {
+  resourceType: "Bundle";
+  type: string;
+  entry?: { resource: FHIRResource }[];
+}
+
+interface NormalizedPatient {
+  mrn: string;
+  source: string;
+  demographics: {
+    familyName: string;
+    givenNames: string[];
+    birthDate: string;
+    gender: string;
+    deceasedBoolean: boolean;
+  };
+  identifiers: { system: string; value: string }[];
+  contacts: { system: string; value: string; use: string }[];
+  addresses: {
+    use: string;
+    lines: string[];
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+  }[];
+}
+
+export default function transform(msg: Message): TransformResult {
+  let resource: FHIRResource | FHIRBundle;
+  try {
+    resource = JSON.parse(msg.body as string);
+  } catch {
+    return { success: false, error: "Invalid JSON in FHIR payload" };
+  }
+
+  const patients: FHIRResource[] = [];
+
+  if (resource.resourceType === "Bundle") {
+    const bundle = resource as FHIRBundle;
+    for (const entry of bundle.entry || []) {
+      if (entry.resource?.resourceType === "Patient") {
+        patients.push(entry.resource);
+      }
+    }
+  } else if (resource.resourceType === "Patient") {
+    patients.push(resource);
+  } else {
+    return { success: false, error: `Unsupported resource type: ${resource.resourceType}` };
+  }
+
+  if (patients.length === 0) {
+    return { success: false, error: "No Patient resources found" };
+  }
+
+  const normalized: NormalizedPatient[] = patients.map((pt) =&gt; {
+    const names = (pt.name as any[]) || [];
+    const official = names.find((n: any) =&gt; n.use === "official") || names[0] || {};
+    const identifiers = (pt.identifier as any[]) || [];
+    const telecoms = (pt.telecom as any[]) || [];
+    const addrs = (pt.address as any[]) || [];
+
+    const mrn = identifiers.find(
+      (id: any) =&gt;
+        id.type?.coding?.some((c: any) =&gt; c.code === "MR")
+    );
+
+    return {
+      mrn: mrn?.value || pt.id || "",
+      source: msg.metadata?.source || "fhir-ingest",
+      demographics: {
+        familyName: official.family || "",
+        givenNames: official.given || [],
+        birthDate: (pt.birthDate as string) || "",
+        gender: (pt.gender as string) || "unknown",
+        deceasedBoolean: (pt.deceasedBoolean as boolean) || false,
+      },
+      identifiers: identifiers.map((id: any) =&gt; ({
+        system: id.system || "",
+        value: id.value || "",
+      })),
+      contacts: telecoms.map((t: any) =&gt; ({
+        system: t.system || "",
+        value: t.value || "",
+        use: t.use || "",
+      })),
+      addresses: addrs.map((a: any) =&gt; ({
+        use: a.use || "",
+        lines: a.line || [],
+        city: a.city || "",
+        state: a.state || "",
+        postalCode: a.postalCode || "",
+        country: a.country || "",
+      })),
+    };
+  });
+
+  return {
+    success: true,
+    body: JSON.stringify(normalized.length === 1 ? normalized[0] : normalized),
+    contentType: "application/json",
+  };
+}</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="soap.html">&larr; Previous: SOAP Source</a>
+                <a href="ihe.html">Next: IHE Source &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='source-fhir';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>
