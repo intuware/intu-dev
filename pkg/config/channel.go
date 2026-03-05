@@ -172,30 +172,34 @@ type EmailListener struct {
 }
 
 type DICOMListener struct {
-	Port    int        `yaml:"port"`
-	AETitle string     `yaml:"ae_title,omitempty"`
-	TLS     *TLSConfig `yaml:"tls,omitempty"`
-}
-
-type SOAPListener struct {
-	Port        int        `yaml:"port"`
-	WSDLPath    string     `yaml:"wsdl_path,omitempty"`
-	ServiceName string     `yaml:"service_name,omitempty"`
-	TLS         *TLSConfig `yaml:"tls,omitempty"`
-}
-
-type FHIRListener struct {
 	Port             int        `yaml:"port"`
-	BasePath         string     `yaml:"base_path,omitempty"`
-	Version          string     `yaml:"version,omitempty"`
-	SubscriptionType string     `yaml:"subscription_type,omitempty"`
+	AETitle          string     `yaml:"ae_title,omitempty"`
+	CallingAETitles  []string   `yaml:"calling_ae_titles,omitempty"`
 	TLS              *TLSConfig `yaml:"tls,omitempty"`
 }
 
+type SOAPListener struct {
+	Port        int         `yaml:"port"`
+	WSDLPath    string      `yaml:"wsdl_path,omitempty"`
+	ServiceName string      `yaml:"service_name,omitempty"`
+	TLS         *TLSConfig  `yaml:"tls,omitempty"`
+	Auth        *AuthConfig `yaml:"auth,omitempty"`
+}
+
+type FHIRListener struct {
+	Port             int         `yaml:"port"`
+	BasePath         string      `yaml:"base_path,omitempty"`
+	Version          string      `yaml:"version,omitempty"`
+	SubscriptionType string      `yaml:"subscription_type,omitempty"`
+	TLS              *TLSConfig  `yaml:"tls,omitempty"`
+	Auth             *AuthConfig `yaml:"auth,omitempty"`
+}
+
 type IHEListener struct {
-	Profile string     `yaml:"profile"`
-	Port    int        `yaml:"port"`
-	TLS     *TLSConfig `yaml:"tls,omitempty"`
+	Profile string      `yaml:"profile"`
+	Port    int         `yaml:"port"`
+	TLS     *TLSConfig  `yaml:"tls,omitempty"`
+	Auth    *AuthConfig `yaml:"auth,omitempty"`
 }
 
 type TLSConfig struct {

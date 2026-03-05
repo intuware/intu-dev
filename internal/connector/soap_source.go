@@ -54,6 +54,11 @@ func (s *SOAPSource) Start(ctx context.Context, handler MessageHandler) error {
 			return
 		}
 
+		if !authenticateHTTP(r, s.cfg.Auth) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		contentType := r.Header.Get("Content-Type")
 		if !strings.Contains(contentType, "xml") && !strings.Contains(contentType, "soap") {
 			http.Error(w, "Content-Type must be XML/SOAP", http.StatusUnsupportedMediaType)
@@ -110,6 +115,16 @@ func (s *SOAPSource) Start(ctx context.Context, handler MessageHandler) error {
 	}
 	s.listener = ln
 
+	tlsEnabled := false
+	if s.cfg.TLS != nil && s.cfg.TLS.Enabled {
+		ln, err = applyTLSToListener(ln, s.server, s.cfg.TLS)
+		if err != nil {
+			s.listener.Close()
+			return fmt.Errorf("SOAP TLS: %w", err)
+		}
+		tlsEnabled = true
+	}
+
 	go func() {
 		if err := s.server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			s.logger.Error("SOAP server error", "error", err)
@@ -120,6 +135,7 @@ func (s *SOAPSource) Start(ctx context.Context, handler MessageHandler) error {
 		"addr", addr,
 		"service", serviceName,
 		"wsdl_path", wsdlPath,
+		"tls", tlsEnabled,
 	)
 	return nil
 }

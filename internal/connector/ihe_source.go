@@ -67,6 +67,16 @@ func (i *IHESource) Start(ctx context.Context, handler MessageHandler) error {
 	}
 	i.listener = ln
 
+	tlsEnabled := false
+	if i.cfg.TLS != nil && i.cfg.TLS.Enabled {
+		ln, err = applyTLSToListener(ln, i.server, i.cfg.TLS)
+		if err != nil {
+			i.listener.Close()
+			return fmt.Errorf("IHE TLS: %w", err)
+		}
+		tlsEnabled = true
+	}
+
 	go func() {
 		if err := i.server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			i.logger.Error("IHE server error", "error", err)
@@ -76,6 +86,7 @@ func (i *IHESource) Start(ctx context.Context, handler MessageHandler) error {
 	i.logger.Info("IHE source started",
 		"addr", addr,
 		"profile", i.cfg.Profile,
+		"tls", tlsEnabled,
 	)
 	return nil
 }
@@ -166,6 +177,11 @@ func (i *IHESource) registerGenericIHE(mux *http.ServeMux, handler MessageHandle
 func (i *IHESource) handleIHERequest(w http.ResponseWriter, r *http.Request, handler MessageHandler, profile, transaction string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !authenticateHTTP(r, i.cfg.Auth) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 

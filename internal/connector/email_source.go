@@ -3,7 +3,6 @@ package connector
 import (
 	"bufio"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
@@ -11,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/intuware/intu/internal/auth"
 	"github.com/intuware/intu/internal/message"
 	"github.com/intuware/intu/pkg/config"
 )
@@ -329,6 +329,17 @@ func (e *EmailSource) pollPOP3(ctx context.Context, handler MessageHandler) erro
 	return nil
 }
 
+func (e *EmailSource) dialWithTLS(addr string) (net.Conn, error) {
+	if e.cfg.TLS != nil && e.cfg.TLS.Enabled {
+		tlsCfg, err := auth.BuildTLSConfig(e.cfg.TLS)
+		if err != nil {
+			return nil, fmt.Errorf("email TLS config: %w", err)
+		}
+		return auth.DialTLS(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr, tlsCfg)
+	}
+	return net.DialTimeout("tcp", addr, 10*time.Second)
+}
+
 func (e *EmailSource) dialIMAP() (net.Conn, *bufio.Reader, error) {
 	port := e.cfg.Port
 	if port == 0 {
@@ -340,15 +351,7 @@ func (e *EmailSource) dialIMAP() (net.Conn, *bufio.Reader, error) {
 	}
 	addr := fmt.Sprintf("%s:%d", e.cfg.Host, port)
 
-	var conn net.Conn
-	var err error
-
-	if e.cfg.TLS != nil && e.cfg.TLS.Enabled {
-		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr,
-			&tls.Config{InsecureSkipVerify: e.cfg.TLS.InsecureSkipVerify})
-	} else {
-		conn, err = net.DialTimeout("tcp", addr, 10*time.Second)
-	}
+	conn, err := e.dialWithTLS(addr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial IMAP %s: %w", addr, err)
 	}
@@ -367,15 +370,7 @@ func (e *EmailSource) dialPOP3() (net.Conn, *bufio.Reader, error) {
 	}
 	addr := fmt.Sprintf("%s:%d", e.cfg.Host, port)
 
-	var conn net.Conn
-	var err error
-
-	if e.cfg.TLS != nil && e.cfg.TLS.Enabled {
-		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr,
-			&tls.Config{InsecureSkipVerify: e.cfg.TLS.InsecureSkipVerify})
-	} else {
-		conn, err = net.DialTimeout("tcp", addr, 10*time.Second)
-	}
+	conn, err := e.dialWithTLS(addr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial POP3 %s: %w", addr, err)
 	}
