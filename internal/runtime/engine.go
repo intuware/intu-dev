@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/intuware/intu/internal/connector"
 	"github.com/intuware/intu/pkg/config"
@@ -41,6 +42,17 @@ func NewDefaultEngine(rootDir string, cfg *config.Config, factory ConnectorFacto
 
 func (e *DefaultEngine) Start(ctx context.Context) error {
 	e.logger.Info("starting engine", "name", e.cfg.Runtime.Name)
+
+	if e.cfg.Global != nil && e.cfg.Global.Hooks != nil && e.cfg.Global.Hooks.OnStartup != "" {
+		runner := NewGojaRunner()
+		hookPath := filepath.Join(e.rootDir, "dist", e.cfg.Global.Hooks.OnStartup)
+		hookPath = strings.TrimSuffix(hookPath, ".ts") + ".js"
+		if _, err := runner.Call("onStartup", hookPath, map[string]any{}); err != nil {
+			e.logger.Warn("global startup hook failed", "error", err)
+		} else {
+			e.logger.Info("global startup hook executed")
+		}
+	}
 
 	channelsDir := filepath.Join(e.rootDir, e.cfg.ChannelsDir)
 	entries, err := os.ReadDir(channelsDir)
@@ -90,6 +102,17 @@ func (e *DefaultEngine) Stop(ctx context.Context) error {
 	for id, cr := range e.channels {
 		if err := cr.Stop(ctx); err != nil {
 			e.logger.Error("error stopping channel", "id", id, "error", err)
+		}
+	}
+
+	if e.cfg.Global != nil && e.cfg.Global.Hooks != nil && e.cfg.Global.Hooks.OnShutdown != "" {
+		runner := NewGojaRunner()
+		hookPath := filepath.Join(e.rootDir, "dist", e.cfg.Global.Hooks.OnShutdown)
+		hookPath = strings.TrimSuffix(hookPath, ".ts") + ".js"
+		if _, err := runner.Call("onShutdown", hookPath, map[string]any{}); err != nil {
+			e.logger.Warn("global shutdown hook failed", "error", err)
+		} else {
+			e.logger.Info("global shutdown hook executed")
 		}
 	}
 
