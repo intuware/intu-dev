@@ -4,6 +4,7 @@ import "fmt"
 
 var projectDirectories = []string{
 	"channels/sample-channel",
+	"lib",
 }
 
 var projectFiles = map[string]string{
@@ -14,6 +15,7 @@ var projectFiles = map[string]string{
 	"channels/sample-channel/channel.yaml":   fmt.Sprintf(channelYAMLTpl, "sample-channel"),
 	"channels/sample-channel/transformer.ts": transformerTSTpl,
 	"channels/sample-channel/validator.ts":   validatorTSTpl,
+	"lib/index.ts":                           libIndexTS,
 	"package.json":                           packageJSON,
 	"tsconfig.json":                          tsConfigJSON,
 	"README.md":                              projectREADME,
@@ -114,6 +116,21 @@ func channelFiles(channelName string) map[string]string {
 	}
 }
 
+const libIndexTS = `/**
+ * Shared library for intu transformers.
+ * Import from channel transformers:
+ *   import { formatTimestamp } from "../../lib/index";
+ */
+
+export function formatTimestamp(date: Date): string {
+  return date.toISOString();
+}
+
+export function generateId(): string {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+`
+
 const packageJSON = `{
   "name": "intu-channel-runtime",
   "private": true,
@@ -138,9 +155,10 @@ const tsConfigJSON = `{
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
+    "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["channels/**/*.ts"]
+  "include": ["channels/**/*.ts", "lib/**/*.ts"]
 }
 `
 
