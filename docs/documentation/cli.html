@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLI Reference - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <h1><span class="gradient-text">CLI Reference</span></h1>
+            <p class="subtitle">Complete reference for all intu CLI commands</p>
+
+            <h2>Installation</h2>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>npm install -g intu-dev</code></pre>
+            </div>
+            <p>Or build from source:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>go build -o intu .</code></pre>
+            </div>
+
+            <h2>Global Flags</h2>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Values</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--log-level</code></td>
+                        <td><code>debug</code> | <code>info</code> | <code>warn</code> | <code>error</code></td>
+                        <td><code>info</code></td>
+                        <td>Set the logging verbosity</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Commands</h2>
+
+            <!-- intu init -->
+            <h3><code>intu init &lt;project-name&gt;</code></h3>
+            <p>Bootstrap a new intu project with all scaffolding, including YAML configuration files, TypeScript boilerplate, and a sample channel.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Parent directory in which the project folder is created</td>
+                    </tr>
+                    <tr>
+                        <td><code>--force</code></td>
+                        <td><code>false</code></td>
+                        <td>Overwrite existing files if the directory already exists</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu init my-project --dir /tmp</code></pre>
+            </div>
+
+            <!-- intu c -->
+            <h3><code>intu c &lt;channel-name&gt;</code></h3>
+            <p>Quick alias to add a new channel to the current project. Creates the channel directory, <code>channel.yaml</code>, <code>transformer.ts</code>, and <code>validator.ts</code>.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--force</code></td>
+                        <td><code>false</code></td>
+                        <td>Overwrite existing channel files</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu c adt-inbound --dir .</code></pre>
+            </div>
+
+            <!-- intu channel add -->
+            <h3><code>intu channel add &lt;channel-name&gt;</code></h3>
+            <p>Add a new channel to the project. Functionally identical to <code>intu c</code>.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--force</code></td>
+                        <td><code>false</code></td>
+                        <td>Overwrite existing channel files</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu channel add lab-results --dir .</code></pre>
+            </div>
+
+            <!-- intu channel list -->
+            <h3><code>intu channel list</code></h3>
+            <p>List all configured channels in the project. Supports filtering by profile, tag, and group.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td>&mdash;</td>
+                        <td>Load a specific profile overlay</td>
+                    </tr>
+                    <tr>
+                        <td><code>--tag</code></td>
+                        <td>&mdash;</td>
+                        <td>Filter channels by tag</td>
+                    </tr>
+                    <tr>
+                        <td><code>--group</code></td>
+                        <td>&mdash;</td>
+                        <td>Filter channels by group</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu channel list --dir . --profile prod</code></pre>
+            </div>
+
+            <!-- intu channel describe -->
+            <h3><code>intu channel describe &lt;channel-id&gt;</code></h3>
+            <p>Show detailed configuration for a specific channel, including its source, transformers, validators, and destinations.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td>&mdash;</td>
+                        <td>Load a specific profile overlay</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu channel describe sample-channel --dir .</code></pre>
+            </div>
+
+            <!-- intu validate -->
+            <h3><code>intu validate</code></h3>
+            <p>Validate all YAML configuration and TypeScript files in the project. Returns a non-zero exit code if errors are found.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td>&mdash;</td>
+                        <td>Load a specific profile overlay</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu validate --dir .</code></pre>
+            </div>
+
+            <!-- intu build -->
+            <h3><code>intu build</code></h3>
+            <p>Compile TypeScript transformers and validators. Runs <code>npm run build</code> (which invokes <code>tsc</code>) inside the project directory.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu build --dir .</code></pre>
+            </div>
+
+            <!-- intu serve -->
+            <h3><code>intu serve</code></h3>
+            <p>Start the runtime engine to process messages through configured channels.</p>
+            <div class="callout callout-warning">
+                <strong>Not yet implemented</strong>
+                This command is planned but not available in the current release.
+            </div>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td>&mdash;</td>
+                        <td>Load a specific profile overlay</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- intu stats -->
+            <h3><code>intu stats [channel-id]</code></h3>
+            <p>Show channel statistics. When a channel ID is provided, displays stats for that specific channel; otherwise shows aggregate stats for all channels.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td>&mdash;</td>
+                        <td>Load a specific profile overlay</td>
+                    </tr>
+                    <tr>
+                        <td><code>--json</code></td>
+                        <td><code>false</code></td>
+                        <td>Output statistics in JSON format</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- intu deploy -->
+            <h3><code>intu deploy [channel-id]</code></h3>
+            <p>Mark channels as enabled and deployed. Without a channel ID, use <code>--all</code> or <code>--tag</code> to target multiple channels.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td>&mdash;</td>
+                        <td>Load a specific profile overlay</td>
+                    </tr>
+                    <tr>
+                        <td><code>--all</code></td>
+                        <td><code>false</code></td>
+                        <td>Deploy all channels</td>
+                    </tr>
+                    <tr>
+                        <td><code>--tag</code></td>
+                        <td>&mdash;</td>
+                        <td>Deploy channels matching a tag</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- intu undeploy -->
+            <h3><code>intu undeploy &lt;channel-id&gt;</code></h3>
+            <p>Remove a channel from deployed state.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td>&mdash;</td>
+                        <td>Load a specific profile overlay</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- intu enable / disable -->
+            <h3><code>intu enable &lt;channel-id&gt;</code></h3>
+            <p>Enable a channel so it processes messages at runtime.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td>&mdash;</td>
+                        <td>Load a specific profile overlay</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3><code>intu disable &lt;channel-id&gt;</code></h3>
+            <p>Disable a channel to stop it from processing messages.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td>&mdash;</td>
+                        <td>Load a specific profile overlay</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- intu prune -->
+            <h3><code>intu prune</code></h3>
+            <p>Prune old message data from storage. Supports filtering by channel, date, and dry-run mode for previewing what would be removed.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--channel</code></td>
+                        <td>&mdash;</td>
+                        <td>Prune data for a specific channel</td>
+                    </tr>
+                    <tr>
+                        <td><code>--all</code></td>
+                        <td><code>false</code></td>
+                        <td>Prune data for all channels</td>
+                    </tr>
+                    <tr>
+                        <td><code>--before</code></td>
+                        <td>&mdash;</td>
+                        <td>Prune messages older than this date (ISO 8601)</td>
+                    </tr>
+                    <tr>
+                        <td><code>--dry-run</code></td>
+                        <td><code>false</code></td>
+                        <td>Preview what would be pruned without deleting</td>
+                    </tr>
+                    <tr>
+                        <td><code>--confirm</code></td>
+                        <td><code>false</code></td>
+                        <td>Skip confirmation prompt</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- intu dashboard -->
+            <h3><code>intu dashboard</code></h3>
+            <p>Launch the web-based dashboard for monitoring channels, viewing statistics, and managing configuration.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td>&mdash;</td>
+                        <td>Load a specific profile overlay</td>
+                    </tr>
+                    <tr>
+                        <td><code>--port</code></td>
+                        <td><code>3000</code></td>
+                        <td>Port for the dashboard web server</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="docs-footer">
+                <a href="index.html">&larr; Getting Started</a>
+                <a href="configuration.html">Configuration &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='.';window.DOCS_PAGE='cli';</script>
+    <script src="assets/nav.js"></script>
+</body>
+</html>

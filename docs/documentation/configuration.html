@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <h1><span class="gradient-text">Configuration</span></h1>
+            <p class="subtitle">YAML-based configuration with profile layering</p>
+
+            <h2>Overview</h2>
+            <p>
+                intu uses YAML configuration files to define runtime settings, destinations, and global options.
+                The root configuration file is <code>intu.yaml</code>. Profile-specific overrides such as
+                <code>intu.dev.yaml</code> and <code>intu.prod.yaml</code> are layered on top of the base
+                configuration, letting you vary settings per environment without duplicating shared values.
+            </p>
+
+            <h2>intu.yaml</h2>
+            <p>The root configuration file defines the runtime, destinations, and global settings for the project.</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>runtime:
+  name: intu
+  profile: dev
+  log_level: info
+  storage:
+    driver: memory
+    postgres_dsn: ${INTU_POSTGRES_DSN}
+
+channels_dir: channels
+
+destinations:
+  kafka-output:
+    type: kafka
+    kafka:
+      brokers:
+        - ${INTU_KAFKA_BROKER}
+      topic: output-topic
+
+kafka:
+  brokers:
+    - ${INTU_KAFKA_BROKER}</code></pre>
+            </div>
+
+            <h3>runtime</h3>
+            <p>Top-level runtime settings that control how intu operates.</p>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">name</span>
+                    <span class="prop-type">string</span>
+                    <div class="prop-desc">Application name. Defaults to <code>intu</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">profile</span>
+                    <span class="prop-type">string</span>
+                    <div class="prop-desc">Active profile name (e.g. <code>dev</code>, <code>prod</code>). Determines which override file is loaded.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">log_level</span>
+                    <span class="prop-type">string</span>
+                    <div class="prop-desc">Logging verbosity: <code>debug</code>, <code>info</code>, <code>warn</code>, or <code>error</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">storage</span>
+                    <span class="prop-type">object</span>
+                    <div class="prop-desc">Message storage backend configuration.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">storage.driver</span>
+                    <span class="prop-type">string</span>
+                    <div class="prop-desc">Storage driver: <code>memory</code> or <code>postgres</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">storage.postgres_dsn</span>
+                    <span class="prop-type">string</span>
+                    <div class="prop-desc">PostgreSQL connection string. Supports <code>${VAR}</code> environment variable substitution.</div>
+                </div>
+            </div>
+
+            <h3>channels_dir</h3>
+            <p>
+                Path to the directory containing channel subdirectories, relative to the project root.
+                Defaults to <code>channels</code>.
+            </p>
+
+            <h3>destinations</h3>
+            <p>
+                A map of named destination definitions. Each destination has a <code>type</code> and
+                type-specific configuration. Channels reference these destinations by name.
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>destinations:
+  kafka-output:
+    type: kafka
+    kafka:
+      brokers:
+        - ${INTU_KAFKA_BROKER}
+      topic: output-topic
+  file-archive:
+    type: file
+    file:
+      path: /data/archive
+      format: json</code></pre>
+            </div>
+
+            <h3>kafka</h3>
+            <p>
+                Global Kafka settings shared across sources and destinations that use Kafka. Individual
+                source or destination blocks can override these values.
+            </p>
+
+            <h2>Profile Layering</h2>
+            <p>
+                Profiles allow environment-specific configuration without duplicating shared values.
+                The base <code>intu.yaml</code> is always loaded first, then a profile override file
+                is merged on top.
+            </p>
+            <p>Profile files follow the naming convention <code>intu.&lt;profile&gt;.yaml</code>:</p>
+            <ul>
+                <li><code>intu.dev.yaml</code> &mdash; development overrides</li>
+                <li><code>intu.prod.yaml</code> &mdash; production overrides</li>
+            </ul>
+
+            <h4>Example: intu.dev.yaml</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>runtime:
+  log_level: debug
+  storage:
+    driver: memory</code></pre>
+            </div>
+
+            <h4>Example: intu.prod.yaml</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>runtime:
+  log_level: warn
+  storage:
+    driver: postgres
+    postgres_dsn: ${INTU_POSTGRES_DSN}</code></pre>
+            </div>
+
+            <p>Set the active profile using the <code>INTU_PROFILE</code> environment variable or the <code>--profile</code> CLI flag:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code># Via environment variable
+export INTU_PROFILE=prod
+intu validate --dir .
+
+# Via CLI flag
+intu validate --dir . --profile prod</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Merge behavior</strong>
+                Profile values are deep-merged into the base configuration. Scalar values in the profile
+                override the base; arrays and maps are merged recursively. This means you only need
+                to specify the values that differ from the base.
+            </div>
+
+            <h2>Environment Variables</h2>
+            <p>
+                intu supports environment variable substitution in YAML files using the <code>${VAR}</code>
+                syntax. Variables can be defined in a <code>.env</code> file in the project root or set
+                in the shell environment.
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">text</span></div>
+                <pre><code># .env
+INTU_KAFKA_BROKER=localhost:9092
+INTU_POSTGRES_DSN=postgres://user:pass@localhost:5432/intu</code></pre>
+            </div>
+            <p>Reference variables in any YAML configuration file:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>kafka:
+  brokers:
+    - ${INTU_KAFKA_BROKER}</code></pre>
+            </div>
+
+            <div class="callout callout-tip">
+                <strong>Tip</strong>
+                Add <code>.env</code> to your <code>.gitignore</code> to keep secrets out of version control.
+                Use <code>.env.example</code> with placeholder values to document required variables.
+            </div>
+
+            <h2>Destinations</h2>
+            <p>
+                Named destinations are defined at the root level of <code>intu.yaml</code> and referenced
+                by channels. Each destination has a <code>type</code> field and a corresponding configuration
+                block.
+            </p>
+
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>kafka</code></td>
+                        <td>Publish messages to a Kafka topic</td>
+                    </tr>
+                    <tr>
+                        <td><code>http</code></td>
+                        <td>Send messages via HTTP POST to an endpoint</td>
+                    </tr>
+                    <tr>
+                        <td><code>tcp</code></td>
+                        <td>Send messages over a TCP connection (including MLLP)</td>
+                    </tr>
+                    <tr>
+                        <td><code>file</code></td>
+                        <td>Write messages to files on disk</td>
+                    </tr>
+                    <tr>
+                        <td><code>database</code></td>
+                        <td>Insert messages into a database table</td>
+                    </tr>
+                    <tr>
+                        <td><code>sftp</code></td>
+                        <td>Upload messages to a remote SFTP server</td>
+                    </tr>
+                    <tr>
+                        <td><code>smtp</code></td>
+                        <td>Send messages as email via SMTP</td>
+                    </tr>
+                    <tr>
+                        <td><code>channel</code></td>
+                        <td>Route messages to another intu channel</td>
+                    </tr>
+                    <tr>
+                        <td><code>dicom</code></td>
+                        <td>Send DICOM messages to a PACS or modality</td>
+                    </tr>
+                    <tr>
+                        <td><code>jms</code></td>
+                        <td>Publish messages to a JMS queue or topic</td>
+                    </tr>
+                    <tr>
+                        <td><code>fhir</code></td>
+                        <td>Submit resources to a FHIR server</td>
+                    </tr>
+                    <tr>
+                        <td><code>direct</code></td>
+                        <td>Invoke a function or script directly</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p>Each destination type has its own configuration block nested under the type key:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>destinations:
+  api-endpoint:
+    type: http
+    http:
+      url: https://api.example.com/messages
+      method: POST
+      headers:
+        Authorization: Bearer ${API_TOKEN}
+        Content-Type: application/json
+      timeout: 30s
+
+  hl7-receiver:
+    type: tcp
+    tcp:
+      host: 192.168.1.100
+      port: 2575
+      mllp: true
+
+  fhir-server:
+    type: fhir
+    fhir:
+      base_url: https://fhir.example.com/r4
+      auth:
+        type: bearer
+        token: ${FHIR_TOKEN}</code></pre>
+            </div>
+
+            <h2>Channel Configuration</h2>
+            <p>
+                Each channel is defined in its own <code>channel.yaml</code> file within a subdirectory of
+                <code>channels/</code>. A channel configuration specifies the source, transformer, validator,
+                and destination(s) for the pipeline.
+            </p>
+            <p>
+                See the <a href="sources/http.html">Sources</a>, <a href="transformers.html">Transformers</a>,
+                and <a href="destinations/http.html">Destinations</a> documentation for detailed configuration
+                of each component type.
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>id: adt-inbound
+name: ADT Inbound
+description: Receives ADT messages via MLLP and routes to Kafka
+enabled: true
+tags:
+  - hl7
+  - adt
+group: inbound
+
+source:
+  type: tcp
+  tcp:
+    port: 2575
+    mllp: true
+
+transformer: transformer.ts
+validator: validator.ts
+
+destinations:
+  - kafka-output</code></pre>
+            </div>
+
+            <div class="docs-footer">
+                <a href="cli.html">&larr; CLI Reference</a>
+                <a href="schema.html">Schema Reference &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='.';window.DOCS_PAGE='configuration';</script>
+    <script src="assets/nav.js"></script>
+</body>
+</html>

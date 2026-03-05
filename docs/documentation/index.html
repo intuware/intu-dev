@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Getting Started - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <h1><span class="gradient-text">Getting Started</span></h1>
+            <p class="subtitle">Build healthcare integration pipelines with YAML and TypeScript</p>
+
+            <h2>What is intu?</h2>
+            <p>
+                <strong>intu</strong> is a Git-native healthcare interoperability framework. It provides a
+                Go-based CLI that combines YAML configuration with TypeScript transformers to build, validate,
+                and manage healthcare integration channels.
+            </p>
+            <p>
+                Projects are plain directories tracked in Git, making collaboration, code review, and
+                version control natural parts of your integration workflow. intu is AI-friendly by design
+                &mdash; structured schemas and declarative config make it straightforward for AI assistants
+                to generate and modify pipelines.
+            </p>
+
+            <h2>Install</h2>
+            <h3>npm (recommended)</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>npm install -g intu-dev</code></pre>
+            </div>
+
+            <h3>Build from source</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>git clone https://github.com/intuware/intu-dev.git
+cd intu-dev
+go build -o intu .</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Prerequisites</strong>
+                Go 1.22+ and Node.js 18+ (with npm) are required. No external services such as
+                Kafka or PostgreSQL are needed for local development.
+            </div>
+
+            <h2>Quick Start</h2>
+            <p>Scaffold a new project, install dependencies, add a channel, then validate and build:</p>
+
+            <h4>1. Create a new project</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu init my-project</code></pre>
+            </div>
+
+            <h4>2. Install Node dependencies</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>cd my-project &amp;&amp; npm install</code></pre>
+            </div>
+
+            <h4>3. Add a channel</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu c my-channel</code></pre>
+            </div>
+
+            <h4>4. Validate configuration</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu validate</code></pre>
+            </div>
+
+            <h4>5. Compile transformers</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu build</code></pre>
+            </div>
+
+            <h2>Project Structure</h2>
+            <p>After running <code>intu init</code>, your project directory looks like this:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">text</span></div>
+                <pre><code>my-project/
+├── intu.yaml
+├── intu.dev.yaml
+├── intu.prod.yaml
+├── .env
+├── package.json
+├── tsconfig.json
+├── lib/
+│   └── index.ts
+└── channels/
+    └── sample-channel/
+        ├── channel.yaml
+        ├── transformer.ts
+        └── validator.ts</code></pre>
+            </div>
+
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>File / Directory</th>
+                        <th>Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>intu.yaml</code></td>
+                        <td>Root configuration &mdash; runtime settings, destinations, and global options</td>
+                    </tr>
+                    <tr>
+                        <td><code>intu.dev.yaml</code> / <code>intu.prod.yaml</code></td>
+                        <td>Profile-specific overrides layered on top of the base config</td>
+                    </tr>
+                    <tr>
+                        <td><code>.env</code></td>
+                        <td>Environment variables referenced by <code>${VAR}</code> in YAML files</td>
+                    </tr>
+                    <tr>
+                        <td><code>package.json</code></td>
+                        <td>Node.js manifest for TypeScript compilation</td>
+                    </tr>
+                    <tr>
+                        <td><code>tsconfig.json</code></td>
+                        <td>TypeScript compiler configuration</td>
+                    </tr>
+                    <tr>
+                        <td><code>lib/</code></td>
+                        <td>Shared TypeScript utilities</td>
+                    </tr>
+                    <tr>
+                        <td><code>channels/</code></td>
+                        <td>One subdirectory per channel, each containing its own YAML config and TypeScript files</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Core Concepts</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">Channels</span>
+                    <div class="prop-desc">
+                        A channel is a complete processing pipeline that receives messages from a source,
+                        transforms and validates them, then delivers them to one or more destinations.
+                        Each channel lives in its own directory under <code>channels/</code>.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Sources / Listeners</span>
+                    <div class="prop-desc">
+                        Sources define where messages originate. intu supports HTTP, TCP/MLLP, Kafka, file,
+                        database, SFTP, DICOM, FHIR, and more. Each channel has exactly one source
+                        configured in its <code>channel.yaml</code>.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Transformers</span>
+                    <div class="prop-desc">
+                        Transformers are TypeScript functions that manipulate messages as they flow through
+                        a channel. They are compiled by <code>intu build</code> using <code>tsc</code>.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Validators</span>
+                    <div class="prop-desc">
+                        Validators are TypeScript functions that check whether a message conforms to
+                        expected schemas or business rules before it reaches its destination.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Destinations</span>
+                    <div class="prop-desc">
+                        Destinations define where processed messages are delivered. Named destinations
+                        are declared at the root level in <code>intu.yaml</code> and referenced by channels.
+                        Supported types include Kafka, HTTP, TCP, file, database, SFTP, SMTP, DICOM, FHIR, and more.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Profiles</span>
+                    <div class="prop-desc">
+                        Profiles provide environment-specific configuration layering. The base
+                        <code>intu.yaml</code> is merged with a profile file such as <code>intu.dev.yaml</code>
+                        or <code>intu.prod.yaml</code>, allowing you to vary settings per environment without
+                        duplicating configuration.
+                    </div>
+                </div>
+            </div>
+
+            <h2>Next Steps</h2>
+            <div class="card-grid">
+                <div class="card">
+                    <a href="cli.html">
+                        <h3>CLI Reference</h3>
+                        <p>Complete reference for every intu command and flag.</p>
+                    </a>
+                </div>
+                <div class="card">
+                    <a href="configuration.html">
+                        <h3>Configuration</h3>
+                        <p>YAML-based configuration with profile layering and environment variables.</p>
+                    </a>
+                </div>
+                <div class="card">
+                    <a href="sources/http.html">
+                        <h3>Sources</h3>
+                        <p>Learn how to configure message sources for your channels.</p>
+                    </a>
+                </div>
+                <div class="card">
+                    <a href="schema.html">
+                        <h3>Schema Reference</h3>
+                        <p>JSON schemas for IDE autocompletion and AI-assisted configuration.</p>
+                    </a>
+                </div>
+            </div>
+
+            <div class="docs-footer">
+                <span></span>
+                <a href="cli.html">CLI Reference &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='.';window.DOCS_PAGE='getting-started';</script>
+    <script src="assets/nav.js"></script>
+</body>
+</html>

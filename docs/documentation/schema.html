@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schema Reference - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <h1><span class="gradient-text">Schema Reference</span></h1>
+            <p class="subtitle">JSON schemas for AI-assisted configuration</p>
+
+            <h2>Overview</h2>
+            <p>
+                intu provides JSON schemas for its YAML configuration files. These schemas enable IDE
+                autocompletion, real-time validation, and allow AI tools to generate correct configuration
+                without guesswork.
+            </p>
+            <p>
+                Two schemas are available:
+            </p>
+            <ul>
+                <li><strong>Channel Schema</strong> &mdash; validates <code>channel.yaml</code> files inside each channel directory</li>
+                <li><strong>Profile Schema</strong> &mdash; validates the root <code>intu.yaml</code> and profile override files</li>
+            </ul>
+
+            <h2>Channel Schema</h2>
+            <p>
+                The channel schema defines the structure of <code>channel.yaml</code> files, including
+                source configuration, transformer and validator references, destination mappings, tags,
+                groups, and all other channel-level properties.
+            </p>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">URL</span>
+                    <div class="prop-desc"><code>https://intu.dev/schema/channel.schema.json</code></div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Applies to</span>
+                    <div class="prop-desc"><code>channels/*/channel.yaml</code></div>
+                </div>
+            </div>
+
+            <h3>VS Code setup</h3>
+            <p>
+                Add the following to your VS Code <code>settings.json</code> (workspace or user level)
+                to enable autocompletion and validation for channel files. Requires the
+                <a href="https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml">YAML extension</a>.
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                <pre><code>{
+  "yaml.schemas": {
+    "https://intu.dev/schema/channel.schema.json": "channels/*/channel.yaml"
+  }
+}</code></pre>
+            </div>
+
+            <h3>What the schema covers</h3>
+            <ul>
+                <li>Channel metadata: <code>id</code>, <code>name</code>, <code>description</code>, <code>enabled</code>, <code>tags</code>, <code>group</code></li>
+                <li>Source configuration for all supported source types</li>
+                <li>Transformer and validator file references</li>
+                <li>Destination references (by name) and inline destination config</li>
+                <li>Retry, error handling, and logging options</li>
+            </ul>
+
+            <h2>Profile Schema</h2>
+            <p>
+                The profile schema defines the structure of the root <code>intu.yaml</code> file and any
+                profile override files (<code>intu.dev.yaml</code>, <code>intu.prod.yaml</code>, etc.).
+                It covers runtime settings, global Kafka configuration, named destinations, and all
+                top-level properties.
+            </p>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">URL</span>
+                    <div class="prop-desc"><code>https://intu.dev/schema/profile.schema.json</code></div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Applies to</span>
+                    <div class="prop-desc"><code>intu.yaml</code>, <code>intu.*.yaml</code></div>
+                </div>
+            </div>
+
+            <h3>VS Code setup</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                <pre><code>{
+  "yaml.schemas": {
+    "https://intu.dev/schema/profile.schema.json": ["intu.yaml", "intu.*.yaml"]
+  }
+}</code></pre>
+            </div>
+
+            <h3>Combined VS Code configuration</h3>
+            <p>To enable both schemas at once, combine them in a single <code>settings.json</code> block:</p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                <pre><code>{
+  "yaml.schemas": {
+    "https://intu.dev/schema/channel.schema.json": "channels/*/channel.yaml",
+    "https://intu.dev/schema/profile.schema.json": ["intu.yaml", "intu.*.yaml"]
+  }
+}</code></pre>
+            </div>
+
+            <h2>Using with AI</h2>
+            <p>
+                The JSON schemas are designed to be consumed by AI assistants and code generation tools.
+                When provided as context, they give the AI a complete specification of every valid property,
+                its type, allowed values, and description.
+            </p>
+            <p>This means an AI assistant can:</p>
+            <ul>
+                <li>Generate valid <code>channel.yaml</code> files from natural language descriptions</li>
+                <li>Suggest correct configuration values with proper types and constraints</li>
+                <li>Validate existing configuration and identify errors</li>
+                <li>Explain what each configuration option does</li>
+            </ul>
+
+            <h3>Providing schema context</h3>
+            <p>
+                When working with an AI assistant, include the schema URL or content as part of your prompt.
+                Most AI-powered coding tools can fetch and parse JSON schemas automatically.
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">text</span></div>
+                <pre><code>Using the intu channel schema at https://intu.dev/schema/channel.schema.json,
+generate a channel.yaml for an HL7 ADT listener on port 2575 that transforms
+messages and sends them to a Kafka topic.</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Schema versioning</strong>
+                Schemas are versioned alongside the CLI. Always use the schema version that matches
+                your installed version of intu to avoid validation mismatches.
+            </div>
+
+            <div class="docs-footer">
+                <a href="configuration.html">&larr; Configuration</a>
+                <span></span>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='.';window.DOCS_PAGE='schema';</script>
+    <script src="assets/nav.js"></script>
+</body>
+</html>
