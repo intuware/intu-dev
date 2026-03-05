@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/intuware/intu/internal/auth"
 	"github.com/intuware/intu/internal/message"
 	"github.com/intuware/intu/pkg/config"
 )
@@ -25,10 +26,19 @@ func NewHTTPDest(name string, cfg *config.HTTPDestConfig, logger *slog.Logger) *
 	if cfg.TimeoutMs > 0 {
 		timeout = time.Duration(cfg.TimeoutMs) * time.Millisecond
 	}
+
+	transport := &http.Transport{}
+	if cfg.TLS != nil && cfg.TLS.Enabled {
+		tlsCfg, err := auth.BuildTLSConfigFromMap(cfg.TLS)
+		if err == nil && tlsCfg != nil {
+			transport.TLSClientConfig = tlsCfg
+		}
+	}
+
 	return &HTTPDest{
 		name:   name,
 		cfg:    cfg,
-		client: &http.Client{Timeout: timeout},
+		client: &http.Client{Timeout: timeout, Transport: transport},
 		logger: logger,
 	}
 }
@@ -88,7 +98,18 @@ func (h *HTTPDest) applyAuth(req *http.Request) {
 	case "api_key":
 		if h.cfg.Auth.Header != "" {
 			req.Header.Set(h.cfg.Auth.Header, h.cfg.Auth.Key)
+		} else if h.cfg.Auth.QueryParam != "" {
+			q := req.URL.Query()
+			q.Set(h.cfg.Auth.QueryParam, h.cfg.Auth.Key)
+			req.URL.RawQuery = q.Encode()
 		}
+	case "oauth2_client_credentials":
+		token, err := fetchOAuth2Token(h.cfg.Auth.TokenURL, h.cfg.Auth.ClientID, h.cfg.Auth.ClientSecret, h.cfg.Auth.Scopes)
+		if err != nil {
+			h.logger.Error("http dest oauth2 token fetch failed", "destination", h.name, "error", err)
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 }
 

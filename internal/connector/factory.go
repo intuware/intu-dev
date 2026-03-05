@@ -103,15 +103,55 @@ func (f *Factory) CreateDestination(name string, dest config.Destination) (Desti
 		return NewHTTPDest(name, dest.HTTP, f.logger), nil
 	case "file":
 		if dest.File == nil {
-			return NewLogDest(name, f.logger), nil
+			return nil, fmt.Errorf("file destination config is nil for %s", name)
 		}
 		return NewFileDest(name, dest.File, f.logger), nil
 	case "channel":
-		if dest.Channel != nil {
-			return NewChannelDest(name, dest.Channel.TargetChannelID, f.logger), nil
+		if dest.Channel == nil {
+			return nil, fmt.Errorf("channel destination config is nil for %s", name)
 		}
-		return NewLogDest(name, f.logger), nil
-	case "kafka", "tcp", "database", "smtp", "dicom", "jms", "fhir", "direct":
+		return NewChannelDest(name, dest.Channel.TargetChannelID, f.logger), nil
+	case "tcp":
+		if dest.TCP == nil {
+			return nil, fmt.Errorf("tcp destination config is nil for %s", name)
+		}
+		return NewTCPDest(name, dest.TCP, f.logger), nil
+	case "kafka":
+		if dest.Kafka == nil {
+			return nil, fmt.Errorf("kafka destination config is nil for %s", name)
+		}
+		return NewKafkaDest(name, dest.Kafka, f.logger), nil
+	case "database":
+		if dest.Database == nil {
+			return nil, fmt.Errorf("database destination config is nil for %s", name)
+		}
+		return NewDatabaseDest(name, dest.Database, f.logger), nil
+	case "smtp":
+		if dest.SMTP == nil {
+			return nil, fmt.Errorf("smtp destination config is nil for %s", name)
+		}
+		return NewSMTPDest(name, dest.SMTP, f.logger), nil
+	case "dicom":
+		if dest.DICOM == nil {
+			return nil, fmt.Errorf("dicom destination config is nil for %s", name)
+		}
+		return NewDICOMDest(name, dest.DICOM, f.logger), nil
+	case "jms":
+		if dest.JMS == nil {
+			return nil, fmt.Errorf("jms destination config is nil for %s", name)
+		}
+		return NewJMSDest(name, dest.JMS, f.logger), nil
+	case "fhir":
+		if dest.FHIR == nil {
+			return nil, fmt.Errorf("fhir destination config is nil for %s", name)
+		}
+		return NewFHIRDest(name, dest.FHIR, f.logger), nil
+	case "direct":
+		if dest.Direct == nil {
+			return nil, fmt.Errorf("direct destination config is nil for %s", name)
+		}
+		return NewDirectDest(name, dest.Direct, f.logger), nil
+	case "log":
 		return NewLogDest(name, f.logger), nil
 	default:
 		return nil, fmt.Errorf("unsupported destination type: %s", dest.Type)

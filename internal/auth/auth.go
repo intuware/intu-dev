@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -121,9 +122,44 @@ func ApplyDestAuth(req *http.Request, cfg *config.HTTPAuthConfig) {
 	case "api_key":
 		if cfg.Header != "" {
 			req.Header.Set(cfg.Header, cfg.Key)
+		} else if cfg.QueryParam != "" {
+			q := req.URL.Query()
+			q.Set(cfg.QueryParam, cfg.Key)
+			req.URL.RawQuery = q.Encode()
 		}
 	case "oauth2_client_credentials":
-		// Token fetch would happen in a real implementation
-		// For now, set a placeholder
+		if cfg.TokenURL != "" && cfg.ClientID != "" && cfg.ClientSecret != "" {
+			token, err := FetchOAuth2ClientCredentials(cfg.TokenURL, cfg.ClientID, cfg.ClientSecret, cfg.Scopes)
+			if err == nil && token != "" {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
+		}
 	}
+}
+
+// FetchOAuth2ClientCredentials obtains an access token from the token
+// endpoint using the client_credentials grant type.
+func FetchOAuth2ClientCredentials(tokenURL, clientID, clientSecret string, scopes []string) (string, error) {
+	data := "grant_type=client_credentials&client_id=" + clientID + "&client_secret=" + clientSecret
+	if len(scopes) > 0 {
+		data += "&scope=" + strings.Join(scopes, " ")
+	}
+
+	resp, err := http.Post(tokenURL, "application/x-www-form-urlencoded", strings.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("oauth2 token request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("oauth2 token endpoint returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("oauth2 decode response: %w", err)
+	}
+	return result.AccessToken, nil
 }
