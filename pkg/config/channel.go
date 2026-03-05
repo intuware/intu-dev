@@ -241,9 +241,10 @@ type AuthConfig struct {
 }
 
 type PipelineConfig struct {
-	Preprocessor string `yaml:"preprocessor,omitempty"`
-	SourceFilter string `yaml:"source_filter,omitempty"`
-	Transformer  string `yaml:"transformer,omitempty"`
+	Preprocessor  string `yaml:"preprocessor,omitempty"`
+	Validator     string `yaml:"validator,omitempty"`
+	SourceFilter  string `yaml:"source_filter,omitempty"`
+	Transformer   string `yaml:"transformer,omitempty"`
 	Postprocessor string `yaml:"postprocessor,omitempty"`
 }
 

@@ -217,6 +217,13 @@ func extractHL7ControlID(data []byte) string {
 	return "0"
 }
 
+func (t *TCPSource) Addr() string {
+	if t.listener != nil {
+		return t.listener.Addr().String()
+	}
+	return ""
+}
+
 func (t *TCPSource) Stop(ctx context.Context) error {
 	if t.cancel != nil {
 		t.cancel()

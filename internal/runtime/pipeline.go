@@ -84,6 +84,17 @@ func (p *Pipeline) Execute(ctx context.Context, msg *message.Message) (*Pipeline
 	}
 	current = parsed
 
+	if validatorFile := p.resolveValidator(); validatorFile != "" {
+		out, err := p.callScript("validate", validatorFile, current, p.buildPipelineCtx(msg))
+		if err != nil {
+			return nil, fmt.Errorf("validator: %w", err)
+		}
+		if valid, ok := out.(bool); ok && !valid {
+			p.logger.Info("message rejected by validator", "channel", p.channelID, "messageId", msg.ID)
+			return &PipelineResult{Filtered: true}, nil
+		}
+	}
+
 	if p.config.Pipeline != nil && p.config.Pipeline.SourceFilter != "" {
 		out, err := p.callScript("filter", p.config.Pipeline.SourceFilter, current, p.buildPipelineCtx(msg))
 		if err != nil {
@@ -195,6 +206,16 @@ func (p *Pipeline) ExecutePostprocessor(ctx context.Context, msg *message.Messag
 
 	_, err := p.callScript("postprocess", p.config.Pipeline.Postprocessor, transformed, resultsData, p.buildPipelineCtx(msg))
 	return err
+}
+
+func (p *Pipeline) resolveValidator() string {
+	if p.config.Pipeline != nil && p.config.Pipeline.Validator != "" {
+		return p.config.Pipeline.Validator
+	}
+	if p.config.Validator != nil && p.config.Validator.Entrypoint != "" {
+		return p.config.Validator.Entrypoint
+	}
+	return ""
 }
 
 func (p *Pipeline) resolveTransformer() string {

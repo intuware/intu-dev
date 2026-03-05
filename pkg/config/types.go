@@ -51,19 +51,28 @@ type KafkaConfig struct {
 }
 
 type Destination struct {
-	Type     string           `mapstructure:"type"`
-	Kafka    *KafkaDestConfig `mapstructure:"kafka"`
-	HTTP     *HTTPDestConfig  `mapstructure:"http"`
-	TCP      *TCPDestMapConfig `mapstructure:"tcp"`
-	File     *FileDestMapConfig `mapstructure:"file"`
-	Database *DBDestMapConfig `mapstructure:"database"`
-	SMTP     *SMTPDestMapConfig `mapstructure:"smtp"`
+	Type     string                `mapstructure:"type"`
+	Kafka    *KafkaDestConfig      `mapstructure:"kafka"`
+	HTTP     *HTTPDestConfig       `mapstructure:"http"`
+	TCP      *TCPDestMapConfig     `mapstructure:"tcp"`
+	File     *FileDestMapConfig    `mapstructure:"file"`
+	SFTP     *SFTPDestMapConfig    `mapstructure:"sftp"`
+	Database *DBDestMapConfig      `mapstructure:"database"`
+	SMTP     *SMTPDestMapConfig    `mapstructure:"smtp"`
 	Channel  *ChannelDestMapConfig `mapstructure:"channel"`
-	DICOM    *DICOMDestMapConfig `mapstructure:"dicom"`
-	JMS      *JMSDestMapConfig `mapstructure:"jms"`
-	FHIR     *FHIRDestMapConfig `mapstructure:"fhir"`
-	Direct   *DirectDestMapConfig `mapstructure:"direct"`
-	Retry    *RetryMapConfig  `mapstructure:"retry"`
+	DICOM    *DICOMDestMapConfig   `mapstructure:"dicom"`
+	JMS      *JMSDestMapConfig     `mapstructure:"jms"`
+	FHIR     *FHIRDestMapConfig    `mapstructure:"fhir"`
+	Direct   *DirectDestMapConfig  `mapstructure:"direct"`
+	Retry    *RetryMapConfig       `mapstructure:"retry"`
+}
+
+type SFTPDestMapConfig struct {
+	Host            string          `mapstructure:"host"`
+	Port            int             `mapstructure:"port"`
+	Directory       string          `mapstructure:"directory"`
+	FilenamePattern string          `mapstructure:"filename_pattern"`
+	Auth            *HTTPAuthConfig `mapstructure:"auth"`
 }
 
 type KafkaDestConfig struct {
@@ -84,17 +93,19 @@ type HTTPDestConfig struct {
 }
 
 type HTTPAuthConfig struct {
-	Type         string   `mapstructure:"type"`
-	Token        string   `mapstructure:"token"`
-	Username     string   `mapstructure:"username"`
-	Password     string   `mapstructure:"password"`
-	Key          string   `mapstructure:"key"`
-	Header       string   `mapstructure:"header"`
-	QueryParam   string   `mapstructure:"query_param"`
-	TokenURL     string   `mapstructure:"token_url"`
-	ClientID     string   `mapstructure:"client_id"`
-	ClientSecret string   `mapstructure:"client_secret"`
-	Scopes       []string `mapstructure:"scopes"`
+	Type           string   `mapstructure:"type"`
+	Token          string   `mapstructure:"token"`
+	Username       string   `mapstructure:"username"`
+	Password       string   `mapstructure:"password"`
+	Key            string   `mapstructure:"key"`
+	Header         string   `mapstructure:"header"`
+	QueryParam     string   `mapstructure:"query_param"`
+	TokenURL       string   `mapstructure:"token_url"`
+	ClientID       string   `mapstructure:"client_id"`
+	ClientSecret   string   `mapstructure:"client_secret"`
+	Scopes         []string `mapstructure:"scopes"`
+	PrivateKeyFile string   `mapstructure:"private_key_file"`
+	Passphrase     string   `mapstructure:"passphrase"`
 }
 
 type TLSMapConfig struct {
