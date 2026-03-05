@@ -103,30 +103,31 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 		return nil, fmt.Errorf("create source for %s: %w", chCfg.ID, err)
 	}
 
-	var dests []connector.DestinationConnector
+	dests := make(map[string]connector.DestinationConnector)
 	for _, d := range chCfg.Destinations {
-		if d.Ref != "" {
-			rootDest, ok := e.cfg.Destinations[d.Ref]
-			if !ok {
-				return nil, fmt.Errorf("destination ref %q not found in root config", d.Ref)
-			}
-			dest, err := e.factory.CreateDestination(d.Name, rootDest)
-			if err != nil {
-				return nil, fmt.Errorf("create destination %s: %w", d.Name, err)
-			}
-			dests = append(dests, dest)
-		} else if d.Name != "" {
-			rootDest, ok := e.cfg.Destinations[d.Name]
-			if !ok {
-				e.logger.Warn("destination not found in root config", "name", d.Name, "channel", chCfg.ID)
-				continue
-			}
-			dest, err := e.factory.CreateDestination(d.Name, rootDest)
-			if err != nil {
-				return nil, fmt.Errorf("create destination %s: %w", d.Name, err)
-			}
-			dests = append(dests, dest)
+		name := d.Name
+		if name == "" {
+			name = d.Ref
 		}
+		if name == "" {
+			continue
+		}
+
+		ref := d.Ref
+		if ref == "" {
+			ref = d.Name
+		}
+
+		rootDest, ok := e.cfg.Destinations[ref]
+		if !ok {
+			e.logger.Warn("destination not found in root config", "ref", ref, "channel", chCfg.ID)
+			continue
+		}
+		dest, err := e.factory.CreateDestination(name, rootDest)
+		if err != nil {
+			return nil, fmt.Errorf("create destination %s: %w", name, err)
+		}
+		dests[name] = dest
 	}
 
 	runner := NewGojaRunner()
@@ -137,6 +138,7 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 		Config:       chCfg,
 		Source:       source,
 		Destinations: dests,
+		DestConfigs:  chCfg.Destinations,
 		Pipeline:     pipeline,
 		Logger:       e.logger,
 	}, nil

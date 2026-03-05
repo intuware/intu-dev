@@ -14,7 +14,8 @@ type ChannelRuntime struct {
 	ID           string
 	Config       *config.ChannelConfig
 	Source       connector.SourceConnector
-	Destinations []connector.DestinationConnector
+	Destinations map[string]connector.DestinationConnector
+	DestConfigs  []config.ChannelDestination
 	Pipeline     *Pipeline
 	Logger       *slog.Logger
 }
@@ -31,9 +32,9 @@ func (cr *ChannelRuntime) Stop(ctx context.Context) error {
 		cr.Logger.Error("error stopping source", "channel", cr.ID, "error", err)
 	}
 
-	for _, dest := range cr.Destinations {
+	for name, dest := range cr.Destinations {
 		if err := dest.Stop(ctx); err != nil {
-			cr.Logger.Error("error stopping destination", "channel", cr.ID, "type", dest.Type(), "error", err)
+			cr.Logger.Error("error stopping destination", "channel", cr.ID, "name", name, "error", err)
 		}
 	}
 
@@ -41,6 +42,7 @@ func (cr *ChannelRuntime) Stop(ctx context.Context) error {
 }
 
 func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Message) error {
+	msg.ChannelID = cr.ID
 	cr.Logger.Debug("processing message", "channel", cr.ID, "messageId", msg.ID)
 
 	result, err := cr.Pipeline.Execute(ctx, msg)
@@ -52,47 +54,105 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 		return nil
 	}
 
-	var outBytes []byte
-	switch v := result.Output.(type) {
-	case []byte:
-		outBytes = v
-	case string:
-		outBytes = []byte(v)
-	default:
-		outBytes = msg.Raw
-	}
+	activeDests := cr.resolveActiveDestinations(result.RouteTo)
 
-	outMsg := &message.Message{
-		ID:            msg.ID,
-		CorrelationID: msg.CorrelationID,
-		ChannelID:     msg.ChannelID,
-		Raw:           outBytes,
-		ContentType:   msg.ContentType,
-		Headers:       msg.Headers,
-		Metadata:      msg.Metadata,
-		Timestamp:     msg.Timestamp,
-	}
+	var destResults []DestinationResult
 
-	for _, dest := range cr.Destinations {
+	for _, destCfg := range activeDests {
+		destName := destCfg.Name
+		if destName == "" {
+			destName = destCfg.Ref
+		}
+
+		dest, ok := cr.Destinations[destName]
+		if !ok {
+			cr.Logger.Warn("destination not found", "name", destName, "channel", cr.ID)
+			destResults = append(destResults, DestinationResult{
+				Name:    destName,
+				Success: false,
+				Error:   "destination not found",
+			})
+			continue
+		}
+
+		outMsg, filtered, err := cr.Pipeline.ExecuteDestinationPipeline(ctx, msg, result.Output, destCfg)
+		if err != nil {
+			cr.Logger.Error("destination pipeline error", "destination", destName, "error", err)
+			destResults = append(destResults, DestinationResult{
+				Name:    destName,
+				Success: false,
+				Error:   err.Error(),
+			})
+			continue
+		}
+		if filtered {
+			destResults = append(destResults, DestinationResult{
+				Name:    destName,
+				Success: true,
+			})
+			continue
+		}
+
 		resp, err := dest.Send(ctx, outMsg)
 		if err != nil {
 			cr.Logger.Error("destination send failed",
 				"channel", cr.ID,
-				"destination", dest.Type(),
+				"destination", destName,
 				"messageId", msg.ID,
 				"error", err,
 			)
+			destResults = append(destResults, DestinationResult{
+				Name:    destName,
+				Success: false,
+				Error:   err.Error(),
+			})
 			continue
 		}
-		if resp != nil && resp.Error != nil {
-			cr.Logger.Warn("destination returned error",
-				"channel", cr.ID,
-				"destination", dest.Type(),
-				"messageId", msg.ID,
-				"statusCode", resp.StatusCode,
-			)
+
+		if resp != nil {
+			_ = cr.Pipeline.ExecuteResponseTransformer(ctx, msg, destCfg, resp)
 		}
+
+		success := resp == nil || resp.Error == nil
+		dr := DestinationResult{
+			Name:    destName,
+			Success: success,
+		}
+		if resp != nil {
+			dr.Response = resp
+			if resp.Error != nil {
+				dr.Error = resp.Error.Error()
+			}
+		}
+		destResults = append(destResults, dr)
+	}
+
+	if err := cr.Pipeline.ExecutePostprocessor(ctx, msg, result.Output, destResults); err != nil {
+		cr.Logger.Error("postprocessor error", "channel", cr.ID, "error", err)
 	}
 
 	return nil
+}
+
+func (cr *ChannelRuntime) resolveActiveDestinations(routeTo []string) []config.ChannelDestination {
+	if len(routeTo) == 0 {
+		return cr.DestConfigs
+	}
+
+	routeSet := make(map[string]bool)
+	for _, r := range routeTo {
+		routeSet[r] = true
+	}
+
+	var active []config.ChannelDestination
+	for _, d := range cr.DestConfigs {
+		name := d.Name
+		if name == "" {
+			name = d.Ref
+		}
+		if routeSet[name] {
+			active = append(active, d)
+		}
+	}
+	return active
 }
