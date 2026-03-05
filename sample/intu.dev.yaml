@@ -1,6 +1,0 @@
-runtime:
-  profile: dev
-  log_level: debug
-
-kafka:
-  client_id: intu-dev

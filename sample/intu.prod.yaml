@@ -1,8 +1,0 @@
-runtime:
-  profile: prod
-  log_level: info
-  storage:
-    driver: postgres
-
-kafka:
-  client_id: intu-prod
