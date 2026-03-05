@@ -1,0 +1,489 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://intu.dev/schema/profile.schema.json",
+  "title": "intu Profile Configuration",
+  "description": "Schema for intu.yaml and profile override files (intu.dev.yaml, intu.prod.yaml). Defines the root configuration including runtime settings, destinations, and global options.",
+  "type": "object",
+  "properties": {
+    "runtime": {
+      "type": "object",
+      "description": "Runtime engine configuration",
+      "properties": {
+        "name": { "type": "string", "description": "Application name" },
+        "profile": { "type": "string", "description": "Active profile name (e.g., dev, staging, prod)" },
+        "log_level": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "description": "Logging level"
+        },
+        "storage": {
+          "type": "object",
+          "description": "Storage backend for message persistence",
+          "properties": {
+            "driver": { "type": "string", "enum": ["memory", "postgres"], "description": "Storage driver" },
+            "postgres_dsn": { "type": "string", "description": "PostgreSQL connection string (supports ${ENV_VAR} syntax)" }
+          }
+        },
+        "encryption": {
+          "type": "object",
+          "properties": {
+            "key_file": { "type": "string", "description": "Path to encryption key file" },
+            "algorithm": { "type": "string", "enum": ["aes-256-gcm", "aes-128-gcm"], "description": "Encryption algorithm" }
+          }
+        },
+        "health": {
+          "type": "object",
+          "description": "Health check endpoint configuration",
+          "properties": {
+            "port": { "type": "integer" },
+            "path": { "type": "string", "default": "/health" },
+            "readiness_path": { "type": "string", "default": "/ready" },
+            "liveness_path": { "type": "string", "default": "/live" }
+          }
+        }
+      }
+    },
+    "channels_dir": {
+      "type": "string",
+      "description": "Directory containing channel subdirectories (default: channels)",
+      "default": "channels"
+    },
+    "destinations": {
+      "type": "object",
+      "description": "Named destination definitions. Channels reference these by name.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["http", "kafka", "tcp", "file", "database", "sftp", "smtp", "channel", "dicom", "jms", "fhir", "direct"],
+            "description": "Destination type"
+          },
+          "http": {
+            "type": "object",
+            "description": "HTTP destination configuration",
+            "properties": {
+              "url": { "type": "string", "description": "Target URL" },
+              "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"], "default": "POST" },
+              "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "HTTP headers" },
+              "timeout_ms": { "type": "integer", "description": "Request timeout in milliseconds" },
+              "auth": { "$ref": "#/definitions/auth" },
+              "tls": { "$ref": "#/definitions/tls" }
+            },
+            "required": ["url"]
+          },
+          "kafka": {
+            "type": "object",
+            "description": "Kafka producer configuration",
+            "properties": {
+              "brokers": { "type": "array", "items": { "type": "string" } },
+              "topic": { "type": "string" },
+              "client_id": { "type": "string" },
+              "auth": { "$ref": "#/definitions/auth" },
+              "tls": { "$ref": "#/definitions/tls" }
+            },
+            "required": ["topic"]
+          },
+          "tcp": {
+            "type": "object",
+            "description": "TCP destination configuration",
+            "properties": {
+              "host": { "type": "string" },
+              "port": { "type": "integer" },
+              "mode": { "type": "string", "enum": ["raw", "mllp"] },
+              "timeout_ms": { "type": "integer" },
+              "tls": { "$ref": "#/definitions/tls" },
+              "keep_alive": { "type": "boolean" }
+            },
+            "required": ["host", "port"]
+          },
+          "file": {
+            "type": "object",
+            "description": "File destination configuration",
+            "properties": {
+              "scheme": { "type": "string", "enum": ["local"] },
+              "directory": { "type": "string" },
+              "filename_pattern": { "type": "string", "description": "Supports ${messageId}, ${timestamp}, ${channelId}" }
+            },
+            "required": ["directory"]
+          },
+          "database": {
+            "type": "object",
+            "description": "Database destination configuration",
+            "properties": {
+              "driver": { "type": "string", "enum": ["postgres", "mysql", "mssql"] },
+              "dsn": { "type": "string" },
+              "statement": { "type": "string", "description": "SQL INSERT/UPDATE statement with $1, $2 placeholders" },
+              "max_conns": { "type": "integer" }
+            },
+            "required": ["driver", "dsn", "statement"]
+          },
+          "sftp": {
+            "type": "object",
+            "description": "SFTP destination configuration",
+            "properties": {
+              "host": { "type": "string" },
+              "port": { "type": "integer", "default": 22 },
+              "directory": { "type": "string" },
+              "filename_pattern": { "type": "string" },
+              "auth": { "$ref": "#/definitions/auth" }
+            },
+            "required": ["host", "directory"]
+          },
+          "smtp": {
+            "type": "object",
+            "description": "SMTP email destination",
+            "properties": {
+              "host": { "type": "string" },
+              "port": { "type": "integer", "default": 587 },
+              "from": { "type": "string" },
+              "to": { "type": "array", "items": { "type": "string" } },
+              "subject": { "type": "string" },
+              "auth": { "$ref": "#/definitions/auth" },
+              "tls": { "$ref": "#/definitions/tls" }
+            },
+            "required": ["host", "from", "to"]
+          },
+          "channel": {
+            "type": "object",
+            "description": "Channel chaining destination",
+            "properties": {
+              "target_channel_id": { "type": "string" }
+            },
+            "required": ["target_channel_id"]
+          },
+          "dicom": {
+            "type": "object",
+            "description": "DICOM C-STORE SCU destination",
+            "properties": {
+              "host": { "type": "string" },
+              "port": { "type": "integer" },
+              "ae_title": { "type": "string" },
+              "called_ae_title": { "type": "string" },
+              "timeout_ms": { "type": "integer" },
+              "tls": { "$ref": "#/definitions/tls" }
+            },
+            "required": ["host", "port"]
+          },
+          "jms": {
+            "type": "object",
+            "description": "JMS queue destination",
+            "properties": {
+              "provider": { "type": "string", "enum": ["activemq", "ibmmq"] },
+              "url": { "type": "string" },
+              "queue": { "type": "string" },
+              "auth": { "$ref": "#/definitions/auth" },
+              "timeout_ms": { "type": "integer" }
+            },
+            "required": ["url", "queue"]
+          },
+          "fhir": {
+            "type": "object",
+            "description": "FHIR server destination",
+            "properties": {
+              "base_url": { "type": "string" },
+              "version": { "type": "string", "enum": ["R4", "STU3"] },
+              "operations": { "type": "array", "items": { "type": "string", "enum": ["create", "update", "transaction", "batch"] } },
+              "auth": { "$ref": "#/definitions/auth" },
+              "tls": { "$ref": "#/definitions/tls" },
+              "timeout_ms": { "type": "integer" }
+            },
+            "required": ["base_url"]
+          },
+          "direct": {
+            "type": "object",
+            "description": "Direct messaging destination",
+            "properties": {
+              "to": { "type": "string", "description": "Direct address (e.g., provider@direct.example.com)" },
+              "from": { "type": "string" },
+              "certificate": { "type": "string" },
+              "smtp_host": { "type": "string" },
+              "smtp_port": { "type": "integer" },
+              "tls": { "$ref": "#/definitions/tls" }
+            },
+            "required": ["to", "from"]
+          },
+          "retry": { "$ref": "#/definitions/retry" }
+        }
+      }
+    },
+    "kafka": {
+      "type": "object",
+      "description": "Global Kafka configuration (used as fallback for Kafka sources/destinations)",
+      "properties": {
+        "brokers": { "type": "array", "items": { "type": "string" } },
+        "client_id": { "type": "string" }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "description": "Secret management configuration",
+      "properties": {
+        "provider": { "type": "string", "enum": ["env", "vault"], "description": "Secrets provider" },
+        "vault": {
+          "type": "object",
+          "properties": {
+            "address": { "type": "string" },
+            "path": { "type": "string" },
+            "auth": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "enum": ["approle", "token"] },
+                "role_id": { "type": "string" },
+                "secret_id": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "dead_letter": {
+      "type": "object",
+      "description": "Global dead letter queue configuration",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "destination": { "type": "string", "description": "Named destination for DLQ" },
+        "include_error": { "type": "boolean" },
+        "include_original": { "type": "boolean" }
+      }
+    },
+    "message_storage": {
+      "type": "object",
+      "description": "Global message storage configuration",
+      "properties": {
+        "driver": { "type": "string", "enum": ["memory", "postgres", "s3"] },
+        "postgres": {
+          "type": "object",
+          "properties": {
+            "dsn": { "type": "string" },
+            "table_prefix": { "type": "string" }
+          }
+        },
+        "s3": {
+          "type": "object",
+          "properties": {
+            "bucket": { "type": "string" },
+            "region": { "type": "string" }
+          }
+        },
+        "retention": {
+          "type": "object",
+          "properties": {
+            "days": { "type": "integer" },
+            "prune_interval": { "type": "string" },
+            "prune_errored": { "type": "boolean" },
+            "errored_retention_days": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "pruning": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "schedule": { "type": "string", "description": "Cron expression" },
+        "default_retention_days": { "type": "integer" },
+        "archive_before_prune": { "type": "boolean" },
+        "archive_destination": { "type": "string" }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "description": "Observability and monitoring configuration",
+      "properties": {
+        "opentelemetry": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "endpoint": { "type": "string" },
+            "protocol": { "type": "string", "enum": ["grpc", "http"] },
+            "traces": { "type": "boolean" },
+            "metrics": { "type": "boolean" },
+            "service_name": { "type": "string" },
+            "resource_attributes": { "type": "object", "additionalProperties": { "type": "string" } }
+          }
+        },
+        "prometheus": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "port": { "type": "integer" },
+            "path": { "type": "string", "default": "/metrics" }
+          }
+        }
+      }
+    },
+    "alerts": {
+      "type": "array",
+      "description": "Alert rules",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "trigger": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["error_rate", "latency", "queue_depth"] },
+              "channel": { "type": "string" },
+              "threshold": { "type": "integer" },
+              "window": { "type": "string" },
+              "threshold_ms": { "type": "integer" },
+              "percentile": { "type": "string" }
+            }
+          },
+          "destinations": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "access_control": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "provider": { "type": "string", "enum": ["local", "ldap", "oidc"] },
+        "ldap": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" },
+            "base_dn": { "type": "string" },
+            "bind_dn": { "type": "string" },
+            "bind_password": { "type": "string" }
+          }
+        },
+        "oidc": {
+          "type": "object",
+          "properties": {
+            "issuer": { "type": "string" },
+            "client_id": { "type": "string" },
+            "client_secret": { "type": "string" }
+          }
+        }
+      }
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "permissions": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "destination": { "type": "string" },
+        "events": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "cluster": {
+      "type": "object",
+      "description": "Clustering configuration for distributed deployments",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": { "type": "string", "enum": ["active-passive", "active-active"] },
+        "coordination": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["redis", "etcd"] },
+            "redis": {
+              "type": "object",
+              "properties": {
+                "address": { "type": "string" },
+                "password": { "type": "string" }
+              }
+            }
+          }
+        },
+        "instance_id": { "type": "string" },
+        "heartbeat_interval": { "type": "string" },
+        "channel_assignment": {
+          "type": "object",
+          "properties": {
+            "strategy": { "type": "string", "enum": ["round-robin", "tag-affinity", "manual"] },
+            "tag_affinity": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } }
+          }
+        },
+        "deduplication": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "window": { "type": "string" },
+            "store": { "type": "string", "enum": ["redis", "memory"] },
+            "key_extractor": { "type": "string" }
+          }
+        }
+      }
+    },
+    "global": {
+      "type": "object",
+      "description": "Global hooks and settings",
+      "properties": {
+        "hooks": {
+          "type": "object",
+          "properties": {
+            "on_startup": { "type": "string" },
+            "on_shutdown": { "type": "string" },
+            "on_deploy_all": { "type": "string" }
+          }
+        }
+      }
+    },
+    "tenancy": {
+      "type": "object",
+      "description": "Multi-tenancy configuration",
+      "properties": {
+        "mode": { "type": "string", "enum": ["single", "multi"] },
+        "isolation": { "type": "string", "enum": ["shared", "isolated"] },
+        "tenant_header": { "type": "string", "description": "HTTP header for tenant identification" }
+      }
+    }
+  },
+  "definitions": {
+    "tls": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "cert_file": { "type": "string" },
+        "key_file": { "type": "string" },
+        "ca_file": { "type": "string" },
+        "client_cert_file": { "type": "string" },
+        "client_key_file": { "type": "string" },
+        "min_version": { "type": "string", "enum": ["1.2", "1.3"] },
+        "insecure_skip_verify": { "type": "boolean" }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["basic", "bearer", "api_key", "oauth2", "mtls", "sasl", "private_key", "password"] },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "token": { "type": "string" },
+        "key": { "type": "string" },
+        "header": { "type": "string" },
+        "token_url": { "type": "string" },
+        "client_id": { "type": "string" },
+        "client_secret": { "type": "string" },
+        "scopes": { "type": "array", "items": { "type": "string" } },
+        "private_key_file": { "type": "string" },
+        "passphrase": { "type": "string" }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "properties": {
+        "max_attempts": { "type": "integer" },
+        "backoff": { "type": "string", "enum": ["constant", "linear", "exponential"] },
+        "initial_delay_ms": { "type": "integer" },
+        "max_delay_ms": { "type": "integer" },
+        "jitter": { "type": "boolean" },
+        "retry_on": { "type": "array", "items": { "type": "string" } },
+        "no_retry_on": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

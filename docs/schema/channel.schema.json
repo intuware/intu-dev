@@ -1,0 +1,487 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://intu.dev/schema/channel.schema.json",
+  "title": "intu Channel Configuration",
+  "description": "Schema for intu channel.yaml files. Defines a message processing channel with a source listener, optional validator/transformer, and one or more destinations.",
+  "type": "object",
+  "required": ["id", "enabled", "listener"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for this channel"
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Whether this channel is active"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Tags for filtering and grouping channels"
+    },
+    "group": {
+      "type": "string",
+      "description": "Logical group this channel belongs to"
+    },
+    "priority": {
+      "type": "string",
+      "description": "Processing priority for this channel"
+    },
+    "data_types": {
+      "type": "object",
+      "description": "Inbound and outbound data type declarations for automatic parsing",
+      "properties": {
+        "inbound": {
+          "type": "string",
+          "enum": ["raw", "json", "xml", "csv", "hl7v2", "hl7v3", "ccda", "fhir_r4", "x12", "binary"],
+          "description": "Inbound message format for automatic parsing"
+        },
+        "outbound": {
+          "type": "string",
+          "enum": ["raw", "json", "xml", "csv", "hl7v2", "hl7v3", "ccda", "fhir_r4", "x12", "binary"],
+          "description": "Outbound message format for automatic serialization"
+        },
+        "inbound_properties": {
+          "type": "object",
+          "description": "Additional properties for the inbound parser (e.g., CSV delimiter)"
+        },
+        "outbound_properties": {
+          "type": "object",
+          "description": "Additional properties for the outbound serializer"
+        }
+      }
+    },
+    "listener": {
+      "type": "object",
+      "description": "Source/listener configuration for this channel",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["http", "tcp", "file", "kafka", "database", "sftp", "channel", "email", "dicom", "soap", "fhir", "ihe"],
+          "description": "Listener type"
+        },
+        "http": {
+          "type": "object",
+          "description": "HTTP listener configuration",
+          "properties": {
+            "port": { "type": "integer", "description": "Port to listen on" },
+            "path": { "type": "string", "description": "URL path to listen on" },
+            "methods": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+              "description": "Allowed HTTP methods"
+            },
+            "tls": { "$ref": "#/definitions/tls" },
+            "auth": { "$ref": "#/definitions/auth" }
+          },
+          "required": ["port"]
+        },
+        "tcp": {
+          "type": "object",
+          "description": "TCP/MLLP listener configuration",
+          "properties": {
+            "port": { "type": "integer", "description": "Port to listen on" },
+            "mode": { "type": "string", "enum": ["raw", "mllp"], "description": "TCP mode (raw or MLLP for HL7v2)" },
+            "max_connections": { "type": "integer", "description": "Maximum concurrent connections" },
+            "timeout_ms": { "type": "integer", "description": "Connection timeout in milliseconds" },
+            "tls": { "$ref": "#/definitions/tls" },
+            "ack": {
+              "type": "object",
+              "properties": {
+                "auto": { "type": "boolean", "description": "Auto-generate ACK responses" },
+                "success_code": { "type": "string", "description": "ACK code on success (e.g., AA)" },
+                "error_code": { "type": "string", "description": "ACK code on error (e.g., AE)" },
+                "reject_code": { "type": "string", "description": "ACK code on reject (e.g., AR)" }
+              }
+            },
+            "response": {
+              "type": "object",
+              "properties": {
+                "on_success": { "type": "string" },
+                "on_error": { "type": "string" },
+                "on_filter_drop": { "type": "string" },
+                "wait_for_destinations": { "type": "boolean" }
+              }
+            }
+          },
+          "required": ["port"]
+        },
+        "file": {
+          "type": "object",
+          "description": "File poller configuration",
+          "properties": {
+            "scheme": { "type": "string", "enum": ["local", "ftp", "s3", "smb"], "description": "File system scheme" },
+            "directory": { "type": "string", "description": "Directory to poll" },
+            "file_pattern": { "type": "string", "description": "Glob pattern for file matching" },
+            "poll_interval": { "type": "string", "description": "Polling interval (e.g., 10s, 1m)" },
+            "move_to": { "type": "string", "description": "Move processed files to this directory" },
+            "error_dir": { "type": "string", "description": "Move failed files to this directory" },
+            "sort_by": { "type": "string", "enum": ["name", "date", "size"] },
+            "ftp": {
+              "type": "object",
+              "properties": {
+                "host": { "type": "string" },
+                "port": { "type": "integer" },
+                "auth": { "$ref": "#/definitions/auth" }
+              }
+            },
+            "s3": {
+              "type": "object",
+              "properties": {
+                "bucket": { "type": "string" },
+                "region": { "type": "string" },
+                "prefix": { "type": "string" },
+                "auth": { "$ref": "#/definitions/auth" }
+              }
+            },
+            "smb": {
+              "type": "object",
+              "properties": {
+                "host": { "type": "string" },
+                "auth": { "$ref": "#/definitions/auth" }
+              }
+            }
+          }
+        },
+        "kafka": {
+          "type": "object",
+          "description": "Kafka consumer configuration",
+          "properties": {
+            "brokers": { "type": "array", "items": { "type": "string" }, "description": "Kafka broker addresses" },
+            "topic": { "type": "string", "description": "Kafka topic to consume from" },
+            "group_id": { "type": "string", "description": "Consumer group ID" },
+            "offset": { "type": "string", "enum": ["earliest", "latest"], "description": "Starting offset" },
+            "auth": { "$ref": "#/definitions/auth" },
+            "tls": { "$ref": "#/definitions/tls" }
+          },
+          "required": ["topic"]
+        },
+        "database": {
+          "type": "object",
+          "description": "Database poller configuration",
+          "properties": {
+            "driver": { "type": "string", "enum": ["postgres", "mysql", "mssql", "oracle"] },
+            "dsn": { "type": "string", "description": "Database connection string" },
+            "poll_interval": { "type": "string" },
+            "query": { "type": "string", "description": "SQL query to poll for new records" },
+            "post_process_statement": { "type": "string", "description": "SQL to run after reading records" },
+            "tls": { "$ref": "#/definitions/tls" }
+          },
+          "required": ["driver", "dsn"]
+        },
+        "sftp": {
+          "type": "object",
+          "description": "SFTP file poller configuration",
+          "properties": {
+            "host": { "type": "string" },
+            "port": { "type": "integer", "default": 22 },
+            "poll_interval": { "type": "string" },
+            "directory": { "type": "string" },
+            "file_pattern": { "type": "string" },
+            "move_to": { "type": "string" },
+            "error_dir": { "type": "string" },
+            "auth": { "$ref": "#/definitions/auth" },
+            "sort_by": { "type": "string", "enum": ["name", "date", "size"] }
+          },
+          "required": ["host"]
+        },
+        "channel": {
+          "type": "object",
+          "description": "Channel chaining source",
+          "properties": {
+            "source_channel_id": { "type": "string", "description": "Channel ID to receive messages from" }
+          },
+          "required": ["source_channel_id"]
+        },
+        "email": {
+          "type": "object",
+          "description": "Email inbox poller (IMAP/POP3)",
+          "properties": {
+            "protocol": { "type": "string", "enum": ["imap", "pop3"] },
+            "host": { "type": "string" },
+            "port": { "type": "integer" },
+            "poll_interval": { "type": "string" },
+            "tls": { "$ref": "#/definitions/tls" },
+            "auth": { "$ref": "#/definitions/auth" },
+            "folder": { "type": "string", "default": "INBOX" },
+            "filter": { "type": "string" },
+            "read_attachments": { "type": "boolean" },
+            "delete_after_read": { "type": "boolean" }
+          },
+          "required": ["host"]
+        },
+        "dicom": {
+          "type": "object",
+          "description": "DICOM C-STORE SCP listener",
+          "properties": {
+            "port": { "type": "integer" },
+            "ae_title": { "type": "string", "description": "Application Entity title" },
+            "calling_ae_titles": { "type": "array", "items": { "type": "string" }, "description": "Allowed calling AE titles" },
+            "tls": { "$ref": "#/definitions/tls" }
+          },
+          "required": ["port"]
+        },
+        "soap": {
+          "type": "object",
+          "description": "SOAP web service endpoint",
+          "properties": {
+            "port": { "type": "integer" },
+            "wsdl_path": { "type": "string" },
+            "service_name": { "type": "string" },
+            "tls": { "$ref": "#/definitions/tls" },
+            "auth": { "$ref": "#/definitions/auth" }
+          },
+          "required": ["port"]
+        },
+        "fhir": {
+          "type": "object",
+          "description": "FHIR REST endpoint or subscription listener",
+          "properties": {
+            "port": { "type": "integer" },
+            "base_path": { "type": "string", "default": "/fhir" },
+            "version": { "type": "string", "enum": ["R4", "STU3"] },
+            "subscription_type": { "type": "string", "enum": ["rest-hook", "websocket"] },
+            "tls": { "$ref": "#/definitions/tls" },
+            "auth": { "$ref": "#/definitions/auth" }
+          },
+          "required": ["port"]
+        },
+        "ihe": {
+          "type": "object",
+          "description": "IHE profile listener",
+          "properties": {
+            "profile": { "type": "string", "description": "IHE profile (e.g., XDS.b, PIX, PDQ)" },
+            "port": { "type": "integer" },
+            "tls": { "$ref": "#/definitions/tls" },
+            "auth": { "$ref": "#/definitions/auth" }
+          },
+          "required": ["profile", "port"]
+        }
+      }
+    },
+    "validator": {
+      "type": "object",
+      "description": "Message validator configuration",
+      "properties": {
+        "runtime": { "type": "string", "enum": ["node"], "description": "Script runtime" },
+        "entrypoint": { "type": "string", "description": "TypeScript file for validation (e.g., validator.ts)" }
+      }
+    },
+    "transformer": {
+      "type": "object",
+      "description": "Message transformer configuration",
+      "properties": {
+        "runtime": { "type": "string", "enum": ["node"], "description": "Script runtime" },
+        "entrypoint": { "type": "string", "description": "TypeScript file for transformation (e.g., transformer.ts)" }
+      }
+    },
+    "pipeline": {
+      "type": "object",
+      "description": "Advanced pipeline configuration (overrides validator/transformer)",
+      "properties": {
+        "preprocessor": { "type": "string", "description": "Preprocessor script file" },
+        "validator": { "type": "string", "description": "Validator script file" },
+        "source_filter": { "type": "string", "description": "Source filter script file" },
+        "transformer": { "type": "string", "description": "Transformer script file" },
+        "postprocessor": { "type": "string", "description": "Postprocessor script file" }
+      }
+    },
+    "destinations": {
+      "type": "array",
+      "description": "List of destination references (by name) or inline destination configs",
+      "items": {
+        "oneOf": [
+          { "type": "string", "description": "Reference to a named destination in intu.yaml" },
+          {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "description": "Destination name" },
+              "ref": { "type": "string", "description": "Reference to named destination in intu.yaml" },
+              "type": { "type": "string", "enum": ["http", "kafka", "tcp", "file", "database", "sftp", "smtp", "channel", "dicom", "jms", "fhir", "direct"] },
+              "filter": { "type": "string", "description": "Destination-specific filter script" },
+              "transformer": { "type": "string", "description": "Destination-specific transformer script" },
+              "response_transformer": { "type": "string", "description": "Response transformer script" },
+              "queue": {
+                "type": "object",
+                "properties": {
+                  "enabled": { "type": "boolean" },
+                  "max_size": { "type": "integer" },
+                  "overflow": { "type": "string", "enum": ["drop", "block", "reject"] },
+                  "persist": { "type": "boolean" },
+                  "threads": { "type": "integer" }
+                }
+              },
+              "retry": { "$ref": "#/definitions/retry" }
+            }
+          }
+        ]
+      }
+    },
+    "logging": {
+      "type": "object",
+      "description": "Channel-specific logging configuration",
+      "properties": {
+        "level": { "type": "string", "enum": ["debug", "info", "warn", "error"] },
+        "payloads": {
+          "type": "object",
+          "properties": {
+            "source": { "type": "boolean" },
+            "transformed": { "type": "boolean" },
+            "sent": { "type": "boolean" },
+            "response": { "type": "boolean" },
+            "filtered": { "type": "boolean" }
+          }
+        },
+        "truncate_at": { "type": "integer", "description": "Truncate payload logs at this many characters" }
+      }
+    },
+    "error_handling": {
+      "type": "object",
+      "description": "Error handling configuration",
+      "properties": {
+        "on_error": { "type": "string", "enum": ["stop", "continue", "retry"], "description": "Action on error" },
+        "dlq": {
+          "type": "object",
+          "properties": {
+            "destination": { "type": "string", "description": "Dead letter queue destination name" }
+          }
+        },
+        "alert": {
+          "type": "object",
+          "properties": {
+            "destination": { "type": "string", "description": "Alert destination name" }
+          }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "properties": {
+        "on_deploy": { "type": "string", "description": "Script to run on deploy" },
+        "on_undeploy": { "type": "string", "description": "Script to run on undeploy" }
+      }
+    },
+    "message_storage": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "content_types": { "type": "array", "items": { "type": "string", "enum": ["source", "transformed", "sent", "response", "error"] } },
+        "retention_days": { "type": "integer" }
+      }
+    },
+    "batch": {
+      "type": "object",
+      "description": "Batch processing configuration",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["split", "aggregate"] },
+        "split_on": { "type": "string", "description": "JSONPath for splitting" },
+        "custom_splitter": { "type": "string", "description": "Custom splitter script" },
+        "max_batch_size": { "type": "integer" },
+        "batch_timeout_ms": { "type": "integer" }
+      }
+    },
+    "attachments": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "store": { "type": "string", "enum": ["filesystem", "s3", "database"] },
+        "max_size_mb": { "type": "integer" },
+        "inline_threshold_kb": { "type": "integer" },
+        "directory": { "type": "string" },
+        "bucket": { "type": "string" },
+        "region": { "type": "string" }
+      }
+    },
+    "tracing": {
+      "type": "object",
+      "properties": {
+        "correlation_id_header": { "type": "string", "description": "HTTP header to extract correlation ID from" },
+        "propagate": { "type": "boolean", "description": "Propagate tracing context to destinations" }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "properties": {
+        "zero_copy": { "type": "boolean", "description": "Enable zero-copy message passing" },
+        "sync_destinations": { "type": "boolean", "description": "Send to destinations synchronously" }
+      }
+    },
+    "pruning": {
+      "type": "object",
+      "properties": {
+        "retention_days": { "type": "integer" },
+        "prune_errored": { "type": "boolean" }
+      }
+    },
+    "depends_on": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Channel IDs that must be running before this channel starts"
+    },
+    "startup_order": {
+      "type": "integer",
+      "description": "Startup order priority (lower numbers start first)"
+    }
+  },
+  "definitions": {
+    "tls": {
+      "type": "object",
+      "description": "TLS configuration",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "cert_file": { "type": "string" },
+        "key_file": { "type": "string" },
+        "ca_file": { "type": "string" },
+        "client_cert_file": { "type": "string" },
+        "client_key_file": { "type": "string" },
+        "min_version": { "type": "string", "enum": ["1.2", "1.3"] },
+        "client_auth": { "type": "string", "enum": ["none", "request", "require"] },
+        "insecure_skip_verify": { "type": "boolean" }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "description": "Authentication configuration",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["basic", "bearer", "api_key", "oauth2", "mtls", "sasl", "private_key", "password"] },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "token": { "type": "string" },
+        "key": { "type": "string" },
+        "header": { "type": "string" },
+        "query_param": { "type": "string" },
+        "token_url": { "type": "string" },
+        "auth_url": { "type": "string" },
+        "client_id": { "type": "string" },
+        "client_secret": { "type": "string" },
+        "scopes": { "type": "array", "items": { "type": "string" } },
+        "redirect_uri": { "type": "string" },
+        "ca_file": { "type": "string" },
+        "client_cert_file": { "type": "string" },
+        "client_key_file": { "type": "string" },
+        "private_key_file": { "type": "string" },
+        "passphrase": { "type": "string" },
+        "mechanism": { "type": "string" },
+        "access_key_id": { "type": "string" },
+        "secret_access_key": { "type": "string" },
+        "domain": { "type": "string" }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "description": "Retry configuration",
+      "properties": {
+        "max_attempts": { "type": "integer" },
+        "backoff": { "type": "string", "enum": ["constant", "linear", "exponential"] },
+        "initial_delay_ms": { "type": "integer" },
+        "max_delay_ms": { "type": "integer" },
+        "jitter": { "type": "boolean" },
+        "retry_on": { "type": "array", "items": { "type": "string" } },
+        "no_retry_on": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

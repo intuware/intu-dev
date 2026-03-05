@@ -164,7 +164,7 @@ const tsConfigJSON = `{
 
 const projectREADME = `# intu Project
 
-Bootstrapped project for the intu interoperability framework.
+Bootstrapped project for the [intu](https://intu.dev) interoperability framework.
 
 ## Quick Start
 
@@ -175,7 +175,11 @@ Bootstrapped project for the intu interoperability framework.
    - .env
 2. Install transformer runtime dependencies:
    - npm install
-3. Run the framework once serve is implemented:
+3. Build TypeScript transformers:
+   - intu build --dir .
+4. Validate configuration:
+   - intu validate --dir .
+5. Run the framework once serve is implemented:
    - intu serve
 
 ## Structure
@@ -183,9 +187,39 @@ Bootstrapped project for the intu interoperability framework.
 - channels/sample-channel/channel.yaml: sample channel definition.
 - channels/sample-channel/transformer.ts: pure transformer (JSON in, JSON out).
 - channels/sample-channel/validator.ts: sample validator.
+- lib/index.ts: shared utility functions for transformers.
 
 ## Add a Channel
 
   intu c my-channel --dir .
   intu channel add my-channel --dir .
+
+## JSON Schemas (IDE & AI Assistance)
+
+intu provides JSON schemas for configuration files to enable autocompletion,
+validation, and AI-assisted configuration generation.
+
+- Channel schema: https://intu.dev/schema/channel.schema.json
+- Profile schema: https://intu.dev/schema/profile.schema.json
+
+### VS Code Setup
+
+Add to your .vscode/settings.json:
+
+  {
+    "yaml.schemas": {
+      "https://intu.dev/schema/channel.schema.json": "channels/*/channel.yaml",
+      "https://intu.dev/schema/profile.schema.json": ["intu.yaml", "intu.*.yaml"]
+    }
+  }
+
+### AI Assistants
+
+When using AI coding assistants, reference the schemas above to help
+generate valid intu configuration. The schemas define all valid
+properties, types, and descriptions for channel.yaml and intu.yaml files.
+
+## Documentation
+
+Full documentation: https://intu.dev/documentation/
 `
