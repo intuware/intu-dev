@@ -21,6 +21,12 @@ var (
 	oauth2CacheMu sync.RWMutex
 )
 
+func ClearOAuth2Cache() {
+	oauth2CacheMu.Lock()
+	oauth2Cache = make(map[string]*oauth2CachedToken)
+	oauth2CacheMu.Unlock()
+}
+
 func fetchOAuth2Token(tokenURL, clientID, clientSecret string, scopes []string) (string, error) {
 	if tokenURL == "" || clientID == "" || clientSecret == "" {
 		return "", fmt.Errorf("oauth2: token_url, client_id, and client_secret are required")

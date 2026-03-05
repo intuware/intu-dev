@@ -1,0 +1,1765 @@
+package runtime
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/intuware/intu/internal/connector"
+	"github.com/intuware/intu/internal/message"
+	"github.com/intuware/intu/pkg/config"
+)
+
+func e2eLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func writeJS(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("write JS %s: %v", name, err)
+	}
+}
+
+type destCapture struct {
+	mu       sync.Mutex
+	messages []*message.Message
+	bodies   [][]byte
+	headers  []http.Header
+}
+
+func (d *destCapture) handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		d.mu.Lock()
+		d.bodies = append(d.bodies, body)
+		d.headers = append(d.headers, r.Header.Clone())
+		d.mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+}
+
+func (d *destCapture) count() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.bodies)
+}
+
+func (d *destCapture) body(i int) []byte {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if i < len(d.bodies) {
+		return d.bodies[i]
+	}
+	return nil
+}
+
+func waitFor(t *testing.T, timeout time.Duration, fn func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if fn() {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("condition not met within %v", timeout)
+}
+
+func buildChannelRuntime(
+	t *testing.T,
+	id string,
+	chCfg *config.ChannelConfig,
+	source connector.SourceConnector,
+	destinations map[string]connector.DestinationConnector,
+	channelDir string,
+) *ChannelRuntime {
+	t.Helper()
+	logger := e2eLogger()
+	runner := NewGojaRunner()
+	pipeline := NewPipeline(channelDir, channelDir, id, chCfg, runner, logger)
+
+	return &ChannelRuntime{
+		ID:           id,
+		Config:       chCfg,
+		Source:       source,
+		Destinations: destinations,
+		DestConfigs:  chCfg.Destinations,
+		Pipeline:     pipeline,
+		Logger:       logger,
+	}
+}
+
+// ===================================================================
+// Test 1: HTTP Source -> Validator -> Transformer -> HTTP Destination
+// ===================================================================
+
+func TestE2E_HTTPSourceToHTTPDest(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "validator.js", `
+exports.validate = function validate(msg, ctx) {
+	return msg !== null && msg !== undefined;
+};`)
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { transformed: true, original: msg, channelId: ctx.channelId };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-http-to-http",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Validator:   "validator.js",
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest-http"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest-http", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest-http": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, err := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("hello world"))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	if err := json.Unmarshal(capture.body(0), &result); err != nil {
+		t.Fatalf("unmarshal destination body: %v", err)
+	}
+	if result["transformed"] != true {
+		t.Fatalf("expected transformed=true, got %v", result["transformed"])
+	}
+	if result["channelId"] != "e2e-http-to-http" {
+		t.Fatalf("expected channelId, got %v", result["channelId"])
+	}
+}
+
+// ===================================================================
+// Test 2: File Source -> Validator -> Transformer -> HTTP Dest
+// (Simulates SFTP -> HTTP)
+// ===================================================================
+
+func TestE2E_FileSourceToHTTPDest_SFTPToHTTP(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	inputDir := filepath.Join(t.TempDir(), "input")
+	processedDir := filepath.Join(t.TempDir(), "processed")
+	os.MkdirAll(inputDir, 0o755)
+	os.MkdirAll(processedDir, 0o755)
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "validator.js", `
+exports.validate = function validate(msg, ctx) {
+	return typeof msg === "string" && msg.length > 0;
+};`)
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { source: "sftp", payload: msg, channelId: ctx.channelId };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-sftp-to-http",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Validator:   "validator.js",
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "file",
+			File: &config.FileListener{
+				Directory:    inputDir,
+				FilePattern:  "*.dat",
+				PollInterval: "100ms",
+				MoveTo:       processedDir,
+				SortBy:       "name",
+			},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "http-dest"},
+		},
+	}
+
+	fileSrc := connector.NewFileSource(chCfg.Listener.File, e2eLogger())
+	httpDest := connector.NewHTTPDest("http-dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, fileSrc, map[string]connector.DestinationConnector{
+		"http-dest": httpDest,
+	}, channelDir)
+
+	os.WriteFile(filepath.Join(inputDir, "message1.dat"), []byte("SFTP file content A"), 0o644)
+	os.WriteFile(filepath.Join(inputDir, "message2.dat"), []byte("SFTP file content B"), 0o644)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	waitFor(t, 3*time.Second, func() bool { return capture.count() >= 2 })
+
+	for i := 0; i < 2; i++ {
+		var result map[string]any
+		if err := json.Unmarshal(capture.body(i), &result); err != nil {
+			t.Fatalf("unmarshal body %d: %v", i, err)
+		}
+		if result["source"] != "sftp" {
+			t.Fatalf("expected source=sftp, got %v", result["source"])
+		}
+	}
+
+	processedEntries, _ := os.ReadDir(processedDir)
+	if len(processedEntries) != 2 {
+		t.Fatalf("expected 2 processed files, got %d", len(processedEntries))
+	}
+}
+
+// ===================================================================
+// Test 3: HTTP Source -> Transformer -> File Dest
+// (Simulates HTTP -> SFTP)
+// ===================================================================
+
+func TestE2E_HTTPSourceToFileDest_HTTPToSFTP(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "output")
+	os.MkdirAll(outputDir, 0o755)
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { destination: "sftp", data: msg, messageId: ctx.messageId };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-http-to-sftp",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "sftp-dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	fileDest := connector.NewFileDest("sftp-dest", &config.FileDestMapConfig{
+		Directory:       outputDir,
+		FilenamePattern: "{{channelId}}_{{messageId}}.json",
+	}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"sftp-dest": fileDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	for i := 0; i < 3; i++ {
+		resp, err := http.Post("http://"+httpSrc.Addr()+"/", "text/plain",
+			strings.NewReader(fmt.Sprintf("HTTP payload %d", i)))
+		if err != nil {
+			t.Fatalf("POST %d: %v", i, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("POST %d: expected 200, got %d", i, resp.StatusCode)
+		}
+	}
+
+	waitFor(t, 2*time.Second, func() bool {
+		entries, _ := os.ReadDir(outputDir)
+		return len(entries) >= 3
+	})
+
+	entries, _ := os.ReadDir(outputDir)
+	if len(entries) < 3 {
+		t.Fatalf("expected 3 output files, got %d", len(entries))
+	}
+
+	data, _ := os.ReadFile(filepath.Join(outputDir, entries[0].Name()))
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("unmarshal output file: %v", err)
+	}
+	if result["destination"] != "sftp" {
+		t.Fatalf("expected destination=sftp, got %v", result["destination"])
+	}
+}
+
+// ===================================================================
+// Test 4: HL7 via SFTP -> FHIR to HTTPS with OAuth2
+// (File Source + HL7v2 parser + Validator + Transformer -> FHIR HTTP Dest with OAuth2)
+// ===================================================================
+
+func TestE2E_HL7viaSFTP_ToFHIR_HTTPS_OAuth2(t *testing.T) {
+	var destMu sync.Mutex
+	var destBodies [][]byte
+	var destAuthHeaders []string
+
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		if r.Form.Get("grant_type") != "client_credentials" {
+			w.WriteHeader(400)
+			return
+		}
+		if r.Form.Get("client_id") != "fhir-client-id" || r.Form.Get("client_secret") != "fhir-client-secret" {
+			w.WriteHeader(401)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "oauth2-fhir-token-xyz",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+	defer tokenServer.Close()
+
+	fhirServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		destMu.Lock()
+		destBodies = append(destBodies, body)
+		destAuthHeaders = append(destAuthHeaders, r.Header.Get("Authorization"))
+		destMu.Unlock()
+
+		w.Header().Set("Content-Type", "application/fhir+json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"resourceType":"Bundle","id":"resp-123"}`))
+	}))
+	defer fhirServer.Close()
+
+	// Clear OAuth2 cache for this test
+	connector.ClearOAuth2Cache()
+
+	inputDir := filepath.Join(t.TempDir(), "hl7-input")
+	processedDir := filepath.Join(t.TempDir(), "hl7-processed")
+	os.MkdirAll(inputDir, 0o755)
+	os.MkdirAll(processedDir, 0o755)
+
+	channelDir := t.TempDir()
+
+	writeJS(t, channelDir, "validator.js", `
+exports.validate = function validate(msg, ctx) {
+	if (!msg || !msg.MSH) return false;
+	var msgType = msg.MSH["8"];
+	if (!msgType) return false;
+	return true;
+};`)
+
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	var pid = msg.PID || {};
+	var nameField = pid["5"] || {};
+	var family = nameField["1"] || "Unknown";
+	var given = nameField["2"] || "Unknown";
+	var mrn = pid["3"] || "000";
+
+	return {
+		resourceType: "Bundle",
+		type: "transaction",
+		entry: [{
+			resource: {
+				resourceType: "Patient",
+				identifier: [{ system: "urn:oid:2.16.840.1.113883.2.1", value: mrn }],
+				name: [{ family: family, given: [given] }],
+				active: true
+			},
+			request: {
+				method: "POST",
+				url: "Patient"
+			}
+		}]
+	};
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-hl7-sftp-to-fhir",
+		Enabled: true,
+		DataTypes: &config.DataTypesConfig{
+			Inbound:  "hl7v2",
+			Outbound: "fhir_r4",
+		},
+		Pipeline: &config.PipelineConfig{
+			Validator:   "validator.js",
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "file",
+			File: &config.FileListener{
+				Directory:    inputDir,
+				FilePattern:  "*.hl7",
+				PollInterval: "100ms",
+				MoveTo:       processedDir,
+				SortBy:       "name",
+			},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "fhir-dest"},
+		},
+	}
+
+	fileSrc := connector.NewFileSource(chCfg.Listener.File, e2eLogger())
+	httpDest := connector.NewHTTPDest("fhir-dest", &config.HTTPDestConfig{
+		URL:    fhirServer.URL + "/fhir/",
+		Method: "POST",
+		Headers: map[string]string{
+			"Content-Type": "application/fhir+json",
+		},
+		Auth: &config.HTTPAuthConfig{
+			Type:         "oauth2_client_credentials",
+			TokenURL:     tokenServer.URL,
+			ClientID:     "fhir-client-id",
+			ClientSecret: "fhir-client-secret",
+			Scopes:       []string{"system/*.write"},
+		},
+	}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, fileSrc, map[string]connector.DestinationConnector{
+		"fhir-dest": httpDest,
+	}, channelDir)
+
+	hl7Message := "MSH|^~\\&|LABSYS|HOSPITAL|FHIRSYS|CLOUD|20230615120000||ADT^A01|MSG001|P|2.5\r" +
+		"PID|1||MRN12345||Smith^Jane^M||19850301|F|||123 Main St^^Springfield^IL^62704\r" +
+		"PV1|1|I|ICU^101^A|E|||1234^Jones^Robert^^^Dr||||||||||||||V001\r"
+
+	hl7Message2 := "MSH|^~\\&|LABSYS|HOSPITAL|FHIRSYS|CLOUD|20230615120100||ADT^A01|MSG002|P|2.5\r" +
+		"PID|1||MRN67890||Doe^John^Q||19900715|M|||456 Oak Ave^^Chicago^IL^60601\r" +
+		"PV1|1|O|ER^201^B|U|||5678^Brown^Alice^^^Dr||||||||||||||V002\r"
+
+	os.WriteFile(filepath.Join(inputDir, "adt_001.hl7"), []byte(hl7Message), 0o644)
+	os.WriteFile(filepath.Join(inputDir, "adt_002.hl7"), []byte(hl7Message2), 0o644)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	waitFor(t, 5*time.Second, func() bool {
+		destMu.Lock()
+		defer destMu.Unlock()
+		return len(destBodies) >= 2
+	})
+
+	destMu.Lock()
+	defer destMu.Unlock()
+
+	if len(destBodies) < 2 {
+		t.Fatalf("expected 2 FHIR bundles, got %d", len(destBodies))
+	}
+
+	for i, body := range destBodies {
+		var bundle map[string]any
+		if err := json.Unmarshal(body, &bundle); err != nil {
+			t.Fatalf("unmarshal FHIR bundle %d: %v", i, err)
+		}
+		if bundle["resourceType"] != "Bundle" {
+			t.Fatalf("bundle %d: expected resourceType=Bundle, got %v", i, bundle["resourceType"])
+		}
+		if bundle["type"] != "transaction" {
+			t.Fatalf("bundle %d: expected type=transaction, got %v", i, bundle["type"])
+		}
+		entries, ok := bundle["entry"].([]any)
+		if !ok || len(entries) == 0 {
+			t.Fatalf("bundle %d: expected at least 1 entry", i)
+		}
+		entry := entries[0].(map[string]any)
+		resource := entry["resource"].(map[string]any)
+		if resource["resourceType"] != "Patient" {
+			t.Fatalf("bundle %d: expected Patient resource, got %v", i, resource["resourceType"])
+		}
+	}
+
+	for i, auth := range destAuthHeaders {
+		if auth != "Bearer oauth2-fhir-token-xyz" {
+			t.Fatalf("message %d: expected OAuth2 bearer token, got %q", i, auth)
+		}
+	}
+
+	var bundle0 map[string]any
+	json.Unmarshal(destBodies[0], &bundle0)
+	entry0 := bundle0["entry"].([]any)[0].(map[string]any)
+	resource0 := entry0["resource"].(map[string]any)
+	names0 := resource0["name"].([]any)
+	name0 := names0[0].(map[string]any)
+	if name0["family"] != "Smith" {
+		t.Fatalf("expected family=Smith, got %v", name0["family"])
+	}
+
+	processedEntries, _ := os.ReadDir(processedDir)
+	if len(processedEntries) != 2 {
+		t.Fatalf("expected 2 processed HL7 files, got %d", len(processedEntries))
+	}
+}
+
+// ===================================================================
+// Test 5: Validator Rejects Invalid Messages
+// ===================================================================
+
+func TestE2E_ValidatorRejects(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "validator.js", `
+exports.validate = function validate(msg, ctx) {
+	if (typeof msg !== "string") return false;
+	return msg.indexOf("GOOD") >= 0;
+};`)
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { validated: true, content: msg };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-validator-reject",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Validator:   "validator.js",
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	addr := httpSrc.Addr()
+
+	resp, _ := http.Post("http://"+addr+"/", "text/plain", strings.NewReader("BAD message"))
+	resp.Body.Close()
+
+	resp, _ = http.Post("http://"+addr+"/", "text/plain", strings.NewReader("GOOD message here"))
+	resp.Body.Close()
+
+	resp, _ = http.Post("http://"+addr+"/", "text/plain", strings.NewReader("another BAD one"))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+	time.Sleep(200 * time.Millisecond)
+
+	if capture.count() != 1 {
+		t.Fatalf("expected exactly 1 message to pass validator, got %d", capture.count())
+	}
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["validated"] != true {
+		t.Fatalf("expected validated=true")
+	}
+	content, ok := result["content"].(string)
+	if !ok || !strings.Contains(content, "GOOD") {
+		t.Fatalf("expected content with GOOD, got %v", result["content"])
+	}
+}
+
+// ===================================================================
+// Test 6: Source Filter Drops Messages
+// ===================================================================
+
+func TestE2E_SourceFilter(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "source-filter.js", `
+exports.filter = function filter(msg, ctx) {
+	if (typeof msg !== "string") return true;
+	return msg.indexOf("ACCEPT") >= 0;
+};`)
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { filtered: false, data: msg };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-source-filter",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			SourceFilter: "source-filter.js",
+			Transformer:  "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	addr := httpSrc.Addr()
+	http.Post("http://"+addr+"/", "text/plain", strings.NewReader("DROP this"))
+	http.Post("http://"+addr+"/", "text/plain", strings.NewReader("ACCEPT this"))
+	http.Post("http://"+addr+"/", "text/plain", strings.NewReader("DROP this too"))
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+	time.Sleep(200 * time.Millisecond)
+
+	if capture.count() != 1 {
+		t.Fatalf("expected 1 accepted message, got %d", capture.count())
+	}
+}
+
+// ===================================================================
+// Test 7: Multi-Destination Routing
+// ===================================================================
+
+func TestE2E_MultiDestinationRouting(t *testing.T) {
+	captureA := &destCapture{}
+	captureB := &destCapture{}
+	serverA := httptest.NewServer(captureA.handler())
+	defer serverA.Close()
+	serverB := httptest.NewServer(captureB.handler())
+	defer serverB.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { routed: true, data: msg };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-multi-dest",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest-a"},
+			{Name: "dest-b"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	destA := connector.NewHTTPDest("dest-a", &config.HTTPDestConfig{URL: serverA.URL}, e2eLogger())
+	destB := connector.NewHTTPDest("dest-b", &config.HTTPDestConfig{URL: serverB.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest-a": destA,
+		"dest-b": destB,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("multi-dest payload"))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return captureA.count() >= 1 && captureB.count() >= 1 })
+
+	if captureA.count() != 1 {
+		t.Fatalf("dest-a: expected 1 message, got %d", captureA.count())
+	}
+	if captureB.count() != 1 {
+		t.Fatalf("dest-b: expected 1 message, got %d", captureB.count())
+	}
+
+	var resultA, resultB map[string]any
+	json.Unmarshal(captureA.body(0), &resultA)
+	json.Unmarshal(captureB.body(0), &resultB)
+	if resultA["routed"] != true || resultB["routed"] != true {
+		t.Fatal("expected routed=true on both destinations")
+	}
+}
+
+// ===================================================================
+// Test 8: Destination Filter
+// ===================================================================
+
+func TestE2E_DestinationFilter(t *testing.T) {
+	captureAllow := &destCapture{}
+	captureBlock := &destCapture{}
+	serverAllow := httptest.NewServer(captureAllow.handler())
+	defer serverAllow.Close()
+	serverBlock := httptest.NewServer(captureBlock.handler())
+	defer serverBlock.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { data: msg };
+};`)
+	writeJS(t, channelDir, "dest-filter-block.js", `
+exports.filter = function filter(msg, ctx) {
+	return false;
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-dest-filter",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "allow-dest"},
+			{Name: "block-dest", Filter: "dest-filter-block.js"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	allowDest := connector.NewHTTPDest("allow-dest", &config.HTTPDestConfig{URL: serverAllow.URL}, e2eLogger())
+	blockDest := connector.NewHTTPDest("block-dest", &config.HTTPDestConfig{URL: serverBlock.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"allow-dest": allowDest,
+		"block-dest": blockDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("test msg"))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return captureAllow.count() >= 1 })
+	time.Sleep(200 * time.Millisecond)
+
+	if captureAllow.count() != 1 {
+		t.Fatalf("allow-dest: expected 1, got %d", captureAllow.count())
+	}
+	if captureBlock.count() != 0 {
+		t.Fatalf("block-dest: expected 0, got %d", captureBlock.count())
+	}
+}
+
+// ===================================================================
+// Test 9: Destination Transformer
+// ===================================================================
+
+func TestE2E_DestinationTransformer(t *testing.T) {
+	captureRaw := &destCapture{}
+	captureXform := &destCapture{}
+	serverRaw := httptest.NewServer(captureRaw.handler())
+	defer serverRaw.Close()
+	serverXform := httptest.NewServer(captureXform.handler())
+	defer serverXform.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { source_transformed: true, data: msg };
+};`)
+	writeJS(t, channelDir, "dest-transform.js", `
+exports.transform = function transform(msg, ctx) {
+	msg.dest_transformed = true;
+	msg.destination = ctx.destinationName;
+	return msg;
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-dest-transformer",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "raw-dest"},
+			{Name: "xform-dest", TransformerFile: "dest-transform.js"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	rawDest := connector.NewHTTPDest("raw-dest", &config.HTTPDestConfig{URL: serverRaw.URL}, e2eLogger())
+	xformDest := connector.NewHTTPDest("xform-dest", &config.HTTPDestConfig{URL: serverXform.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"raw-dest":   rawDest,
+		"xform-dest": xformDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("test data"))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool {
+		return captureRaw.count() >= 1 && captureXform.count() >= 1
+	})
+
+	var rawResult map[string]any
+	json.Unmarshal(captureRaw.body(0), &rawResult)
+	if rawResult["source_transformed"] != true {
+		t.Fatal("raw-dest: expected source_transformed=true")
+	}
+	if _, exists := rawResult["dest_transformed"]; exists {
+		t.Fatal("raw-dest: should NOT have dest_transformed")
+	}
+
+	var xformResult map[string]any
+	json.Unmarshal(captureXform.body(0), &xformResult)
+	if xformResult["source_transformed"] != true {
+		t.Fatal("xform-dest: expected source_transformed=true")
+	}
+	if xformResult["dest_transformed"] != true {
+		t.Fatal("xform-dest: expected dest_transformed=true")
+	}
+	if xformResult["destination"] != "xform-dest" {
+		t.Fatalf("xform-dest: expected destination name, got %v", xformResult["destination"])
+	}
+}
+
+// ===================================================================
+// Test 10: Preprocessor modifies raw bytes
+// ===================================================================
+
+func TestE2E_Preprocessor(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "preprocessor.js", `
+exports.preprocess = function preprocess(raw) {
+	var s = "";
+	if (raw && raw.length) {
+		for (var i = 0; i < raw.length; i++) {
+			s += String.fromCharCode(raw[i]);
+		}
+	} else if (typeof raw === "string") {
+		s = raw;
+	}
+	return "PREPROCESSED:" + s;
+};`)
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { preprocessed: typeof msg === "string" && msg.indexOf("PREPROCESSED:") === 0, content: msg };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-preprocessor",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Preprocessor: "preprocessor.js",
+			Transformer:  "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("original data"))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["preprocessed"] != true {
+		t.Fatalf("expected preprocessed=true, got %v", result["preprocessed"])
+	}
+}
+
+// ===================================================================
+// Test 11: Full Pipeline - All Stages Active
+// ===================================================================
+
+func TestE2E_FullPipelineAllStages(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+
+	writeJS(t, channelDir, "preprocessor.js", `
+exports.preprocess = function preprocess(raw) {
+	var s = "";
+	if (raw && raw.length) {
+		for (var i = 0; i < raw.length; i++) {
+			s += String.fromCharCode(raw[i]);
+		}
+	} else if (typeof raw === "string") {
+		s = raw;
+	}
+	return "PRE:" + s;
+};`)
+	writeJS(t, channelDir, "validator.js", `
+exports.validate = function validate(msg, ctx) {
+	return typeof msg === "string" && msg.indexOf("PRE:") === 0;
+};`)
+	writeJS(t, channelDir, "source-filter.js", `
+exports.filter = function filter(msg, ctx) {
+	return typeof msg === "string" && msg.indexOf("KEEP") >= 0;
+};`)
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { stage: "source_transformed", content: msg };
+};`)
+	writeJS(t, channelDir, "dest-transform.js", `
+exports.transform = function transform(msg, ctx) {
+	msg.stage = "dest_transformed";
+	return msg;
+};`)
+	writeJS(t, channelDir, "postprocessor.js", `
+exports.postprocess = function postprocess(msg, results, ctx) {
+	// postprocessor runs but doesn't affect output
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-full-pipeline",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Preprocessor:  "preprocessor.js",
+			Validator:     "validator.js",
+			SourceFilter:  "source-filter.js",
+			Transformer:   "transformer.js",
+			Postprocessor: "postprocessor.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest", TransformerFile: "dest-transform.js"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	addr := httpSrc.Addr()
+
+	http.Post("http://"+addr+"/", "text/plain", strings.NewReader("DROP this"))
+	http.Post("http://"+addr+"/", "text/plain", strings.NewReader("KEEP this"))
+	http.Post("http://"+addr+"/", "text/plain", strings.NewReader("DROP too"))
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+	time.Sleep(300 * time.Millisecond)
+
+	if capture.count() != 1 {
+		t.Fatalf("expected 1 message through full pipeline, got %d", capture.count())
+	}
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["stage"] != "dest_transformed" {
+		t.Fatalf("expected stage=dest_transformed, got %v", result["stage"])
+	}
+	content, _ := result["content"].(string)
+	if !strings.HasPrefix(content, "PRE:") {
+		t.Fatalf("expected content to start with PRE:, got %q", content)
+	}
+	if !strings.Contains(content, "KEEP") {
+		t.Fatalf("expected content to contain KEEP, got %q", content)
+	}
+}
+
+// ===================================================================
+// Test 12: HL7v2 Data Type Parsing Through Pipeline
+// ===================================================================
+
+func TestE2E_HL7v2DataTypeParsing(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	var msh = msg.MSH || {};
+	var pid = msg.PID || {};
+	return {
+		messageType: msh["8"],
+		controlId: msh["9"],
+		patientMRN: pid["3"],
+		patientName: pid["5"],
+		dataType: ctx.inboundDataType
+	};
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-hl7v2-parse",
+		Enabled: true,
+		DataTypes: &config.DataTypesConfig{
+			Inbound:  "hl7v2",
+			Outbound: "json",
+		},
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	hl7 := "MSH|^~\\&|SEND|FAC|RECV|FAC|20230101||ADT^A01|CTRL001|P|2.5\rPID|1||MRN999||Johnson^Michael\r"
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader(hl7))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+
+	if result["controlId"] != "CTRL001" {
+		t.Fatalf("expected controlId=CTRL001, got %v", result["controlId"])
+	}
+	if result["patientMRN"] != "MRN999" {
+		t.Fatalf("expected patientMRN=MRN999, got %v", result["patientMRN"])
+	}
+	if result["dataType"] != "hl7v2" {
+		t.Fatalf("expected dataType=hl7v2, got %v", result["dataType"])
+	}
+
+	nameMap, ok := result["patientName"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected patientName to be a map, got %T", result["patientName"])
+	}
+	if nameMap["1"] != "Johnson" {
+		t.Fatalf("expected family=Johnson, got %v", nameMap["1"])
+	}
+	if nameMap["2"] != "Michael" {
+		t.Fatalf("expected given=Michael, got %v", nameMap["2"])
+	}
+}
+
+// ===================================================================
+// Test 13: JSON Data Type Through Pipeline
+// ===================================================================
+
+func TestE2E_JSONDataTypePipeline(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "validator.js", `
+exports.validate = function validate(msg, ctx) {
+	return msg && msg.patientId !== undefined;
+};`)
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return {
+		resourceType: "Patient",
+		id: msg.patientId,
+		name: [{ family: msg.lastName, given: [msg.firstName] }],
+		birthDate: msg.dob
+	};
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-json-pipeline",
+		Enabled: true,
+		DataTypes: &config.DataTypesConfig{
+			Inbound:  "json",
+			Outbound: "json",
+		},
+		Pipeline: &config.PipelineConfig{
+			Validator:   "validator.js",
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	payload := `{"patientId":"P001","firstName":"Alice","lastName":"Brown","dob":"1990-05-15"}`
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "application/json", strings.NewReader(payload))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["resourceType"] != "Patient" {
+		t.Fatalf("expected resourceType=Patient, got %v", result["resourceType"])
+	}
+	if result["id"] != "P001" {
+		t.Fatalf("expected id=P001, got %v", result["id"])
+	}
+	if result["birthDate"] != "1990-05-15" {
+		t.Fatalf("expected birthDate, got %v", result["birthDate"])
+	}
+}
+
+// ===================================================================
+// Test 14: Legacy Validator Config (ScriptRef)
+// ===================================================================
+
+func TestE2E_LegacyValidatorConfig(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "validator.js", `
+exports.validate = function validate(msg, ctx) {
+	return typeof msg === "string" && msg.length > 5;
+};`)
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { legacy_validated: true, data: msg };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-legacy-validator",
+		Enabled: true,
+		Validator: &config.ScriptRef{
+			Runtime:    "node",
+			Entrypoint: "validator.js",
+		},
+		Transformer: &config.ScriptRef{
+			Runtime:    "node",
+			Entrypoint: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	addr := httpSrc.Addr()
+
+	http.Post("http://"+addr+"/", "text/plain", strings.NewReader("short"))
+	http.Post("http://"+addr+"/", "text/plain", strings.NewReader("long enough message"))
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+	time.Sleep(200 * time.Millisecond)
+
+	if capture.count() != 1 {
+		t.Fatalf("expected 1 message (short rejected by validator), got %d", capture.count())
+	}
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["legacy_validated"] != true {
+		t.Fatal("expected legacy_validated=true")
+	}
+}
+
+// ===================================================================
+// Test 15: HTTP Source with Auth -> Transformer -> HTTP Dest with Auth
+// ===================================================================
+
+func TestE2E_AuthenticatedHTTPToHTTP(t *testing.T) {
+	var destAuthHeader string
+	capture := &destCapture{}
+	destServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		destAuthHeader = r.Header.Get("Authorization")
+		body, _ := io.ReadAll(r.Body)
+		capture.mu.Lock()
+		capture.bodies = append(capture.bodies, body)
+		capture.mu.Unlock()
+		w.WriteHeader(200)
+	}))
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { secured: true, data: msg };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-auth-http",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{
+				Port: 0,
+				Auth: &config.AuthConfig{Type: "bearer", Token: "source-secret"},
+			},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{
+		URL:  destServer.URL,
+		Auth: &config.HTTPAuthConfig{Type: "bearer", Token: "dest-bearer-token"},
+	}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	addr := httpSrc.Addr()
+
+	resp, _ := http.Post("http://"+addr+"/", "text/plain", strings.NewReader("no auth"))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without auth, got %d", resp.StatusCode)
+	}
+
+	req, _ := http.NewRequest("POST", "http://"+addr+"/", strings.NewReader("with auth"))
+	req.Header.Set("Authorization", "Bearer source-secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST with auth: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 with auth, got %d", resp.StatusCode)
+	}
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	if destAuthHeader != "Bearer dest-bearer-token" {
+		t.Fatalf("expected dest bearer token, got %q", destAuthHeader)
+	}
+}
+
+// ===================================================================
+// Test 16: File Source + HL7 + Validator + Multiple Destinations
+// (HL7 -> FHIR HTTP + File Archive)
+// ===================================================================
+
+func TestE2E_HL7ToMultiDest_FHIRAndArchive(t *testing.T) {
+	fhirCapture := &destCapture{}
+	fhirServer := httptest.NewServer(fhirCapture.handler())
+	defer fhirServer.Close()
+
+	archiveDir := filepath.Join(t.TempDir(), "archive")
+	os.MkdirAll(archiveDir, 0o755)
+
+	inputDir := filepath.Join(t.TempDir(), "input")
+	os.MkdirAll(inputDir, 0o755)
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "validator.js", `
+exports.validate = function validate(msg, ctx) {
+	return msg && msg.MSH && msg.PID;
+};`)
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	var pid = msg.PID || {};
+	var name = pid["5"] || {};
+	return {
+		resourceType: "Bundle",
+		type: "transaction",
+		entry: [{
+			resource: {
+				resourceType: "Patient",
+				identifier: [{ value: pid["3"] || "unknown" }],
+				name: [{ family: name["1"] || "Unknown", given: [name["2"] || "Unknown"] }]
+			},
+			request: { method: "POST", url: "Patient" }
+		}]
+	};
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-hl7-multi-dest",
+		Enabled: true,
+		DataTypes: &config.DataTypesConfig{
+			Inbound:  "hl7v2",
+			Outbound: "fhir_r4",
+		},
+		Pipeline: &config.PipelineConfig{
+			Validator:   "validator.js",
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "file",
+			File: &config.FileListener{
+				Directory:    inputDir,
+				FilePattern:  "*.hl7",
+				PollInterval: "100ms",
+			},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "fhir-server"},
+			{Name: "archive"},
+		},
+	}
+
+	fileSrc := connector.NewFileSource(chCfg.Listener.File, e2eLogger())
+	fhirDest := connector.NewHTTPDest("fhir-server", &config.HTTPDestConfig{
+		URL:     fhirServer.URL,
+		Headers: map[string]string{"Content-Type": "application/fhir+json"},
+	}, e2eLogger())
+	archiveDest := connector.NewFileDest("archive", &config.FileDestMapConfig{
+		Directory:       archiveDir,
+		FilenamePattern: "{{channelId}}_{{timestamp}}.json",
+	}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, fileSrc, map[string]connector.DestinationConnector{
+		"fhir-server": fhirDest,
+		"archive":     archiveDest,
+	}, channelDir)
+
+	hl7 := "MSH|^~\\&|LAB|HOSP|EHR|CLOUD|20230101||ADT^A01|M001|P|2.5\rPID|1||MRN555||Williams^Sarah\r"
+	os.WriteFile(filepath.Join(inputDir, "patient.hl7"), []byte(hl7), 0o644)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	waitFor(t, 3*time.Second, func() bool { return fhirCapture.count() >= 1 })
+
+	var bundle map[string]any
+	json.Unmarshal(fhirCapture.body(0), &bundle)
+	if bundle["resourceType"] != "Bundle" {
+		t.Fatalf("expected Bundle, got %v", bundle["resourceType"])
+	}
+	entries := bundle["entry"].([]any)
+	resource := entries[0].(map[string]any)["resource"].(map[string]any)
+	names := resource["name"].([]any)
+	name := names[0].(map[string]any)
+	if name["family"] != "Williams" {
+		t.Fatalf("expected Williams, got %v", name["family"])
+	}
+
+	waitFor(t, 2*time.Second, func() bool {
+		archiveEntries, _ := os.ReadDir(archiveDir)
+		return len(archiveEntries) >= 1
+	})
+}
+
+// ===================================================================
+// Test 17: Channel Destination (Inter-Channel)
+// ===================================================================
+
+func TestE2E_InterChannelRouting(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDirA := t.TempDir()
+	channelDirB := t.TempDir()
+
+	writeJS(t, channelDirA, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { from_channel_a: true, original: msg };
+};`)
+	writeJS(t, channelDirB, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { from_channel_b: true, forwarded: msg };
+};`)
+
+	busChannelID := fmt.Sprintf("inter-ch-bus-%d", time.Now().UnixNano())
+
+	chCfgA := &config.ChannelConfig{
+		ID:      "channel-a",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "to-channel-b"},
+		},
+	}
+
+	chCfgB := &config.ChannelConfig{
+		ID:      "channel-b",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type:    "channel",
+			Channel: &config.ChannelListener{SourceChannelID: busChannelID},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "final-dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfgA.Listener.HTTP, e2eLogger())
+	channelDest := connector.NewChannelDest("to-channel-b", busChannelID, e2eLogger())
+	channelSrc := connector.NewChannelSource(chCfgB.Listener.Channel, e2eLogger())
+	httpDest := connector.NewHTTPDest("final-dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	crA := buildChannelRuntime(t, chCfgA.ID, chCfgA, httpSrc, map[string]connector.DestinationConnector{
+		"to-channel-b": channelDest,
+	}, channelDirA)
+
+	crB := buildChannelRuntime(t, chCfgB.ID, chCfgB, channelSrc, map[string]connector.DestinationConnector{
+		"final-dest": httpDest,
+	}, channelDirB)
+
+	ctx := context.Background()
+	if err := crB.Start(ctx); err != nil {
+		t.Fatalf("start channel B: %v", err)
+	}
+	defer crB.Stop(ctx)
+
+	if err := crA.Start(ctx); err != nil {
+		t.Fatalf("start channel A: %v", err)
+	}
+	defer crA.Stop(ctx)
+
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("inter-channel data"))
+	resp.Body.Close()
+
+	waitFor(t, 3*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["from_channel_b"] != true {
+		t.Fatalf("expected from_channel_b=true, got %v", result)
+	}
+}
+
+// ===================================================================
+// Test 18: TCP/MLLP Source -> Transformer -> HTTP Dest
+// ===================================================================
+
+func TestE2E_TCPMLLPSourceToHTTPDest(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { source_type: ctx.sourceType, hl7_data: msg };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-mllp-to-http",
+		Enabled: true,
+		DataTypes: &config.DataTypesConfig{
+			Inbound: "hl7v2",
+		},
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "tcp",
+			TCP: &config.TCPListener{
+				Port:      0,
+				Mode:      "mllp",
+				TimeoutMs: 5000,
+			},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	tcpSrc := connector.NewTCPSource(chCfg.Listener.TCP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, tcpSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+
+	addr := tcpSrc.Addr()
+	if addr == "" {
+		t.Fatal("TCP source has no address")
+	}
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+
+	hl7 := "MSH|^~\\&|SRC|FAC|DST|FAC|20230101||ADT^A01|CTL999|P|2.5\rPID|1||MRN777||Taylor^Robert\r"
+	var buf strings.Builder
+	buf.WriteByte(0x0B)
+	buf.WriteString(hl7)
+	buf.WriteByte(0x1C)
+	buf.WriteByte(0x0D)
+	conn.Write([]byte(buf.String()))
+	conn.Close()
+
+	waitFor(t, 3*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["source_type"] != "tcp" {
+		t.Fatalf("expected source_type=tcp, got %v", result["source_type"])
+	}
+	hl7Data, ok := result["hl7_data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected hl7_data map, got %T", result["hl7_data"])
+	}
+	pid, ok := hl7Data["PID"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected PID segment map")
+	}
+	nameField, ok := pid["5"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected PID.5 name map")
+	}
+	if nameField["1"] != "Taylor" {
+		t.Fatalf("expected family=Taylor, got %v", nameField["1"])
+	}
+}
+
+// ===================================================================
+// Test 19: Engine-level Integration Test
+// ===================================================================
+
+func TestE2E_EngineIntegration(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	channelDir := filepath.Join(channelsDir, "test-channel")
+	os.MkdirAll(channelDir, 0o755)
+
+	intuYAML := fmt.Sprintf(`runtime:
+  name: e2e-test
+  log_level: error
+channels_dir: channels
+destinations:
+  test-dest:
+    type: http
+    http:
+      url: %s
+`, destServer.URL)
+	os.WriteFile(filepath.Join(projectDir, "intu.yaml"), []byte(intuYAML), 0o644)
+
+	channelYAML := `id: test-channel
+enabled: true
+listener:
+  type: http
+  http:
+    port: 0
+pipeline:
+  transformer: transformer.js
+destinations:
+  - name: test-dest
+    ref: test-dest
+`
+	os.WriteFile(filepath.Join(channelDir, "channel.yaml"), []byte(channelYAML), 0o644)
+
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { engine_test: true, data: msg };
+};`)
+
+	loader := config.NewLoader(projectDir)
+	cfg, err := loader.Load("dev")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	factory := connector.NewFactory(e2eLogger())
+	engine := NewDefaultEngine(projectDir, cfg, factory, e2eLogger())
+
+	ctx := context.Background()
+	if err := engine.Start(ctx); err != nil {
+		t.Fatalf("engine start: %v", err)
+	}
+	defer engine.Stop(ctx)
+
+	if len(engine.channels) != 1 {
+		t.Fatalf("expected 1 channel running, got %d", len(engine.channels))
+	}
+
+	cr := engine.channels["test-channel"]
+	httpSrc, ok := cr.Source.(*connector.HTTPSource)
+	if !ok {
+		t.Fatal("expected HTTP source")
+	}
+
+	resp, err := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("engine test"))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["engine_test"] != true {
+		t.Fatalf("expected engine_test=true, got %v", result)
+	}
+}

@@ -59,9 +59,13 @@
 | **TLS on all network connectors** | ✅ Implemented |
 | **Auth (bearer, basic, api_key, mTLS) on HTTP-based sources** | ✅ Implemented |
 | **Shared auth infrastructure** (`internal/auth/`, `internal/connector/http_auth.go`) | ✅ Implemented |
-| Runtime engine (`intu serve`) | ❌ Stub only |
-| Actual message processing | ❌ Not implemented |
-| Any data-type parsing (HL7, FHIR, CSV…) | ❌ Not implemented |
+| **Runtime engine (`intu serve`)** | ✅ Implemented |
+| **Message processing pipeline** (Source → Validator → Transformer → Destinations) | ✅ Implemented |
+| **Data-type parsing** (HL7v2, JSON, XML, CSV, X12, Binary, Raw) | ✅ Implemented |
+| **Pipeline stages** (Preprocessor, Validator, Source Filter, Transformer, Dest Filter/Transformer, Response Transformer, Postprocessor) | ✅ Implemented |
+| **Destination Connectors (13 types)** (HTTP, TCP/MLLP, File, SFTP, Kafka, Database, SMTP, Channel, DICOM, JMS, FHIR, Direct, Log) | ✅ Implemented |
+| **OAuth2 Client Credentials** on HTTP/FHIR destinations | ✅ Implemented |
+| **Goja JS Runtime** (embedded JavaScript execution for TS transformers) | ✅ Implemented |
 | Error handling / retry / DLQ | ❌ Not implemented |
 | Message storage / audit | ❌ Not implemented |
 | Dashboard / alerting | ❌ Not implemented |

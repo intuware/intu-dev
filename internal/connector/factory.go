@@ -141,6 +141,11 @@ func (f *Factory) CreateDestination(name string, dest config.Destination) (Desti
 			return nil, fmt.Errorf("jms destination config is nil for %s", name)
 		}
 		return NewJMSDest(name, dest.JMS, f.logger), nil
+	case "sftp":
+		if dest.SFTP == nil {
+			return nil, fmt.Errorf("sftp destination config is nil for %s", name)
+		}
+		return NewSFTPDest(name, dest.SFTP, f.logger), nil
 	case "fhir":
 		if dest.FHIR == nil {
 			return nil, fmt.Errorf("fhir destination config is nil for %s", name)
