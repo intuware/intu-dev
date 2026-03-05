@@ -138,9 +138,10 @@ const tsConfigJSON = `{
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
+    "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["channels/**/*.ts"]
+  "include": ["channels/**/*.ts", "lib/**/*.ts"]
 }
 `
 

@@ -1,17 +1,31 @@
 package config
 
 type Config struct {
-	Runtime     RuntimeConfig            `mapstructure:"runtime"`
-	ChannelsDir string                   `mapstructure:"channels_dir"`
-	Destinations map[string]Destination  `mapstructure:"destinations"`
-	Kafka       KafkaConfig              `mapstructure:"kafka"`
+	Runtime        RuntimeConfig            `mapstructure:"runtime"`
+	ChannelsDir    string                   `mapstructure:"channels_dir"`
+	Destinations   map[string]Destination   `mapstructure:"destinations"`
+	Kafka          KafkaConfig              `mapstructure:"kafka"`
+	Secrets        *SecretsConfig           `mapstructure:"secrets"`
+	DeadLetter     *DeadLetterConfig        `mapstructure:"dead_letter"`
+	MessageStorage *MessageStorageConfig    `mapstructure:"message_storage"`
+	Pruning        *PruningConfig           `mapstructure:"pruning"`
+	Observability  *ObservabilityConfig     `mapstructure:"observability"`
+	Alerts         []AlertConfig            `mapstructure:"alerts"`
+	AccessControl  *AccessControlConfig     `mapstructure:"access_control"`
+	Roles          []RoleConfig             `mapstructure:"roles"`
+	Audit          *AuditConfig             `mapstructure:"audit"`
+	Cluster        *ClusterConfig           `mapstructure:"cluster"`
+	Global         *GlobalConfig            `mapstructure:"global"`
+	Tenancy        *TenancyConfig           `mapstructure:"tenancy"`
 }
 
 type RuntimeConfig struct {
-	Name     string        `mapstructure:"name"`
-	Profile  string        `mapstructure:"profile"`
-	LogLevel string        `mapstructure:"log_level"`
-	Storage  StorageConfig `mapstructure:"storage"`
+	Name       string         `mapstructure:"name"`
+	Profile    string         `mapstructure:"profile"`
+	LogLevel   string         `mapstructure:"log_level"`
+	Storage    StorageConfig  `mapstructure:"storage"`
+	Encryption *EncryptionConfig `mapstructure:"encryption"`
+	Health     *HealthConfig  `mapstructure:"health"`
 }
 
 type StorageConfig struct {
@@ -19,29 +33,312 @@ type StorageConfig struct {
 	PostgresDSN string `mapstructure:"postgres_dsn"`
 }
 
+type EncryptionConfig struct {
+	KeyFile   string `mapstructure:"key_file"`
+	Algorithm string `mapstructure:"algorithm"`
+}
+
+type HealthConfig struct {
+	Port          int    `mapstructure:"port"`
+	Path          string `mapstructure:"path"`
+	ReadinessPath string `mapstructure:"readiness_path"`
+	LivenessPath  string `mapstructure:"liveness_path"`
+}
+
 type KafkaConfig struct {
 	Brokers  []string `mapstructure:"brokers"`
 	ClientID string   `mapstructure:"client_id"`
 }
 
-// Destination defines a named output target (root-level or inline).
 type Destination struct {
-	Type  string          `mapstructure:"type"`
-	Kafka *KafkaDestConfig `mapstructure:"kafka"`
-	HTTP  *HTTPDestConfig  `mapstructure:"http"`
+	Type     string           `mapstructure:"type"`
+	Kafka    *KafkaDestConfig `mapstructure:"kafka"`
+	HTTP     *HTTPDestConfig  `mapstructure:"http"`
+	TCP      *TCPDestMapConfig `mapstructure:"tcp"`
+	File     *FileDestMapConfig `mapstructure:"file"`
+	Database *DBDestMapConfig `mapstructure:"database"`
+	SMTP     *SMTPDestMapConfig `mapstructure:"smtp"`
+	Channel  *ChannelDestMapConfig `mapstructure:"channel"`
+	DICOM    *DICOMDestMapConfig `mapstructure:"dicom"`
+	JMS      *JMSDestMapConfig `mapstructure:"jms"`
+	FHIR     *FHIRDestMapConfig `mapstructure:"fhir"`
+	Direct   *DirectDestMapConfig `mapstructure:"direct"`
+	Retry    *RetryMapConfig  `mapstructure:"retry"`
 }
 
 type KafkaDestConfig struct {
 	Brokers []string `mapstructure:"brokers"`
-	Topic   string  `mapstructure:"topic"`
+	Topic   string   `mapstructure:"topic"`
 }
 
 type HTTPDestConfig struct {
-	URL  string            `mapstructure:"url"`
-	Auth *HTTPAuthConfig   `mapstructure:"auth"`
+	URL       string            `mapstructure:"url"`
+	Method    string            `mapstructure:"method"`
+	Headers   map[string]string `mapstructure:"headers"`
+	TimeoutMs int               `mapstructure:"timeout_ms"`
+	Auth      *HTTPAuthConfig   `mapstructure:"auth"`
+	TLS       *TLSMapConfig     `mapstructure:"tls"`
 }
 
 type HTTPAuthConfig struct {
-	Type  string `mapstructure:"type"`
-	Token string `mapstructure:"token"`
+	Type         string   `mapstructure:"type"`
+	Token        string   `mapstructure:"token"`
+	Username     string   `mapstructure:"username"`
+	Password     string   `mapstructure:"password"`
+	Key          string   `mapstructure:"key"`
+	Header       string   `mapstructure:"header"`
+	QueryParam   string   `mapstructure:"query_param"`
+	TokenURL     string   `mapstructure:"token_url"`
+	ClientID     string   `mapstructure:"client_id"`
+	ClientSecret string   `mapstructure:"client_secret"`
+	Scopes       []string `mapstructure:"scopes"`
+}
+
+type TLSMapConfig struct {
+	Enabled            bool   `mapstructure:"enabled"`
+	CertFile           string `mapstructure:"cert_file"`
+	KeyFile            string `mapstructure:"key_file"`
+	CAFile             string `mapstructure:"ca_file"`
+	ClientCertFile     string `mapstructure:"client_cert_file"`
+	ClientKeyFile      string `mapstructure:"client_key_file"`
+	MinVersion         string `mapstructure:"min_version"`
+	InsecureSkipVerify bool   `mapstructure:"insecure_skip_verify"`
+}
+
+type TCPDestMapConfig struct {
+	Host      string        `mapstructure:"host"`
+	Port      int           `mapstructure:"port"`
+	Mode      string        `mapstructure:"mode"`
+	TimeoutMs int           `mapstructure:"timeout_ms"`
+	TLS       *TLSMapConfig `mapstructure:"tls"`
+}
+
+type FileDestMapConfig struct {
+	Scheme          string `mapstructure:"scheme"`
+	Directory       string `mapstructure:"directory"`
+	FilenamePattern string `mapstructure:"filename_pattern"`
+}
+
+type DBDestMapConfig struct {
+	Driver    string `mapstructure:"driver"`
+	DSN       string `mapstructure:"dsn"`
+	Statement string `mapstructure:"statement"`
+}
+
+type SMTPDestMapConfig struct {
+	Host    string `mapstructure:"host"`
+	Port    int    `mapstructure:"port"`
+	From    string `mapstructure:"from"`
+	To      []string `mapstructure:"to"`
+	Subject string `mapstructure:"subject"`
+}
+
+type ChannelDestMapConfig struct {
+	TargetChannelID string `mapstructure:"target_channel_id"`
+}
+
+type DICOMDestMapConfig struct {
+	Host          string `mapstructure:"host"`
+	Port          int    `mapstructure:"port"`
+	AETitle       string `mapstructure:"ae_title"`
+	CalledAETitle string `mapstructure:"called_ae_title"`
+}
+
+type JMSDestMapConfig struct {
+	Provider string `mapstructure:"provider"`
+	URL      string `mapstructure:"url"`
+	Queue    string `mapstructure:"queue"`
+}
+
+type FHIRDestMapConfig struct {
+	BaseURL    string   `mapstructure:"base_url"`
+	Version    string   `mapstructure:"version"`
+	Operations []string `mapstructure:"operations"`
+}
+
+type DirectDestMapConfig struct {
+	To          string `mapstructure:"to"`
+	From        string `mapstructure:"from"`
+	Certificate string `mapstructure:"certificate"`
+}
+
+type RetryMapConfig struct {
+	MaxAttempts    int      `mapstructure:"max_attempts"`
+	Backoff        string   `mapstructure:"backoff"`
+	InitialDelayMs int      `mapstructure:"initial_delay_ms"`
+	MaxDelayMs     int      `mapstructure:"max_delay_ms"`
+	Jitter         bool     `mapstructure:"jitter"`
+	RetryOn        []string `mapstructure:"retry_on"`
+	NoRetryOn      []string `mapstructure:"no_retry_on"`
+}
+
+type SecretsConfig struct {
+	Provider string       `mapstructure:"provider"`
+	Vault    *VaultConfig `mapstructure:"vault"`
+}
+
+type VaultConfig struct {
+	Address string           `mapstructure:"address"`
+	Path    string           `mapstructure:"path"`
+	Auth    *VaultAuthConfig `mapstructure:"auth"`
+}
+
+type VaultAuthConfig struct {
+	Type     string `mapstructure:"type"`
+	RoleID   string `mapstructure:"role_id"`
+	SecretID string `mapstructure:"secret_id"`
+}
+
+type DeadLetterConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	Destination     string `mapstructure:"destination"`
+	IncludeError    bool   `mapstructure:"include_error"`
+	IncludeOriginal bool   `mapstructure:"include_original"`
+}
+
+type MessageStorageConfig struct {
+	Driver    string                   `mapstructure:"driver"`
+	Postgres  *StoragePostgresConfig   `mapstructure:"postgres"`
+	S3        *StorageS3Config         `mapstructure:"s3"`
+	Retention *StorageRetentionConfig  `mapstructure:"retention"`
+}
+
+type StoragePostgresConfig struct {
+	DSN         string `mapstructure:"dsn"`
+	TablePrefix string `mapstructure:"table_prefix"`
+}
+
+type StorageS3Config struct {
+	Bucket string `mapstructure:"bucket"`
+	Region string `mapstructure:"region"`
+}
+
+type StorageRetentionConfig struct {
+	Days                 int    `mapstructure:"days"`
+	PruneInterval        string `mapstructure:"prune_interval"`
+	PruneErrored         bool   `mapstructure:"prune_errored"`
+	ErroredRetentionDays int    `mapstructure:"errored_retention_days"`
+}
+
+type PruningConfig struct {
+	Enabled              bool   `mapstructure:"enabled"`
+	Schedule             string `mapstructure:"schedule"`
+	DefaultRetentionDays int    `mapstructure:"default_retention_days"`
+	ArchiveBeforePrune   bool   `mapstructure:"archive_before_prune"`
+	ArchiveDestination   string `mapstructure:"archive_destination"`
+}
+
+type ObservabilityConfig struct {
+	OpenTelemetry *OTelConfig       `mapstructure:"opentelemetry"`
+	Prometheus    *PrometheusConfig `mapstructure:"prometheus"`
+}
+
+type OTelConfig struct {
+	Enabled            bool              `mapstructure:"enabled"`
+	Endpoint           string            `mapstructure:"endpoint"`
+	Protocol           string            `mapstructure:"protocol"`
+	Traces             bool              `mapstructure:"traces"`
+	Metrics            bool              `mapstructure:"metrics"`
+	ServiceName        string            `mapstructure:"service_name"`
+	ResourceAttributes map[string]string `mapstructure:"resource_attributes"`
+}
+
+type PrometheusConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Port    int    `mapstructure:"port"`
+	Path    string `mapstructure:"path"`
+}
+
+type AlertConfig struct {
+	Name         string          `mapstructure:"name"`
+	Trigger      AlertTrigger    `mapstructure:"trigger"`
+	Destinations []string        `mapstructure:"destinations"`
+}
+
+type AlertTrigger struct {
+	Type        string `mapstructure:"type"`
+	Channel     string `mapstructure:"channel"`
+	Threshold   int    `mapstructure:"threshold"`
+	Window      string `mapstructure:"window"`
+	ThresholdMs int    `mapstructure:"threshold_ms"`
+	Percentile  string `mapstructure:"percentile"`
+}
+
+type AccessControlConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	Provider string `mapstructure:"provider"`
+	LDAP     *LDAPConfig `mapstructure:"ldap"`
+	OIDC     *OIDCConfig `mapstructure:"oidc"`
+}
+
+type LDAPConfig struct {
+	URL          string `mapstructure:"url"`
+	BaseDN       string `mapstructure:"base_dn"`
+	BindDN       string `mapstructure:"bind_dn"`
+	BindPassword string `mapstructure:"bind_password"`
+}
+
+type OIDCConfig struct {
+	Issuer       string `mapstructure:"issuer"`
+	ClientID     string `mapstructure:"client_id"`
+	ClientSecret string `mapstructure:"client_secret"`
+}
+
+type RoleConfig struct {
+	Name        string   `mapstructure:"name"`
+	Permissions []string `mapstructure:"permissions"`
+}
+
+type AuditConfig struct {
+	Enabled     bool     `mapstructure:"enabled"`
+	Destination string   `mapstructure:"destination"`
+	Events      []string `mapstructure:"events"`
+}
+
+type ClusterConfig struct {
+	Enabled           bool                  `mapstructure:"enabled"`
+	Mode              string                `mapstructure:"mode"`
+	Coordination      *CoordinationConfig   `mapstructure:"coordination"`
+	InstanceID        string                `mapstructure:"instance_id"`
+	HeartbeatInterval string                `mapstructure:"heartbeat_interval"`
+	ChannelAssignment *ChannelAssignConfig  `mapstructure:"channel_assignment"`
+	Deduplication     *DeduplicationConfig  `mapstructure:"deduplication"`
+}
+
+type CoordinationConfig struct {
+	Type  string      `mapstructure:"type"`
+	Redis *RedisConfig `mapstructure:"redis"`
+}
+
+type RedisConfig struct {
+	Address  string `mapstructure:"address"`
+	Password string `mapstructure:"password"`
+}
+
+type ChannelAssignConfig struct {
+	Strategy    string              `mapstructure:"strategy"`
+	TagAffinity map[string][]string `mapstructure:"tag_affinity"`
+}
+
+type DeduplicationConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	Window       string `mapstructure:"window"`
+	Store        string `mapstructure:"store"`
+	KeyExtractor string `mapstructure:"key_extractor"`
+}
+
+type GlobalConfig struct {
+	Hooks *GlobalHooks `mapstructure:"hooks"`
+}
+
+type GlobalHooks struct {
+	OnStartup   string `mapstructure:"on_startup"`
+	OnShutdown  string `mapstructure:"on_shutdown"`
+	OnDeployAll string `mapstructure:"on_deploy_all"`
+}
+
+type TenancyConfig struct {
+	Mode         string `mapstructure:"mode"`
+	Isolation    string `mapstructure:"isolation"`
+	TenantHeader string `mapstructure:"tenant_header"`
 }
