@@ -28,6 +28,12 @@ func init() {
 	rootCmd.AddCommand(newServeCmd())
 	rootCmd.AddCommand(newValidateCmd())
 	rootCmd.AddCommand(newBuildCmd())
+	rootCmd.AddCommand(newStatsCmd())
+	rootCmd.AddCommand(newDeployCmd())
+	rootCmd.AddCommand(newUndeployCmd())
+	rootCmd.AddCommand(newEnableCmd())
+	rootCmd.AddCommand(newDisableCmd())
+	rootCmd.AddCommand(newPruneCmd())
 }
 
 func newChannelCmd() *cobra.Command {
