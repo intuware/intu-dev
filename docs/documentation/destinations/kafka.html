@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kafka Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">Kafka</span>
+            </div>
+
+            <h1><span class="gradient-text">Kafka Destination</span></h1>
+            <p class="subtitle">Publish messages to Apache Kafka topics for event-driven healthcare data pipelines.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The Kafka destination publishes transformed messages to one or more Apache Kafka topics. Kafka is
+                widely used in healthcare architectures to decouple producers from consumers, buffer high-throughput
+                message streams, and enable real-time analytics. This destination supports SASL and TLS authentication,
+                configurable partitioning, and message key extraction.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define a Kafka destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  hl7-events:
+    type: kafka
+    kafka:
+      brokers:
+        - kafka-1.hospital.internal:9092
+        - kafka-2.hospital.internal:9092
+        - kafka-3.hospital.internal:9092
+      topic: healthcare.hl7.adt-events
+      client_id: intu-adt-producer
+      auth:
+        type: sasl_plain
+        username: ${KAFKA_USER}
+        password: ${KAFKA_PASS}
+      tls:
+        enabled: true
+        ca_cert: /etc/ssl/certs/kafka-ca.pem</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">brokers</span>
+                    <span class="prop-type">string[]</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">List of Kafka broker addresses in <code>host:port</code> format. At least one broker is required; multiple brokers provide failover.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">topic</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The Kafka topic to publish messages to. Supports environment variable interpolation.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">client_id</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">An identifier for this producer, used in Kafka broker logs and monitoring. Defaults to <code>intu-producer</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">key</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Expression to extract the message key for partitioning. Supports <code>${field}</code> interpolation from message headers or body. Messages with the same key are routed to the same partition.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">compression</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Compression codec for produced messages. One of: <code>none</code>, <code>gzip</code>, <code>snappy</code>, <code>lz4</code>, <code>zstd</code>. Defaults to <code>none</code>.</div>
+                </div>
+            </div>
+
+            <h3>Authentication</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">auth.type</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Authentication mechanism. One of: <code>sasl_plain</code>, <code>sasl_scram_256</code>, <code>sasl_scram_512</code>. Omit for unauthenticated connections.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth.username</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">SASL username.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth.password</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">SASL password. Use <code>${VAR}</code> to reference environment variables.</div>
+                </div>
+            </div>
+
+            <h3>TLS</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">tls.enabled</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Enable TLS for broker connections. Defaults to <code>false</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.ca_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a PEM-encoded CA certificate for verifying broker certificates.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.client_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a client certificate for mutual TLS.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.client_key</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to the client private key for mutual TLS.</div>
+                </div>
+            </div>
+
+            <h2>Full Example</h2>
+            <p>Receive HL7v2 ADT messages via MLLP, transform them to a normalized JSON event format, and publish to a Kafka topic partitioned by patient ID.</p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  adt-event-stream:
+    type: kafka
+    kafka:
+      brokers:
+        - kafka-1.hospital.internal:9092
+        - kafka-2.hospital.internal:9092
+      topic: healthcare.events.adt
+      client_id: intu-adt-publisher
+      key: ${patientId}
+      compression: snappy
+      auth:
+        type: sasl_scram_256
+        username: ${KAFKA_USER}
+        password: ${KAFKA_PASS}
+      tls:
+        enabled: true
+        ca_cert: /etc/ssl/certs/kafka-ca.pem</code></pre>
+            </div>
+
+            <h3>Channel Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/adt-events/channel.yaml
+name: adt-events
+description: Normalize HL7v2 ADT messages and publish to Kafka
+
+source:
+  type: tcp
+  tcp:
+    port: 6661
+    mode: mllp
+
+destinations:
+  - adt-event-stream</code></pre>
+            </div>
+
+            <h3>Destination Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/adt-events/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+interface AdtEvent {
+  eventType: string;
+  patientId: string;
+  mrn: string;
+  timestamp: string;
+  patient: {
+    familyName: string;
+    givenName: string;
+    dateOfBirth: string;
+    gender: string;
+  };
+  visit?: {
+    visitNumber: string;
+    admitDate: string;
+    department: string;
+  };
+}
+
+export default function transform(msg: Message, ctx: Context): Message {
+  const hl7 = msg.body;
+  const msh = hl7.segments?.find((s: any) => s.name === "MSH");
+  const pid = hl7.segments?.find((s: any) => s.name === "PID");
+  const pv1 = hl7.segments?.find((s: any) => s.name === "PV1");
+
+  if (!msh || !pid) {
+    throw new Error("Missing required MSH or PID segment");
+  }
+
+  const event: AdtEvent = {
+    eventType: msh.fields[8]?.components[1] ?? "A01",
+    patientId: pid.fields[3]?.components[0] ?? "",
+    mrn: pid.fields[2]?.components[0] ?? "",
+    timestamp: new Date().toISOString(),
+    patient: {
+      familyName: pid.fields[5]?.components[0] ?? "",
+      givenName: pid.fields[5]?.components[1] ?? "",
+      dateOfBirth: pid.fields[7]?.components[0] ?? "",
+      gender: pid.fields[8]?.components[0] ?? "",
+    },
+  };
+
+  if (pv1) {
+    event.visit = {
+      visitNumber: pv1.fields[19]?.components[0] ?? "",
+      admitDate: pv1.fields[44]?.components[0] ?? "",
+      department: pv1.fields[3]?.components[0] ?? "",
+    };
+  }
+
+  return {
+    ...msg,
+    body: event,
+    headers: {
+      ...msg.headers,
+      patientId: event.patientId,
+    },
+  };
+}</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                Messages published to Kafka are serialized as JSON by default. The <code>key</code> property
+                determines partition assignment -- messages with the same key always land on the same partition,
+                preserving ordering per patient.
+            </div>
+
+            <div class="docs-footer">
+                <a href="http.html">&larr; HTTP Destination</a>
+                <a href="tcp.html">TCP Destination &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-kafka';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

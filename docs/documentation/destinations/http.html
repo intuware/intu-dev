@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">HTTP</span>
+            </div>
+
+            <h1><span class="gradient-text">HTTP Destination</span></h1>
+            <p class="subtitle">Send messages to an HTTP/REST endpoint with configurable authentication, retry policies, and TLS.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The HTTP destination delivers processed messages to any HTTP or REST endpoint via standard HTTP methods.
+                It supports multiple authentication schemes, custom headers, configurable timeouts, TLS settings,
+                and a flexible retry policy with backoff strategies. This is the most common destination type for
+                integrating with FHIR servers, EHR APIs, cloud services, and third-party webhooks.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define an HTTP destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  fhir-server:
+    type: http
+    http:
+      url: https://fhir.hospital.org/fhir/R4
+      method: POST
+      headers:
+        Content-Type: application/fhir+json
+        X-Correlation-Id: ${messageId}
+      timeout_ms: 30000
+      auth:
+        type: bearer
+        token: ${FHIR_ACCESS_TOKEN}
+      tls:
+        insecure_skip_verify: false
+        ca_cert: /etc/ssl/certs/hospital-ca.pem
+      retry:
+        max_attempts: 5
+        backoff: exponential
+        initial_delay_ms: 500
+        max_delay_ms: 30000
+        jitter: true
+        retry_on: [500, 502, 503, 504]
+        no_retry_on: [400, 401, 404, 422]</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <h3>Core Properties</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">url</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The target URL to send requests to. Supports environment variable interpolation with <code>${VAR}</code> syntax.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">method</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">HTTP method to use. Supported values: <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, <code>DELETE</code>. Defaults to <code>POST</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">headers</span>
+                    <span class="prop-type">map&lt;string, string&gt;</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Custom HTTP headers to include in every request. Values support environment variable interpolation.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">timeout_ms</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Request timeout in milliseconds. Defaults to <code>30000</code> (30 seconds).</div>
+                </div>
+            </div>
+
+            <h3>Authentication</h3>
+            <p>The <code>auth</code> object configures request authentication. The <code>type</code> field determines which auth strategy is used.</p>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">auth.type</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Authentication type. One of: <code>basic</code>, <code>bearer</code>, <code>api_key</code>, <code>oauth2</code>.</div>
+                </div>
+            </div>
+
+            <h4>Basic Auth</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>auth:
+  type: basic
+  username: ${HTTP_USER}
+  password: ${HTTP_PASS}</code></pre>
+            </div>
+
+            <h4>Bearer Token</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>auth:
+  type: bearer
+  token: ${ACCESS_TOKEN}</code></pre>
+            </div>
+
+            <h4>API Key</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>auth:
+  type: api_key
+  header: X-API-Key
+  key: ${API_KEY}</code></pre>
+            </div>
+
+            <h4>OAuth2 Client Credentials</h4>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code>auth:
+  type: oauth2
+  token_url: https://auth.hospital.org/oauth/token
+  client_id: ${OAUTH_CLIENT_ID}
+  client_secret: ${OAUTH_CLIENT_SECRET}
+  scopes:
+    - system/Patient.write
+    - system/Encounter.write</code></pre>
+            </div>
+
+            <h3>TLS</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">tls.insecure_skip_verify</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Skip server certificate verification. Defaults to <code>false</code>. Use only in development environments.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.ca_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a PEM-encoded CA certificate for verifying the server.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.client_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a PEM-encoded client certificate for mutual TLS.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.client_key</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to the client private key for mutual TLS.</div>
+                </div>
+            </div>
+
+            <h3>Retry Policy</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">retry.max_attempts</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Maximum number of retry attempts before the message is marked as failed. Defaults to <code>3</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">retry.backoff</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Backoff strategy between retries. One of: <code>constant</code>, <code>linear</code>, <code>exponential</code>. Defaults to <code>exponential</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">retry.initial_delay_ms</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Initial delay in milliseconds before the first retry. Defaults to <code>1000</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">retry.max_delay_ms</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Maximum delay cap in milliseconds. Prevents exponential backoff from growing unbounded. Defaults to <code>60000</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">retry.jitter</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Add random jitter to retry delays to avoid thundering-herd effects. Defaults to <code>true</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">retry.retry_on</span>
+                    <span class="prop-type">int[]</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">HTTP status codes that should trigger a retry. Defaults to <code>[500, 502, 503, 504]</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">retry.no_retry_on</span>
+                    <span class="prop-type">int[]</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">HTTP status codes that should never be retried, regardless of other settings. Takes precedence over <code>retry_on</code>.</div>
+                </div>
+            </div>
+
+            <h2>Full Example</h2>
+            <p>A complete configuration that receives HL7v2 ADT messages via TCP/MLLP, transforms them to FHIR Patient resources, and posts them to a FHIR R4 server.</p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  fhir-r4-server:
+    type: http
+    http:
+      url: https://fhir.hospital.org/fhir/R4/Patient
+      method: POST
+      headers:
+        Content-Type: application/fhir+json
+        Accept: application/fhir+json
+      timeout_ms: 15000
+      auth:
+        type: oauth2
+        token_url: https://auth.hospital.org/oauth/token
+        client_id: ${FHIR_CLIENT_ID}
+        client_secret: ${FHIR_CLIENT_SECRET}
+        scopes:
+          - system/Patient.write
+      retry:
+        max_attempts: 5
+        backoff: exponential
+        initial_delay_ms: 500
+        max_delay_ms: 30000
+        jitter: true
+        retry_on: [500, 502, 503, 504]</code></pre>
+            </div>
+
+            <h3>Channel Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/adt-to-fhir/channel.yaml
+name: adt-to-fhir
+description: Transform HL7v2 ADT messages to FHIR Patient resources
+
+source:
+  type: tcp
+  tcp:
+    port: 6661
+    mode: mllp
+
+destinations:
+  - fhir-r4-server</code></pre>
+            </div>
+
+            <h3>Destination Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/adt-to-fhir/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+export default function transform(msg: Message, ctx: Context): Message {
+  const hl7 = msg.body;
+
+  const pid = hl7.segments?.find((s: any) => s.name === "PID");
+  if (!pid) {
+    ctx.logger.error("No PID segment found in ADT message");
+    throw new Error("Missing PID segment");
+  }
+
+  const patient = {
+    resourceType: "Patient",
+    identifier: [
+      {
+        system: "urn:oid:2.16.840.1.113883.4.1",
+        value: pid.fields[3]?.components[0] ?? "",
+      },
+    ],
+    name: [
+      {
+        family: pid.fields[5]?.components[0] ?? "",
+        given: [pid.fields[5]?.components[1] ?? ""],
+      },
+    ],
+    gender: mapGender(pid.fields[8]?.components[0]),
+    birthDate: formatDate(pid.fields[7]?.components[0]),
+    address: [
+      {
+        line: [pid.fields[11]?.components[0] ?? ""],
+        city: pid.fields[11]?.components[2] ?? "",
+        state: pid.fields[11]?.components[3] ?? "",
+        postalCode: pid.fields[11]?.components[4] ?? "",
+      },
+    ],
+  };
+
+  return {
+    ...msg,
+    body: patient,
+    headers: {
+      ...msg.headers,
+      "content-type": "application/fhir+json",
+    },
+  };
+}
+
+function mapGender(code: string | undefined): string {
+  switch (code) {
+    case "M": return "male";
+    case "F": return "female";
+    case "O": return "other";
+    default:  return "unknown";
+  }
+}
+
+function formatDate(raw: string | undefined): string | undefined {
+  if (!raw || raw.length < 8) return undefined;
+  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+}</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                The retry policy only applies to transient failures. Responses with status codes listed in
+                <code>no_retry_on</code> are immediately treated as permanent failures. Ensure your FHIR server
+                returns appropriate status codes so that validation errors (422) are not retried.
+            </div>
+
+            <div class="callout callout-tip">
+                <strong>Tip</strong>
+                Use OAuth2 client credentials for server-to-server integrations with FHIR endpoints.
+                Store secrets in <code>.env</code> and reference them with <code>${VAR}</code> syntax
+                to keep credentials out of version control.
+            </div>
+
+            <div class="docs-footer">
+                <span></span>
+                <a href="kafka.html">Kafka Destination &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-http';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

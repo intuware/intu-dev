@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DICOM Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">DICOM</span>
+            </div>
+
+            <h1><span class="gradient-text">DICOM Destination</span></h1>
+            <p class="subtitle">Send DICOM data to a PACS or other DICOM-compatible system using C-STORE SCU.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The DICOM destination acts as a C-STORE Service Class User (SCU) to transmit DICOM objects
+                to a Picture Archiving and Communication System (PACS), a Vendor Neutral Archive (VNA), or
+                any DICOM-compliant Service Class Provider (SCP). This destination handles the DICOM association
+                negotiation, presentation context setup, and C-STORE operations. It is used in radiology and
+                imaging workflows to route, archive, or forward medical images and structured reports.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define a DICOM destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  pacs-archive:
+    type: dicom
+    dicom:
+      host: pacs.radiology.hospital.org
+      port: 11112
+      ae_title: INTU_SCU
+      called_ae_title: PACS_SCP
+      timeout_ms: 60000
+      tls:
+        enabled: true
+        ca_cert: /etc/ssl/certs/pacs-ca.pem</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">host</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Hostname or IP address of the DICOM SCP (e.g. PACS server).</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Port number of the DICOM SCP. The standard DICOM port is <code>11112</code>, though actual ports vary by installation.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">ae_title</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Application Entity (AE) title of the calling SCU (this intu instance). Defaults to <code>INTU_SCU</code>. Must be registered in the remote SCP's configuration.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">called_ae_title</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">AE title of the remote SCP being called. Must match the SCP's configured AE title for association negotiation to succeed.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">timeout_ms</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Timeout in milliseconds for DICOM association and C-STORE operations. Defaults to <code>60000</code> (60 seconds). Increase for large images or slow networks.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">max_pdu_length</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Maximum Protocol Data Unit (PDU) length in bytes for the DICOM association. Defaults to <code>16384</code>.</div>
+                </div>
+            </div>
+
+            <h3>TLS</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">tls.enabled</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Enable TLS encryption for the DICOM association. Defaults to <code>false</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.ca_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a PEM-encoded CA certificate for verifying the SCP.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.client_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a PEM-encoded client certificate for mutual TLS.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.client_key</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to the client private key for mutual TLS.</div>
+                </div>
+            </div>
+
+            <h2>Full Example</h2>
+            <p>Receive DICOM images from a modality worklist, apply metadata enrichment, and forward to the hospital PACS archive.</p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  hospital-pacs:
+    type: dicom
+    dicom:
+      host: pacs.radiology.hospital.org
+      port: 11112
+      ae_title: INTU_ROUTER
+      called_ae_title: MAIN_PACS
+      timeout_ms: 120000
+      max_pdu_length: 65536
+      tls:
+        enabled: true
+        ca_cert: /etc/ssl/certs/pacs-ca.pem
+        client_cert: /etc/ssl/certs/intu-dicom.pem
+        client_key: /etc/ssl/private/intu-dicom-key.pem</code></pre>
+            </div>
+
+            <h3>Channel Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/dicom-router/channel.yaml
+name: dicom-router
+description: Receive DICOM images and forward to PACS after metadata enrichment
+
+source:
+  type: dicom
+  dicom:
+    port: 11113
+    ae_title: INTU_SCP
+
+destinations:
+  - hospital-pacs</code></pre>
+            </div>
+
+            <h3>Destination Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/dicom-router/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+export default function transform(msg: Message, ctx: Context): Message {
+  const dicomData = msg.body;
+
+  const patientId = dicomData.dataset?.["00100020"]?.Value?.[0] ?? "";
+  const patientName = dicomData.dataset?.["00100010"]?.Value?.[0]?.Alphabetic ?? "";
+  const modality = dicomData.dataset?.["00080060"]?.Value?.[0] ?? "";
+  const studyUid = dicomData.dataset?.["0020000D"]?.Value?.[0] ?? "";
+
+  ctx.logger.info(
+    `Routing ${modality} study ${studyUid} for patient ${patientId}`
+  );
+
+  const enrichedDataset = {
+    ...dicomData.dataset,
+    "00081090": { vr: "LO", Value: ["INTU_PROCESSED"] },
+    "00080080": {
+      vr: "LO",
+      Value: [dicomData.dataset?.["00080080"]?.Value?.[0] ?? "General Hospital"],
+    },
+  };
+
+  return {
+    ...msg,
+    body: {
+      ...dicomData,
+      dataset: enrichedDataset,
+    },
+  };
+}</code></pre>
+            </div>
+
+            <div class="callout callout-warning">
+                <strong>AE Title Registration</strong>
+                Both the calling AE title (<code>ae_title</code>) and the called AE title
+                (<code>called_ae_title</code>) must be pre-registered in the remote PACS configuration.
+                Association requests will be rejected if the AE titles are not recognized.
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                For large images or multi-frame studies, increase <code>timeout_ms</code> and
+                <code>max_pdu_length</code> to prevent timeouts during C-STORE operations.
+            </div>
+
+            <div class="docs-footer">
+                <a href="channel.html">&larr; Channel Destination</a>
+                <a href="jms.html">JMS Destination &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-dicom';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

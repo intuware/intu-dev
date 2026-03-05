@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">Direct</span>
+            </div>
+
+            <h1><span class="gradient-text">Direct Destination</span></h1>
+            <p class="subtitle">Send clinical documents via Direct messaging (Direct Project) for secure healthcare communication.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The Direct destination sends messages using the Direct protocol (also known as Direct Project
+                or Direct Secure Messaging), a standards-based method for secure, point-to-point healthcare
+                communication. Direct messaging is mandated by the ONC for health information exchange in the
+                United States and is used to send clinical summaries (C-CDAs), referral documents, lab results,
+                and discharge summaries between healthcare providers. Messages are encrypted using S/MIME and
+                delivered over SMTP to Direct addresses.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define a Direct destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  referral-direct:
+    type: direct
+    direct:
+      to: dr.smith@direct.partnerhospital.org
+      from: intu-referrals@direct.hospital.org
+      certificate: /etc/ssl/certs/direct-signing.pem
+      smtp_host: direct-smtp.hospital.org
+      smtp_port: 465
+      tls:
+        enabled: true</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">to</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The recipient's Direct address (e.g. <code>provider@direct.hospital.org</code>). Direct addresses follow the same format as email but operate on a separate trust infrastructure.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">from</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The sender's Direct address. Must be a registered address on your Direct HISP (Health Information Service Provider).</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">certificate</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to the PEM-encoded signing certificate for S/MIME encryption. If omitted, the HISP handles signing.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">private_key</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to the private key corresponding to the signing certificate.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">smtp_host</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Hostname of the Direct HISP's SMTP gateway.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">smtp_port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">SMTP port. Defaults to <code>465</code> (implicit TLS). May also use <code>587</code> (STARTTLS).</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">content_type</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">MIME type for the message attachment. Defaults to <code>application/xml</code> for CDA documents. Other options: <code>application/pdf</code>, <code>text/plain</code>.</div>
+                </div>
+            </div>
+
+            <h3>TLS</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">tls.enabled</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Enable TLS for the SMTP connection. Defaults to <code>true</code>. Direct messaging requires TLS.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.ca_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a PEM-encoded CA certificate for verifying the HISP's SMTP server.</div>
+                </div>
+            </div>
+
+            <h2>Full Example</h2>
+            <p>Receive referral orders via HTTP, generate a C-CDA clinical summary, and send it via Direct messaging to the receiving provider.</p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  specialist-referral:
+    type: direct
+    direct:
+      to: cardiology@direct.heartcenter.org
+      from: referrals@direct.hospital.org
+      certificate: /etc/ssl/certs/direct-signing.pem
+      private_key: /etc/ssl/private/direct-signing-key.pem
+      smtp_host: direct-smtp.hospital.org
+      smtp_port: 465
+      content_type: application/xml
+      tls:
+        enabled: true
+        ca_cert: /etc/ssl/certs/hisp-ca.pem</code></pre>
+            </div>
+
+            <h3>Channel Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/referral-direct/channel.yaml
+name: referral-direct
+description: Send referral C-CDA documents via Direct messaging
+
+source:
+  type: http
+  http:
+    port: 8083
+    path: /referrals/submit
+
+destinations:
+  - specialist-referral</code></pre>
+            </div>
+
+            <h3>Destination Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/referral-direct/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+export default function transform(msg: Message, ctx: Context): Message {
+  const referral = msg.body;
+
+  const patientName = `${referral.patient?.given ?? ""} ${referral.patient?.family ?? ""}`.trim();
+  const patientDob = referral.patient?.birthDate ?? "";
+  const patientId = referral.patient?.mrn ?? "";
+  const referralReason = referral.reason ?? "";
+  const referringProvider = referral.referringProvider?.name ?? "";
+  const referringOrg = referral.referringProvider?.organization ?? "";
+
+  const medications = (referral.medications ?? [])
+    .map(
+      (m: any) =>
+        `<entry><substanceAdministration classCode="SBADM" moodCode="EVN">` +
+        `<consumable><manufacturedProduct><manufacturedMaterial>` +
+        `<code code="${m.code ?? ""}" displayName="${m.name ?? ""}" codeSystem="2.16.840.1.113883.6.88"/>` +
+        `</manufacturedMaterial></manufacturedProduct></consumable>` +
+        `</substanceAdministration></entry>`
+    )
+    .join("\n");
+
+  const problems = (referral.problems ?? [])
+    .map(
+      (p: any) =>
+        `<entry><act classCode="ACT" moodCode="EVN">` +
+        `<code code="${p.code ?? ""}" displayName="${p.display ?? ""}" codeSystem="2.16.840.1.113883.6.96"/>` +
+        `</act></entry>`
+    )
+    .join("\n");
+
+  const ccda = `<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <typeId root="2.16.840.1.113883.1.3" extension="POCD_HD000040"/>
+  <templateId root="2.16.840.1.113883.10.20.22.1.1"/>
+  <id root="${msg.id}"/>
+  <code code="34133-9" displayName="Summarization of Episode Note" codeSystem="2.16.840.1.113883.6.1"/>
+  <title>Referral Summary - ${patientName}</title>
+  <effectiveTime value="${new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}"/>
+  <recordTarget>
+    <patientRole>
+      <id extension="${patientId}" root="2.16.840.1.113883.4.1"/>
+      <patient>
+        <name>
+          <given>${referral.patient?.given ?? ""}</given>
+          <family>${referral.patient?.family ?? ""}</family>
+        </name>
+        <birthTime value="${patientDob.replace(/-/g, "")}"/>
+      </patient>
+    </patientRole>
+  </recordTarget>
+  <author>
+    <assignedAuthor>
+      <assignedPerson><name>${referringProvider}</name></assignedPerson>
+      <representedOrganization><name>${referringOrg}</name></representedOrganization>
+    </assignedAuthor>
+  </author>
+  <component>
+    <structuredBody>
+      <component>
+        <section>
+          <title>Reason for Referral</title>
+          <text>${referralReason}</text>
+        </section>
+      </component>
+      <component>
+        <section>
+          <title>Problems</title>
+          ${problems}
+        </section>
+      </component>
+      <component>
+        <section>
+          <title>Medications</title>
+          ${medications}
+        </section>
+      </component>
+    </structuredBody>
+  </component>
+</ClinicalDocument>`;
+
+  ctx.logger.info(`Sending referral C-CDA for patient ${patientId} via Direct`);
+
+  return {
+    ...msg,
+    body: ccda,
+  };
+}</code></pre>
+            </div>
+
+            <div class="callout callout-warning">
+                <strong>Trust Framework</strong>
+                Direct messaging requires that both sender and receiver are registered with a Health
+                Information Service Provider (HISP) and that their certificates are part of the
+                DirectTrust network or an equivalent trust bundle. Messages sent to addresses outside
+                the trust framework will be rejected.
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                Direct messages are encrypted end-to-end using S/MIME. The signing certificate
+                (<code>certificate</code>) is used to digitally sign outbound messages, proving the
+                sender's identity. The recipient's public certificate is resolved automatically through
+                DNS or LDAP by the HISP.
+            </div>
+
+            <div class="docs-footer">
+                <a href="fhir.html">&larr; FHIR Destination</a>
+                <span></span>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-direct';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

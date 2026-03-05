@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">File</span>
+            </div>
+
+            <h1><span class="gradient-text">File Destination</span></h1>
+            <p class="subtitle">Write processed messages to files on the local filesystem.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The File destination writes each processed message to a file on the local filesystem. It supports
+                configurable output directories and dynamic filename patterns using message metadata variables.
+                This is useful for archiving processed messages, generating output files for batch processing
+                systems, or writing data to shared network volumes.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define a File destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  outbound-files:
+    type: file
+    file:
+      scheme: local
+      directory: /data/outbound/processed
+      filename_pattern: "${channelId}_${timestamp}_${messageId}.json"</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">scheme</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Storage scheme. Currently only <code>local</code> is supported. Defaults to <code>local</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">directory</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Absolute or relative path to the output directory. The directory is created automatically if it does not exist. Supports environment variable interpolation.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">filename_pattern</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">
+                        Template for generating output filenames. The following variables are available:
+                        <code>${messageId}</code>, <code>${timestamp}</code>, <code>${channelId}</code>,
+                        <code>${date}</code>, <code>${time}</code>.
+                        Defaults to <code>${messageId}.dat</code>.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">mode</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Write mode. <code>overwrite</code> replaces existing files; <code>append</code> appends to an existing file. Defaults to <code>overwrite</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">file_permissions</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Unix file permissions for created files, in octal notation (e.g. <code>"0644"</code>). Defaults to <code>"0644"</code>.</div>
+                </div>
+            </div>
+
+            <h3>Filename Pattern Variables</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Description</th>
+                        <th>Example</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>${messageId}</code></td>
+                        <td>Unique message identifier</td>
+                        <td><code>a1b2c3d4-e5f6-7890</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>${timestamp}</code></td>
+                        <td>ISO 8601 timestamp (file-safe)</td>
+                        <td><code>20260305T143022Z</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>${channelId}</code></td>
+                        <td>ID of the processing channel</td>
+                        <td><code>adt-processor</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>${date}</code></td>
+                        <td>Current date in YYYYMMDD format</td>
+                        <td><code>20260305</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>${time}</code></td>
+                        <td>Current time in HHmmss format</td>
+                        <td><code>143022</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Full Example</h2>
+            <p>Receive HL7v2 ORU messages via MLLP, transform them to a structured JSON lab report, and write each report to an output directory.</p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  lab-report-archive:
+    type: file
+    file:
+      scheme: local
+      directory: /data/outbound/lab-reports
+      filename_pattern: "lab_${date}_${messageId}.json"
+      file_permissions: "0640"</code></pre>
+            </div>
+
+            <h3>Channel Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/lab-reports/channel.yaml
+name: lab-reports
+description: Archive processed lab results as JSON files
+
+source:
+  type: tcp
+  tcp:
+    port: 6663
+    mode: mllp
+
+destinations:
+  - lab-report-archive</code></pre>
+            </div>
+
+            <h3>Destination Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/lab-reports/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+interface LabResult {
+  orderId: string;
+  patientId: string;
+  collectionDate: string;
+  results: Array&lt;{
+    code: string;
+    display: string;
+    value: string;
+    units: string;
+    referenceRange: string;
+    abnormalFlag: string;
+  }&gt;;
+}
+
+export default function transform(msg: Message, ctx: Context): Message {
+  const hl7 = msg.body;
+  const pid = hl7.segments?.find((s: any) => s.name === "PID");
+  const obr = hl7.segments?.find((s: any) => s.name === "OBR");
+  const obxSegments = hl7.segments?.filter((s: any) => s.name === "OBX") ?? [];
+
+  const report: LabResult = {
+    orderId: obr?.fields[2]?.components[0] ?? "",
+    patientId: pid?.fields[3]?.components[0] ?? "",
+    collectionDate: obr?.fields[7]?.components[0] ?? "",
+    results: obxSegments.map((obx: any) => ({
+      code: obx.fields[3]?.components[0] ?? "",
+      display: obx.fields[3]?.components[1] ?? "",
+      value: obx.fields[5]?.components[0] ?? "",
+      units: obx.fields[6]?.components[0] ?? "",
+      referenceRange: obx.fields[7]?.components[0] ?? "",
+      abnormalFlag: obx.fields[8]?.components[0] ?? "",
+    })),
+  };
+
+  return {
+    ...msg,
+    body: JSON.stringify(report, null, 2),
+  };
+}</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                The output directory is created automatically on first write if it does not exist.
+                Ensure the intu process has write permissions to the parent directory.
+            </div>
+
+            <div class="docs-footer">
+                <a href="tcp.html">&larr; TCP Destination</a>
+                <a href="database.html">Database Destination &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-file';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

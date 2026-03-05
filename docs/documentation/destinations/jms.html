@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JMS Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">JMS</span>
+            </div>
+
+            <h1><span class="gradient-text">JMS Destination</span></h1>
+            <p class="subtitle">Send messages to a JMS queue for integration with enterprise messaging systems.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The JMS destination publishes messages to a Java Message Service (JMS) queue, enabling
+                integration with enterprise messaging systems such as Apache ActiveMQ and IBM MQ. JMS queues
+                are common in large healthcare organizations that rely on Java-based middleware for reliable
+                message delivery between clinical, administrative, and financial systems. This destination
+                provides guaranteed delivery through the JMS provider's persistence and acknowledgment
+                mechanisms.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define a JMS destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  legacy-mq:
+    type: jms
+    jms:
+      provider: activemq
+      url: tcp://activemq.hospital.internal:61616
+      queue: HEALTHCARE.ADT.INBOUND
+      auth:
+        username: ${JMS_USER}
+        password: ${JMS_PASS}
+      timeout_ms: 30000</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">provider</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">JMS provider type. One of: <code>activemq</code>, <code>ibmmq</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">url</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">
+                        Connection URL for the JMS provider. Format depends on the provider:
+                        <code>tcp://host:61616</code> for ActiveMQ, or the appropriate connection string for IBM MQ.
+                        Supports environment variable interpolation.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">queue</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">The name of the JMS queue to send messages to.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">timeout_ms</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Send timeout in milliseconds. Defaults to <code>30000</code> (30 seconds).</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">persistent</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Use persistent delivery mode, ensuring messages survive broker restarts. Defaults to <code>true</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">priority</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">JMS message priority (0-9). Higher values indicate higher priority. Defaults to <code>4</code> (normal).</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">ttl_ms</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Time-to-live in milliseconds for each message. Messages that exceed their TTL are discarded by the broker. Defaults to <code>0</code> (no expiration).</div>
+                </div>
+            </div>
+
+            <h3>Authentication</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">auth.username</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Username for JMS broker authentication.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth.password</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Password for JMS broker authentication. Use <code>${VAR}</code> to reference environment variables.</div>
+                </div>
+            </div>
+
+            <h3>IBM MQ Specific Properties</h3>
+            <p>When using <code>provider: ibmmq</code>, additional properties are available:</p>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">queue_manager</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">IBM MQ Queue Manager name.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">channel_name</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">IBM MQ server-connection channel name.</div>
+                </div>
+            </div>
+
+            <h2>Full Example</h2>
+            <p>Receive FHIR Encounter resources via HTTP, transform them to a legacy message format, and publish to an ActiveMQ queue consumed by a hospital billing system.</p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  billing-queue:
+    type: jms
+    jms:
+      provider: activemq
+      url: tcp://activemq.hospital.internal:61616
+      queue: BILLING.ENCOUNTERS.INBOUND
+      persistent: true
+      priority: 6
+      auth:
+        username: ${JMS_USER}
+        password: ${JMS_PASS}
+      timeout_ms: 15000</code></pre>
+            </div>
+
+            <h3>Channel Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/encounter-to-billing/channel.yaml
+name: encounter-to-billing
+description: Transform FHIR Encounters to billing messages for legacy system
+
+source:
+  type: http
+  http:
+    port: 8082
+    path: /fhir/Encounter
+
+destinations:
+  - billing-queue</code></pre>
+            </div>
+
+            <h3>Destination Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/encounter-to-billing/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+interface BillingMessage {
+  messageType: string;
+  encounterNumber: string;
+  patientMrn: string;
+  admitDate: string;
+  dischargeDate: string;
+  encounterClass: string;
+  department: string;
+  attendingProvider: string;
+  diagnoses: Array&lt;{
+    code: string;
+    system: string;
+    display: string;
+    rank: number;
+  }&gt;;
+  procedures: Array&lt;{
+    code: string;
+    system: string;
+    display: string;
+    date: string;
+  }&gt;;
+}
+
+export default function transform(msg: Message, ctx: Context): Message {
+  const encounter = msg.body;
+
+  const patientRef = encounter.subject?.reference ?? "";
+  const patientMrn = patientRef.split("/").pop() ?? "";
+
+  const billing: BillingMessage = {
+    messageType: "ENCOUNTER_NOTIFICATION",
+    encounterNumber: encounter.id ?? "",
+    patientMrn,
+    admitDate: encounter.period?.start ?? "",
+    dischargeDate: encounter.period?.end ?? "",
+    encounterClass: encounter.class?.code ?? "",
+    department: encounter.serviceProvider?.display ?? "",
+    attendingProvider:
+      encounter.participant?.find(
+        (p: any) => p.type?.[0]?.coding?.[0]?.code === "ATND"
+      )?.individual?.display ?? "",
+    diagnoses: (encounter.diagnosis ?? []).map((d: any, i: number) => ({
+      code: d.condition?.coding?.[0]?.code ?? "",
+      system: d.condition?.coding?.[0]?.system ?? "",
+      display: d.condition?.coding?.[0]?.display ?? "",
+      rank: d.rank ?? i + 1,
+    })),
+    procedures: (encounter.procedure ?? []).map((p: any) => ({
+      code: p.code?.coding?.[0]?.code ?? "",
+      system: p.code?.coding?.[0]?.system ?? "",
+      display: p.code?.coding?.[0]?.display ?? "",
+      date: p.performedDateTime ?? "",
+    })),
+  };
+
+  ctx.logger.info(
+    `Publishing billing message for encounter ${billing.encounterNumber}`
+  );
+
+  return {
+    ...msg,
+    body: billing,
+  };
+}</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                Set <code>persistent: true</code> for healthcare messages to ensure they survive
+                broker restarts. Non-persistent messages offer lower latency but risk data loss
+                if the broker fails.
+            </div>
+
+            <div class="callout callout-tip">
+                <strong>Tip</strong>
+                Use the <code>priority</code> field to ensure time-sensitive messages (such as emergency
+                department encounters) are processed ahead of routine messages in the queue.
+            </div>
+
+            <div class="docs-footer">
+                <a href="dicom.html">&larr; DICOM Destination</a>
+                <a href="fhir.html">FHIR Destination &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-jms';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

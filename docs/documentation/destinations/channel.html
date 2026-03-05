@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Channel Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">Channel</span>
+            </div>
+
+            <h1><span class="gradient-text">Channel Destination</span></h1>
+            <p class="subtitle">Route messages to another intu channel for multi-stage processing and channel chaining.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The Channel destination routes processed messages to another intu channel for further
+                transformation and delivery. This enables multi-stage processing pipelines where a single
+                inbound message can be split, enriched, or filtered across multiple channels. Channel chaining
+                is useful for separating concerns -- for example, one channel normalizes incoming data while
+                downstream channels handle routing to different destinations based on message content.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define a Channel destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  notification-channel:
+    type: channel
+    channel:
+      target_channel_id: patient-notifications</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">target_channel_id</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">
+                        The ID of the target channel to route messages to. This must match the <code>name</code>
+                        field of an existing channel defined in <code>channels/</code>. The target channel
+                        receives the message as if it arrived from its own source.
+                    </div>
+                </div>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                The target channel must exist in the project. The <code>intu validate</code> command
+                checks that all channel destination references resolve to valid channels. Circular
+                references (A routes to B, B routes to A) are detected and rejected during validation.
+            </div>
+
+            <h2>Full Example</h2>
+            <p>
+                Receive HL7v2 ADT messages, normalize them in a primary channel, then route to separate
+                downstream channels: one for FHIR server updates and another for email notifications.
+            </p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  fhir-update-channel:
+    type: channel
+    channel:
+      target_channel_id: adt-to-fhir
+
+  notification-channel:
+    type: channel
+    channel:
+      target_channel_id: adt-notifications
+
+  fhir-server:
+    type: http
+    http:
+      url: https://fhir.hospital.org/fhir/R4
+      method: POST
+      headers:
+        Content-Type: application/fhir+json
+      auth:
+        type: bearer
+        token: ${FHIR_TOKEN}
+
+  alert-email:
+    type: smtp
+    smtp:
+      host: smtp.hospital.org
+      port: 587
+      from: intu@hospital.org
+      to:
+        - admissions@hospital.org
+      subject: "ADT Alert: ${eventType} - ${patientName}"
+      auth:
+        username: ${SMTP_USER}
+        password: ${SMTP_PASS}</code></pre>
+            </div>
+
+            <h3>Primary Channel (Router)</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/adt-router/channel.yaml
+name: adt-router
+description: Receive and normalize ADT messages, then route to downstream channels
+
+source:
+  type: tcp
+  tcp:
+    port: 6661
+    mode: mllp
+
+destinations:
+  - fhir-update-channel
+  - notification-channel</code></pre>
+            </div>
+
+            <h3>Downstream Channel (FHIR Updates)</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/adt-to-fhir/channel.yaml
+name: adt-to-fhir
+description: Transform normalized ADT data to FHIR and push to server
+
+source:
+  type: channel
+
+destinations:
+  - fhir-server</code></pre>
+            </div>
+
+            <h3>Downstream Channel (Notifications)</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/adt-notifications/channel.yaml
+name: adt-notifications
+description: Send email alerts for specific ADT event types
+
+source:
+  type: channel
+
+destinations:
+  - alert-email</code></pre>
+            </div>
+
+            <h3>Router Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/adt-router/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+interface NormalizedAdt {
+  eventType: string;
+  patientId: string;
+  patientName: string;
+  mrn: string;
+  dateOfBirth: string;
+  gender: string;
+  visitNumber: string;
+  admitDate: string;
+  department: string;
+  attendingPhysician: string;
+}
+
+export default function transform(msg: Message, ctx: Context): Message {
+  const hl7 = msg.body;
+  const msh = hl7.segments?.find((s: any) => s.name === "MSH");
+  const pid = hl7.segments?.find((s: any) => s.name === "PID");
+  const pv1 = hl7.segments?.find((s: any) => s.name === "PV1");
+
+  const normalized: NormalizedAdt = {
+    eventType: msh?.fields[8]?.components[1] ?? "A01",
+    patientId: pid?.fields[3]?.components[0] ?? "",
+    patientName: `${pid?.fields[5]?.components[1] ?? ""} ${pid?.fields[5]?.components[0] ?? ""}`.trim(),
+    mrn: pid?.fields[2]?.components[0] ?? "",
+    dateOfBirth: pid?.fields[7]?.components[0] ?? "",
+    gender: pid?.fields[8]?.components[0] ?? "",
+    visitNumber: pv1?.fields[19]?.components[0] ?? "",
+    admitDate: pv1?.fields[44]?.components[0] ?? "",
+    department: pv1?.fields[3]?.components[0] ?? "",
+    attendingPhysician: pv1?.fields[7]?.components[1] ?? "",
+  };
+
+  ctx.logger.info(`Routing ADT ${normalized.eventType} for patient ${normalized.patientId}`);
+
+  return {
+    ...msg,
+    body: normalized,
+    headers: {
+      ...msg.headers,
+      eventType: normalized.eventType,
+      patientName: normalized.patientName,
+    },
+  };
+}</code></pre>
+            </div>
+
+            <div class="callout callout-tip">
+                <strong>Tip</strong>
+                Channel chaining works well for fan-out patterns. A single inbound message can be
+                processed by multiple downstream channels in parallel, each applying its own transformation
+                and routing logic.
+            </div>
+
+            <div class="docs-footer">
+                <a href="smtp.html">&larr; SMTP Destination</a>
+                <a href="dicom.html">DICOM Destination &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-channel';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCP Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">TCP</span>
+            </div>
+
+            <h1><span class="gradient-text">TCP Destination</span></h1>
+            <p class="subtitle">Send messages over raw TCP or MLLP connections to downstream systems.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The TCP destination transmits messages over raw TCP sockets or MLLP (Minimal Lower Layer Protocol)
+                connections. MLLP is the standard transport for HL7v2 messaging in healthcare, wrapping each
+                message with start-of-block and end-of-block characters. This destination is commonly used to
+                forward processed HL7v2 messages to downstream clinical systems, lab information systems, or
+                interface engines.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define a TCP destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  downstream-lis:
+    type: tcp
+    tcp:
+      host: lis.hospital.internal
+      port: 6662
+      mode: mllp
+      timeout_ms: 10000
+      keep_alive: true
+      tls:
+        enabled: true
+        ca_cert: /etc/ssl/certs/hospital-ca.pem</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">host</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Hostname or IP address of the target system.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Port number to connect to on the target host.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">mode</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Transport mode. One of: <code>raw</code>, <code>mllp</code>. In <code>mllp</code> mode, messages are framed with VT (0x0B) and FS+CR (0x1C 0x0D) characters. Defaults to <code>raw</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">timeout_ms</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Connection and send timeout in milliseconds. Defaults to <code>30000</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">keep_alive</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Keep the TCP connection open between messages instead of reconnecting for each send. Defaults to <code>false</code>.</div>
+                </div>
+            </div>
+
+            <h3>TLS</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">tls.enabled</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Enable TLS encryption for the TCP connection. Defaults to <code>false</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.ca_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a PEM-encoded CA certificate.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.client_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a PEM-encoded client certificate for mutual TLS.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.client_key</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to the client private key for mutual TLS.</div>
+                </div>
+            </div>
+
+            <h2>Full Example</h2>
+            <p>Receive lab orders from a FHIR server, transform them to HL7v2 ORM messages, and forward to a lab information system via MLLP.</p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  lab-system-mllp:
+    type: tcp
+    tcp:
+      host: lis.hospital.internal
+      port: 6662
+      mode: mllp
+      timeout_ms: 15000
+      keep_alive: true
+      tls:
+        enabled: true
+        ca_cert: /etc/ssl/certs/hospital-ca.pem
+        client_cert: /etc/ssl/certs/intu-client.pem
+        client_key: /etc/ssl/private/intu-client-key.pem</code></pre>
+            </div>
+
+            <h3>Channel Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/fhir-to-lab/channel.yaml
+name: fhir-to-lab
+description: Convert FHIR ServiceRequests to HL7v2 ORM and send to LIS
+
+source:
+  type: http
+  http:
+    port: 8080
+    path: /fhir/ServiceRequest
+
+destinations:
+  - lab-system-mllp</code></pre>
+            </div>
+
+            <h3>Destination Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/fhir-to-lab/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+export default function transform(msg: Message, ctx: Context): Message {
+  const serviceRequest = msg.body;
+
+  const now = formatHL7Date(new Date());
+  const patientRef = serviceRequest.subject?.reference ?? "";
+  const patientId = patientRef.split("/").pop() ?? "UNKNOWN";
+  const orderCode = serviceRequest.code?.coding?.[0]?.code ?? "";
+  const orderDesc = serviceRequest.code?.coding?.[0]?.display ?? "";
+
+  const segments = [
+    `MSH|^~\\&|INTU|HIS|LIS|LAB|${now}||ORM^O01|${msg.id}|P|2.5`,
+    `PID|1||${patientId}^^^HIS^MR`,
+    `ORC|NW|${serviceRequest.id}|||||||${now}`,
+    `OBR|1|${serviceRequest.id}||${orderCode}^${orderDesc}^LN|||${now}`,
+  ];
+
+  const hl7Message = segments.join("\r");
+
+  return {
+    ...msg,
+    body: hl7Message,
+  };
+}
+
+function formatHL7Date(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const h = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  const s = String(date.getSeconds()).padStart(2, "0");
+  return `${y}${m}${d}${h}${min}${s}`;
+}</code></pre>
+            </div>
+
+            <div class="callout callout-warning">
+                <strong>MLLP Framing</strong>
+                When using <code>mode: mllp</code>, intu automatically wraps outbound messages with the required
+                MLLP envelope (VT/FS/CR). Do not include framing characters in your transformer output.
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                Enable <code>keep_alive</code> for high-throughput scenarios to avoid the overhead of
+                establishing a new TCP connection for each message. The connection is automatically
+                re-established if the remote end closes it.
+            </div>
+
+            <div class="docs-footer">
+                <a href="kafka.html">&larr; Kafka Destination</a>
+                <a href="file.html">File Destination &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-tcp';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

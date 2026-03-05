@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SFTP Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">SFTP</span>
+            </div>
+
+            <h1><span class="gradient-text">SFTP Destination</span></h1>
+            <p class="subtitle">Upload processed files to a remote SFTP server for secure file exchange.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The SFTP destination uploads processed messages as files to a remote SFTP server. SFTP (SSH File
+                Transfer Protocol) is widely used in healthcare for secure batch file exchange between organizations,
+                such as sending claims to payers, delivering lab reports to referring physicians, or exchanging
+                CDA documents with health information exchanges. This destination supports password and private
+                key authentication.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define an SFTP destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  report-sftp:
+    type: sftp
+    sftp:
+      host: sftp.partner-lab.org
+      port: 22
+      directory: /incoming/reports
+      filename_pattern: "report_${date}_${messageId}.pdf"
+      auth:
+        type: private_key
+        username: intu-service
+        private_key: /etc/ssh/intu_rsa
+        passphrase: ${SFTP_KEY_PASSPHRASE}</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">host</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Hostname or IP address of the SFTP server.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">port</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">SSH port number. Defaults to <code>22</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">directory</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Remote directory path where files will be uploaded. The directory must exist on the server.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">filename_pattern</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">
+                        Template for generating remote filenames. Supports the same variables as the File destination:
+                        <code>${messageId}</code>, <code>${timestamp}</code>, <code>${channelId}</code>,
+                        <code>${date}</code>, <code>${time}</code>. Defaults to <code>${messageId}.dat</code>.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">temp_prefix</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">
+                        Prefix applied to the filename during upload. The file is renamed to its final name after
+                        the upload completes. This prevents downstream systems from picking up partial files.
+                        Defaults to <code>.tmp_</code>.
+                    </div>
+                </div>
+            </div>
+
+            <h3>Authentication</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">auth.type</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Authentication method. One of: <code>password</code>, <code>private_key</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth.username</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">SSH username for authentication.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth.password</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">SSH password. Required when <code>auth.type</code> is <code>password</code>. Use <code>${VAR}</code> to reference environment variables.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth.private_key</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a PEM-encoded SSH private key. Required when <code>auth.type</code> is <code>private_key</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">auth.passphrase</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Passphrase for the private key, if encrypted.</div>
+                </div>
+            </div>
+
+            <h2>Full Example</h2>
+            <p>Receive CDA documents via HTTP, transform them to a standardized format, and upload to a health information exchange SFTP drop zone.</p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  hie-sftp-drop:
+    type: sftp
+    sftp:
+      host: sftp.hie-network.org
+      port: 22
+      directory: /drop/cda-documents
+      filename_pattern: "CDA_${timestamp}_${messageId}.xml"
+      temp_prefix: ".uploading_"
+      auth:
+        type: private_key
+        username: hospital-intu
+        private_key: /etc/ssh/hie_rsa
+        passphrase: ${HIE_KEY_PASSPHRASE}</code></pre>
+            </div>
+
+            <h3>Channel Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/cda-export/channel.yaml
+name: cda-export
+description: Export CDA clinical documents to HIE SFTP server
+
+source:
+  type: http
+  http:
+    port: 8081
+    path: /cda/submit
+
+destinations:
+  - hie-sftp-drop</code></pre>
+            </div>
+
+            <h3>Destination Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/cda-export/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+export default function transform(msg: Message, ctx: Context): Message {
+  const doc = msg.body;
+
+  const patientName = doc.recordTarget?.patientRole?.patient?.name;
+  const familyName = patientName?.family ?? "Unknown";
+  const givenName = patientName?.given ?? "Unknown";
+
+  ctx.logger.info(`Processing CDA for patient: ${givenName} ${familyName}`);
+
+  const header = `<?xml version="1.0" encoding="UTF-8"?>`;
+  const cdaXml = buildCdaDocument({
+    id: msg.id,
+    patientId: doc.recordTarget?.patientRole?.id?.extension ?? "",
+    patientFamily: familyName,
+    patientGiven: givenName,
+    authorOrg: doc.author?.assignedAuthor?.representedOrganization?.name ?? "",
+    sections: doc.component?.structuredBody?.sections ?? [],
+  });
+
+  return {
+    ...msg,
+    body: `${header}\n${cdaXml}`,
+  };
+}
+
+function buildCdaDocument(data: {
+  id: string;
+  patientId: string;
+  patientFamily: string;
+  patientGiven: string;
+  authorOrg: string;
+  sections: any[];
+}): string {
+  const sectionXml = data.sections
+    .map(
+      (s: any) =>
+        `<section><code code="${s.code ?? ""}" /><title>${s.title ?? ""}</title><text>${s.text ?? ""}</text></section>`
+    )
+    .join("\n");
+
+  return `<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <id root="${data.id}" />
+  <recordTarget>
+    <patientRole>
+      <id extension="${data.patientId}" />
+      <patient>
+        <name><given>${data.patientGiven}</given><family>${data.patientFamily}</family></name>
+      </patient>
+    </patientRole>
+  </recordTarget>
+  <author>
+    <assignedAuthor>
+      <representedOrganization><name>${data.authorOrg}</name></representedOrganization>
+    </assignedAuthor>
+  </author>
+  <component>
+    <structuredBody>
+      ${sectionXml}
+    </structuredBody>
+  </component>
+</ClinicalDocument>`;
+}</code></pre>
+            </div>
+
+            <div class="callout callout-tip">
+                <strong>Tip</strong>
+                Use the <code>temp_prefix</code> option to prevent downstream systems from reading
+                partially uploaded files. The file is first written with the temporary prefix, then
+                atomically renamed once the upload completes.
+            </div>
+
+            <div class="docs-footer">
+                <a href="database.html">&larr; Database Destination</a>
+                <a href="smtp.html">SMTP Destination &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-sftp';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

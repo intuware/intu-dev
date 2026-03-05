@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FHIR Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">FHIR</span>
+            </div>
+
+            <h1><span class="gradient-text">FHIR Destination</span></h1>
+            <p class="subtitle">Send FHIR resources to a FHIR-compliant server with native support for FHIR operations.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The FHIR destination provides a purpose-built integration with FHIR (Fast Healthcare
+                Interoperability Resources) servers. Unlike the generic HTTP destination, the FHIR destination
+                understands FHIR-specific operations (create, update, transaction bundles), handles resource
+                versioning, and validates FHIR version compatibility. It automatically constructs the correct
+                REST endpoints based on resource types and supports both individual resource operations and
+                FHIR transaction bundles.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define a FHIR destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  ehr-fhir-server:
+    type: fhir
+    fhir:
+      base_url: https://fhir.hospital.org/fhir
+      version: R4
+      operations:
+        - create
+        - update
+        - transaction
+      auth:
+        type: oauth2
+        token_url: https://auth.hospital.org/oauth/token
+        client_id: ${FHIR_CLIENT_ID}
+        client_secret: ${FHIR_CLIENT_SECRET}
+        scopes:
+          - system/Patient.write
+          - system/Encounter.write
+          - system/Observation.write
+      tls:
+        ca_cert: /etc/ssl/certs/hospital-ca.pem
+      timeout_ms: 30000</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">base_url</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Base URL of the FHIR server. Resource type and ID are appended automatically based on the operation. Supports environment variable interpolation.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">version</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">FHIR version. One of: <code>R4</code>, <code>STU3</code>. Affects content type headers and operation behavior. Defaults to <code>R4</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">operations</span>
+                    <span class="prop-type">string[]</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">
+                        Allowed FHIR operations. Values: <code>create</code> (POST), <code>update</code> (PUT),
+                        <code>transaction</code> (Bundle POST to base URL). Defaults to <code>["create"]</code>.
+                        The transformer determines which operation to use per message.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">timeout_ms</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Request timeout in milliseconds. Defaults to <code>30000</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">validate_resources</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Validate outbound resources against the FHIR schema before sending. Defaults to <code>false</code>.</div>
+                </div>
+            </div>
+
+            <h3>Authentication</h3>
+            <p>The <code>auth</code> object supports the same authentication types as the HTTP destination: <code>basic</code>, <code>bearer</code>, <code>api_key</code>, and <code>oauth2</code>.</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># OAuth2 (recommended for FHIR SMART on FHIR backends)
+auth:
+  type: oauth2
+  token_url: https://auth.hospital.org/oauth/token
+  client_id: ${FHIR_CLIENT_ID}
+  client_secret: ${FHIR_CLIENT_SECRET}
+  scopes:
+    - system/Patient.write
+    - system/Observation.write
+
+# Bearer token (for simpler setups)
+auth:
+  type: bearer
+  token: ${FHIR_ACCESS_TOKEN}</code></pre>
+            </div>
+
+            <h3>TLS</h3>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">tls.ca_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a PEM-encoded CA certificate.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.client_cert</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to a client certificate for mutual TLS.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.client_key</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Path to the client private key for mutual TLS.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">tls.insecure_skip_verify</span>
+                    <span class="prop-type">bool</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Skip server certificate verification. Defaults to <code>false</code>.</div>
+                </div>
+            </div>
+
+            <h2>Full Example</h2>
+            <p>Receive HL7v2 ADT and ORU messages, transform them into FHIR Patient, Encounter, and Observation resources, and push them to a FHIR R4 server as a transaction bundle.</p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  clinical-fhir:
+    type: fhir
+    fhir:
+      base_url: https://fhir.hospital.org/fhir
+      version: R4
+      operations:
+        - create
+        - update
+        - transaction
+      validate_resources: true
+      auth:
+        type: oauth2
+        token_url: https://auth.hospital.org/oauth/token
+        client_id: ${FHIR_CLIENT_ID}
+        client_secret: ${FHIR_CLIENT_SECRET}
+        scopes:
+          - system/Patient.write
+          - system/Encounter.write
+          - system/Observation.write
+      tls:
+        ca_cert: /etc/ssl/certs/hospital-ca.pem
+      timeout_ms: 45000</code></pre>
+            </div>
+
+            <h3>Channel Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/hl7-to-fhir/channel.yaml
+name: hl7-to-fhir
+description: Transform HL7v2 messages to FHIR transaction bundles
+
+source:
+  type: tcp
+  tcp:
+    port: 6670
+    mode: mllp
+
+destinations:
+  - clinical-fhir</code></pre>
+            </div>
+
+            <h3>Destination Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/hl7-to-fhir/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+export default function transform(msg: Message, ctx: Context): Message {
+  const hl7 = msg.body;
+  const pid = hl7.segments?.find((s: any) => s.name === "PID");
+  const pv1 = hl7.segments?.find((s: any) => s.name === "PV1");
+  const obxSegments = hl7.segments?.filter((s: any) => s.name === "OBX") ?? [];
+
+  const patientId = pid?.fields[3]?.components[0] ?? "";
+
+  const patient = {
+    resourceType: "Patient",
+    identifier: [
+      {
+        system: "urn:oid:2.16.840.1.113883.4.1",
+        value: patientId,
+      },
+    ],
+    name: [
+      {
+        family: pid?.fields[5]?.components[0] ?? "",
+        given: [pid?.fields[5]?.components[1] ?? ""],
+      },
+    ],
+    gender: mapGender(pid?.fields[8]?.components[0]),
+    birthDate: formatFhirDate(pid?.fields[7]?.components[0]),
+  };
+
+  const entries: any[] = [
+    {
+      resource: patient,
+      request: {
+        method: "PUT",
+        url: `Patient?identifier=urn:oid:2.16.840.1.113883.4.1|${patientId}`,
+      },
+    },
+  ];
+
+  if (pv1) {
+    const encounter = {
+      resourceType: "Encounter",
+      status: "in-progress",
+      class: {
+        system: "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+        code: mapEncounterClass(pv1.fields[2]?.components[0]),
+      },
+      subject: {
+        reference: `Patient?identifier=urn:oid:2.16.840.1.113883.4.1|${patientId}`,
+      },
+      period: {
+        start: formatFhirDateTime(pv1.fields[44]?.components[0]),
+      },
+    };
+    entries.push({
+      resource: encounter,
+      request: { method: "POST", url: "Encounter" },
+    });
+  }
+
+  for (const obx of obxSegments) {
+    const observation = {
+      resourceType: "Observation",
+      status: "final",
+      code: {
+        coding: [
+          {
+            system: "http://loinc.org",
+            code: obx.fields[3]?.components[0] ?? "",
+            display: obx.fields[3]?.components[1] ?? "",
+          },
+        ],
+      },
+      subject: {
+        reference: `Patient?identifier=urn:oid:2.16.840.1.113883.4.1|${patientId}`,
+      },
+      valueQuantity: {
+        value: parseFloat(obx.fields[5]?.components[0] ?? "0"),
+        unit: obx.fields[6]?.components[0] ?? "",
+      },
+      referenceRange: [
+        { text: obx.fields[7]?.components[0] ?? "" },
+      ],
+    };
+    entries.push({
+      resource: observation,
+      request: { method: "POST", url: "Observation" },
+    });
+  }
+
+  const bundle = {
+    resourceType: "Bundle",
+    type: "transaction",
+    entry: entries,
+  };
+
+  ctx.logger.info(
+    `Created FHIR transaction bundle with ${entries.length} entries for patient ${patientId}`
+  );
+
+  return {
+    ...msg,
+    body: bundle,
+    headers: {
+      ...msg.headers,
+      "fhir-operation": "transaction",
+    },
+  };
+}
+
+function mapGender(code: string | undefined): string {
+  switch (code) {
+    case "M": return "male";
+    case "F": return "female";
+    case "O": return "other";
+    default:  return "unknown";
+  }
+}
+
+function mapEncounterClass(code: string | undefined): string {
+  switch (code) {
+    case "I": return "IMP";
+    case "O": return "AMB";
+    case "E": return "EMER";
+    default:  return "AMB";
+  }
+}
+
+function formatFhirDate(raw: string | undefined): string | undefined {
+  if (!raw || raw.length < 8) return undefined;
+  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+}
+
+function formatFhirDateTime(raw: string | undefined): string | undefined {
+  if (!raw || raw.length < 8) return undefined;
+  const date = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  if (raw.length >= 14) {
+    return `${date}T${raw.slice(8, 10)}:${raw.slice(10, 12)}:${raw.slice(12, 14)}Z`;
+  }
+  return date;
+}</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>FHIR vs HTTP Destination</strong>
+                Use the FHIR destination instead of the generic HTTP destination when you need FHIR-aware
+                behavior: automatic endpoint construction from resource types, FHIR version-specific content
+                types, transaction bundle support, and optional resource validation. For simple POST-to-URL
+                scenarios, the HTTP destination may be simpler.
+            </div>
+
+            <div class="callout callout-tip">
+                <strong>Tip</strong>
+                Use <code>transaction</code> bundles to send multiple related resources (Patient, Encounter,
+                Observations) atomically. The FHIR server processes the entire bundle as a single unit,
+                ensuring referential integrity.
+            </div>
+
+            <div class="docs-footer">
+                <a href="jms.html">&larr; JMS Destination</a>
+                <a href="direct.html">Direct Destination &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-fhir';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>

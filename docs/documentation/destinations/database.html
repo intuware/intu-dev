@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Destination - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="../index.html">Docs</a>
+                <span class="sep">/</span>
+                <a href="../index.html">Destinations</a>
+                <span class="sep">/</span>
+                <span class="current">Database</span>
+            </div>
+
+            <h1><span class="gradient-text">Database Destination</span></h1>
+            <p class="subtitle">Insert or update records in a relational database using parameterized SQL statements.</p>
+
+            <h2>Overview</h2>
+            <p>
+                The Database destination writes processed messages directly to a relational database using
+                parameterized SQL statements. It supports PostgreSQL, MySQL, and Microsoft SQL Server. This
+                destination is commonly used to persist normalized clinical data, store lab results, maintain
+                audit logs, or populate analytics tables from healthcare message streams.
+            </p>
+
+            <h2>Configuration</h2>
+            <p>Define a Database destination in your root <code>intu.yaml</code> under the <code>destinations</code> key:</p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  lab-results-db:
+    type: database
+    database:
+      driver: postgres
+      dsn: "postgres://${DB_USER}:${DB_PASS}@db.hospital.internal:5432/clinical?sslmode=require"
+      statement: |
+        INSERT INTO lab_results (
+          patient_id, order_id, test_code, test_name,
+          result_value, units, reference_range, abnormal_flag,
+          collection_date, received_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        ON CONFLICT (order_id, test_code) DO UPDATE SET
+          result_value = EXCLUDED.result_value,
+          received_at = NOW()
+      max_conns: 10</code></pre>
+            </div>
+
+            <h2>Properties</h2>
+
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">driver</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">Database driver. One of: <code>postgres</code>, <code>mysql</code>, <code>mssql</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">dsn</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">
+                        Data source name (connection string). Format varies by driver. Supports environment variable
+                        interpolation with <code>${VAR}</code> syntax. Always use environment variables for credentials.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">statement</span>
+                    <span class="prop-type">string</span>
+                    <span class="prop-required">required</span>
+                    <div class="prop-desc">
+                        Parameterized SQL statement to execute for each message. Use positional placeholders
+                        (<code>$1</code>, <code>$2</code>, ... for PostgreSQL; <code>?</code> for MySQL/MSSQL).
+                        The transformer must return parameters in the matching order.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">max_conns</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Maximum number of open database connections in the pool. Defaults to <code>5</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">max_idle_conns</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Maximum number of idle connections retained in the pool. Defaults to <code>2</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">conn_max_lifetime_ms</span>
+                    <span class="prop-type">int</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">Maximum lifetime of a connection in milliseconds before it is closed and replaced. Defaults to <code>0</code> (no limit).</div>
+                </div>
+            </div>
+
+            <h3>DSN Format by Driver</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Driver</th>
+                        <th>DSN Format</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>postgres</code></td>
+                        <td><code>postgres://user:pass@host:5432/dbname?sslmode=require</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>mysql</code></td>
+                        <td><code>user:pass@tcp(host:3306)/dbname?tls=true</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>mssql</code></td>
+                        <td><code>sqlserver://user:pass@host:1433?database=dbname&amp;encrypt=true</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Full Example</h2>
+            <p>Receive HL7v2 ORU lab result messages via MLLP, extract individual test results, and store them in a PostgreSQL table.</p>
+
+            <h3>Root Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># intu.yaml
+destinations:
+  clinical-db:
+    type: database
+    database:
+      driver: postgres
+      dsn: "postgres://${DB_USER}:${DB_PASS}@db.hospital.internal:5432/clinical?sslmode=require"
+      statement: |
+        INSERT INTO lab_results (
+          patient_id, order_id, test_code, test_name,
+          result_value, units, reference_range, abnormal_flag,
+          collection_date
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      max_conns: 10</code></pre>
+            </div>
+
+            <h3>Channel Configuration</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
+                <pre><code># channels/lab-to-db/channel.yaml
+name: lab-to-db
+description: Persist HL7v2 lab results to PostgreSQL
+
+source:
+  type: tcp
+  tcp:
+    port: 6664
+    mode: mllp
+
+destinations:
+  - clinical-db</code></pre>
+            </div>
+
+            <h3>Destination Transformer</h3>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>// channels/lab-to-db/transformer.ts
+import { Message, Context } from "@intu/sdk";
+
+export default function transform(msg: Message, ctx: Context): Message[] {
+  const hl7 = msg.body;
+  const pid = hl7.segments?.find((s: any) => s.name === "PID");
+  const obr = hl7.segments?.find((s: any) => s.name === "OBR");
+  const obxSegments = hl7.segments?.filter((s: any) => s.name === "OBX") ?? [];
+
+  const patientId = pid?.fields[3]?.components[0] ?? "";
+  const orderId = obr?.fields[2]?.components[0] ?? "";
+  const collectionDate = obr?.fields[7]?.components[0] ?? "";
+
+  return obxSegments.map((obx: any) => ({
+    ...msg,
+    body: {
+      params: [
+        patientId,
+        orderId,
+        obx.fields[3]?.components[0] ?? "",
+        obx.fields[3]?.components[1] ?? "",
+        obx.fields[5]?.components[0] ?? "",
+        obx.fields[6]?.components[0] ?? "",
+        obx.fields[7]?.components[0] ?? "",
+        obx.fields[8]?.components[0] ?? "",
+        collectionDate,
+      ],
+    },
+  }));
+}</code></pre>
+            </div>
+
+            <div class="callout callout-warning">
+                <strong>Security</strong>
+                Never embed database credentials directly in YAML files. Always use environment variable
+                references (<code>${DB_USER}</code>, <code>${DB_PASS}</code>) and define the actual values
+                in your <code>.env</code> file, which should be excluded from version control.
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Note</strong>
+                The transformer must return a <code>body.params</code> array whose elements correspond
+                positionally to the placeholders in the SQL statement. For fan-out scenarios (e.g. one
+                HL7 message producing multiple OBX rows), the transformer can return an array of messages.
+            </div>
+
+            <div class="docs-footer">
+                <a href="file.html">&larr; File Destination</a>
+                <a href="sftp.html">SFTP Destination &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='..';window.DOCS_PAGE='dest-database';</script>
+    <script src="../assets/nav.js"></script>
+</body>
+</html>
