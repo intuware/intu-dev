@@ -1,6 +1,6 @@
 # intu
 
-`intu` is a Git-native healthcare interoperability engine framework for health-tech teams running in their own infrastructure.
+`intu` is a Git-native, AI-friendly healthcare interoperability framework that lets teams build, version, and deploy integration pipelines using YAML configuration and TypeScript transformers.
 
 ## Features
 
