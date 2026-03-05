@@ -67,8 +67,11 @@ type Destination struct {
 }
 
 type KafkaDestConfig struct {
-	Brokers []string `mapstructure:"brokers"`
-	Topic   string   `mapstructure:"topic"`
+	Brokers  []string       `mapstructure:"brokers"`
+	Topic    string         `mapstructure:"topic"`
+	ClientID string         `mapstructure:"client_id"`
+	Auth     *HTTPAuthConfig `mapstructure:"auth"`
+	TLS      *TLSMapConfig  `mapstructure:"tls"`
 }
 
 type HTTPDestConfig struct {
@@ -111,6 +114,7 @@ type TCPDestMapConfig struct {
 	Mode      string        `mapstructure:"mode"`
 	TimeoutMs int           `mapstructure:"timeout_ms"`
 	TLS       *TLSMapConfig `mapstructure:"tls"`
+	KeepAlive bool          `mapstructure:"keep_alive"`
 }
 
 type FileDestMapConfig struct {
@@ -123,14 +127,17 @@ type DBDestMapConfig struct {
 	Driver    string `mapstructure:"driver"`
 	DSN       string `mapstructure:"dsn"`
 	Statement string `mapstructure:"statement"`
+	MaxConns  int    `mapstructure:"max_conns"`
 }
 
 type SMTPDestMapConfig struct {
-	Host    string `mapstructure:"host"`
-	Port    int    `mapstructure:"port"`
-	From    string `mapstructure:"from"`
-	To      []string `mapstructure:"to"`
-	Subject string `mapstructure:"subject"`
+	Host    string         `mapstructure:"host"`
+	Port    int            `mapstructure:"port"`
+	From    string         `mapstructure:"from"`
+	To      []string       `mapstructure:"to"`
+	Subject string         `mapstructure:"subject"`
+	Auth    *HTTPAuthConfig `mapstructure:"auth"`
+	TLS     *TLSMapConfig  `mapstructure:"tls"`
 }
 
 type ChannelDestMapConfig struct {
@@ -138,28 +145,38 @@ type ChannelDestMapConfig struct {
 }
 
 type DICOMDestMapConfig struct {
-	Host          string `mapstructure:"host"`
-	Port          int    `mapstructure:"port"`
-	AETitle       string `mapstructure:"ae_title"`
-	CalledAETitle string `mapstructure:"called_ae_title"`
+	Host          string        `mapstructure:"host"`
+	Port          int           `mapstructure:"port"`
+	AETitle       string        `mapstructure:"ae_title"`
+	CalledAETitle string        `mapstructure:"called_ae_title"`
+	TimeoutMs     int           `mapstructure:"timeout_ms"`
+	TLS           *TLSMapConfig `mapstructure:"tls"`
 }
 
 type JMSDestMapConfig struct {
-	Provider string `mapstructure:"provider"`
-	URL      string `mapstructure:"url"`
-	Queue    string `mapstructure:"queue"`
+	Provider  string         `mapstructure:"provider"`
+	URL       string         `mapstructure:"url"`
+	Queue     string         `mapstructure:"queue"`
+	Auth      *HTTPAuthConfig `mapstructure:"auth"`
+	TimeoutMs int            `mapstructure:"timeout_ms"`
 }
 
 type FHIRDestMapConfig struct {
-	BaseURL    string   `mapstructure:"base_url"`
-	Version    string   `mapstructure:"version"`
-	Operations []string `mapstructure:"operations"`
+	BaseURL    string         `mapstructure:"base_url"`
+	Version    string         `mapstructure:"version"`
+	Operations []string       `mapstructure:"operations"`
+	Auth       *HTTPAuthConfig `mapstructure:"auth"`
+	TLS        *TLSMapConfig  `mapstructure:"tls"`
+	TimeoutMs  int            `mapstructure:"timeout_ms"`
 }
 
 type DirectDestMapConfig struct {
-	To          string `mapstructure:"to"`
-	From        string `mapstructure:"from"`
-	Certificate string `mapstructure:"certificate"`
+	To          string        `mapstructure:"to"`
+	From        string        `mapstructure:"from"`
+	Certificate string        `mapstructure:"certificate"`
+	SMTPHost    string        `mapstructure:"smtp_host"`
+	SMTPPort    int           `mapstructure:"smtp_port"`
+	TLS         *TLSMapConfig `mapstructure:"tls"`
 }
 
 type RetryMapConfig struct {
