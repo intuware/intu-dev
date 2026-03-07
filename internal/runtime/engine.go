@@ -6,9 +6,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/intuware/intu/internal/alerting"
 	"github.com/intuware/intu/internal/connector"
+	"github.com/intuware/intu/internal/observability"
+	"github.com/intuware/intu/internal/storage"
 	"github.com/intuware/intu/pkg/config"
 )
 
@@ -23,11 +27,16 @@ type ConnectorFactory interface {
 }
 
 type DefaultEngine struct {
-	rootDir    string
-	cfg        *config.Config
-	channels   map[string]*ChannelRuntime
-	factory    ConnectorFactory
-	logger     *slog.Logger
+	rootDir      string
+	cfg          *config.Config
+	channels     map[string]*ChannelRuntime
+	factory      ConnectorFactory
+	logger       *slog.Logger
+	metrics      *observability.Metrics
+	store        storage.MessageStore
+	alertMgr     *alerting.AlertManager
+	maps         *MapVariables
+	codeTemplates *CodeTemplateLoader
 }
 
 func NewDefaultEngine(rootDir string, cfg *config.Config, factory ConnectorFactory, logger *slog.Logger) *DefaultEngine {
@@ -37,11 +46,32 @@ func NewDefaultEngine(rootDir string, cfg *config.Config, factory ConnectorFacto
 		channels: make(map[string]*ChannelRuntime),
 		factory:  factory,
 		logger:   logger,
+		metrics:  observability.Global(),
+		maps:     NewMapVariables(),
 	}
+}
+
+// SetMessageStore injects the message store for pipeline persistence.
+func (e *DefaultEngine) SetMessageStore(store storage.MessageStore) {
+	e.store = store
+}
+
+// SetAlertManager injects the alert manager.
+func (e *DefaultEngine) SetAlertManager(am *alerting.AlertManager) {
+	e.alertMgr = am
 }
 
 func (e *DefaultEngine) Start(ctx context.Context) error {
 	e.logger.Info("starting engine", "name", e.cfg.Runtime.Name)
+
+	e.codeTemplates = NewCodeTemplateLoader(e.rootDir, e.logger)
+	if e.cfg.CodeTemplates != nil {
+		for _, lib := range e.cfg.CodeTemplates {
+			if err := e.codeTemplates.LoadLibrary(lib.Name, lib.Directory); err != nil {
+				e.logger.Warn("failed to load code template library", "name", lib.Name, "error", err)
+			}
+		}
+	}
 
 	if e.cfg.Global != nil && e.cfg.Global.Hooks != nil && e.cfg.Global.Hooks.OnStartup != "" {
 		runner := NewGojaRunner()
@@ -54,11 +84,22 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 		}
 	}
 
+	if e.alertMgr != nil {
+		e.alertMgr.Start(ctx)
+	}
+
 	channelsDir := filepath.Join(e.rootDir, e.cfg.ChannelsDir)
 	entries, err := os.ReadDir(channelsDir)
 	if err != nil {
 		return fmt.Errorf("read channels dir: %w", err)
 	}
+
+	type channelEntry struct {
+		dir   string
+		cfg   *config.ChannelConfig
+		order int
+	}
+	var channelEntries []channelEntry
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -77,19 +118,41 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 			continue
 		}
 
-		cr, err := e.buildChannelRuntime(channelDir, chCfg)
+		channelEntries = append(channelEntries, channelEntry{
+			dir:   channelDir,
+			cfg:   chCfg,
+			order: chCfg.StartupOrder,
+		})
+	}
+
+	sort.Slice(channelEntries, func(i, j int) bool {
+		return channelEntries[i].order < channelEntries[j].order
+	})
+
+	started := make(map[string]bool)
+	for _, ce := range channelEntries {
+		if !e.dependenciesMet(ce.cfg, started) {
+			e.logger.Error("channel dependencies not met, skipping",
+				"id", ce.cfg.ID,
+				"depends_on", ce.cfg.DependsOn,
+			)
+			continue
+		}
+
+		cr, err := e.buildChannelRuntime(ce.dir, ce.cfg)
 		if err != nil {
-			e.logger.Error("failed to build channel runtime", "id", chCfg.ID, "error", err)
+			e.logger.Error("failed to build channel runtime", "id", ce.cfg.ID, "error", err)
 			continue
 		}
 
 		if err := cr.Start(ctx); err != nil {
-			e.logger.Error("failed to start channel", "id", chCfg.ID, "error", err)
+			e.logger.Error("failed to start channel", "id", ce.cfg.ID, "error", err)
 			continue
 		}
 
-		e.channels[chCfg.ID] = cr
-		e.logger.Info("channel started", "id", chCfg.ID)
+		e.channels[ce.cfg.ID] = cr
+		started[ce.cfg.ID] = true
+		e.logger.Info("channel started", "id", ce.cfg.ID)
 	}
 
 	e.logger.Info("engine started", "channels", len(e.channels))
@@ -105,6 +168,10 @@ func (e *DefaultEngine) Stop(ctx context.Context) error {
 		}
 	}
 
+	if e.alertMgr != nil {
+		e.alertMgr.Stop()
+	}
+
 	if e.cfg.Global != nil && e.cfg.Global.Hooks != nil && e.cfg.Global.Hooks.OnShutdown != "" {
 		runner := NewGojaRunner()
 		hookPath := filepath.Join(e.rootDir, "dist", e.cfg.Global.Hooks.OnShutdown)
@@ -118,6 +185,15 @@ func (e *DefaultEngine) Stop(ctx context.Context) error {
 
 	e.logger.Info("engine stopped")
 	return nil
+}
+
+func (e *DefaultEngine) dependenciesMet(chCfg *config.ChannelConfig, started map[string]bool) bool {
+	for _, dep := range chCfg.DependsOn {
+		if !started[dep] {
+			return false
+		}
+	}
+	return true
 }
 
 func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.ChannelConfig) (*ChannelRuntime, error) {
@@ -156,7 +232,11 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 	runner := NewGojaRunner()
 	pipeline := NewPipeline(channelDir, e.rootDir, chCfg.ID, chCfg, runner, e.logger)
 
-	return &ChannelRuntime{
+	if e.store != nil {
+		pipeline.SetMessageStore(e.store)
+	}
+
+	cr := &ChannelRuntime{
 		ID:           chCfg.ID,
 		Config:       chCfg,
 		Source:       source,
@@ -164,5 +244,12 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 		DestConfigs:  chCfg.Destinations,
 		Pipeline:     pipeline,
 		Logger:       e.logger,
-	}, nil
+		Metrics:      e.metrics,
+		Store:        e.store,
+		Maps:         e.maps,
+	}
+
+	cr.initRetryAndQueue(e.cfg)
+
+	return cr, nil
 }

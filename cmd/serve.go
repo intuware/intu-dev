@@ -7,9 +7,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/intuware/intu/internal/alerting"
 	"github.com/intuware/intu/internal/cluster"
 	"github.com/intuware/intu/internal/connector"
+	"github.com/intuware/intu/internal/observability"
 	"github.com/intuware/intu/internal/runtime"
+	"github.com/intuware/intu/internal/storage"
 	"github.com/intuware/intu/pkg/config"
 	"github.com/intuware/intu/pkg/logging"
 	"github.com/spf13/cobra"
@@ -40,8 +43,26 @@ func newServeCmd() *cobra.Command {
 				}
 			}
 
+			store, err := storage.NewMessageStore(cfg.MessageStorage)
+			if err != nil {
+				logger.Warn("message store init failed, using memory store", "error", err)
+				store = storage.NewMemoryStore()
+			}
+
+			metrics := observability.Global()
+
 			factory := connector.NewFactory(logger)
 			engine := runtime.NewDefaultEngine(dir, cfg, factory, logger)
+			engine.SetMessageStore(store)
+
+			if len(cfg.Alerts) > 0 {
+				alertSend := func(ctx context.Context, destination string, payload []byte) error {
+					logger.Info("alert fired", "destination", destination, "payload", string(payload))
+					return nil
+				}
+				am := alerting.NewAlertManager(cfg.Alerts, metrics, alertSend, logger)
+				engine.SetAlertManager(am)
+			}
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()

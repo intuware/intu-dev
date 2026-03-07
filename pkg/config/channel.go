@@ -36,6 +36,16 @@ type ChannelConfig struct {
 	Pruning        *ChannelPruningConfig  `yaml:"pruning,omitempty"`
 	DependsOn      []string               `yaml:"depends_on,omitempty"`
 	StartupOrder   int                    `yaml:"startup_order,omitempty"`
+	CodeTemplates  []string               `yaml:"code_templates,omitempty"`
+	AutoResponse   *AutoResponseConfig    `yaml:"auto_response,omitempty"`
+}
+
+type AutoResponseConfig struct {
+	Enabled     bool   `yaml:"enabled,omitempty"`
+	Type        string `yaml:"type,omitempty"`
+	SuccessCode string `yaml:"success_code,omitempty"`
+	ErrorCode   string `yaml:"error_code,omitempty"`
+	RejectCode  string `yaml:"reject_code,omitempty"`
 }
 
 type DataTypesConfig struct {

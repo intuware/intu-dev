@@ -35,6 +35,7 @@ func init() {
 	rootCmd.AddCommand(newDisableCmd())
 	rootCmd.AddCommand(newPruneCmd())
 	rootCmd.AddCommand(newDashboardCmd())
+	rootCmd.AddCommand(newMessageCmd())
 }
 
 func newChannelCmd() *cobra.Command {
