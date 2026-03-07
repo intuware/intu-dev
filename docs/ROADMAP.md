@@ -66,9 +66,20 @@
 | **Destination Connectors (13 types)** (HTTP, TCP/MLLP, File, SFTP, Kafka, Database, SMTP, Channel, DICOM, JMS, FHIR, Direct, Log) | ✅ Implemented |
 | **OAuth2 Client Credentials** on HTTP/FHIR destinations | ✅ Implemented |
 | **Goja JS Runtime** (embedded JavaScript execution for TS transformers) | ✅ Implemented |
-| Error handling / retry / DLQ | ❌ Not implemented |
-| Message storage / audit | ❌ Not implemented |
-| Dashboard / alerting | ❌ Not implemented |
+| **Retry with configurable backoff** (fixed/linear/exponential) wired into destinations | ✅ Implemented |
+| **Dead Letter Queue (DLQ)** wired into error handling | ✅ Implemented |
+| **Destination queuing** with overflow policies and concurrent workers | ✅ Implemented |
+| **Message storage** at each pipeline stage (received/transformed/sent/error/filtered) | ✅ Implemented |
+| **Metrics recording** (received/processed/filtered/errored/latency) | ✅ Implemented |
+| **Alert manager** with periodic evaluation (error_count, queue_depth) | ✅ Implemented |
+| **Batch processing** (newline, HL7 batch, FHIR bundle, XML root splitters) | ✅ Implemented |
+| **Map variables** (globalMap, channelMap, responseMap, connectorMap) | ✅ Implemented |
+| **Code template libraries** for sharing functions across channels | ✅ Implemented |
+| **Channel dependencies** (depends_on, startup_order) | ✅ Implemented |
+| **Channel clone/export/import** CLI commands | ✅ Implemented |
+| **Message browser** (intu message list/get/count) | ✅ Implemented |
+| **Live stats** from observability subsystem | ✅ Implemented |
+| **Web dashboard** with channel list and metrics | ✅ Implemented |
 
 ---
 

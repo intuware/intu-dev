@@ -192,6 +192,53 @@ go build -o intu .</code></pre>
                 </div>
             </div>
 
+            <h2>Runtime Features</h2>
+            <div class="prop-list">
+                <div class="prop-item">
+                    <span class="prop-name">Retry &amp; Dead-Letter Queue</span>
+                    <div class="prop-desc">
+                        Configurable retry policies (fixed, linear, exponential backoff) per destination.
+                        Messages that exhaust retries are routed to a dead-letter queue for later inspection.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Metrics &amp; Alerting</span>
+                    <div class="prop-desc">
+                        Track message counts (received, processed, filtered, errored) and latency per channel.
+                        Configure alerts on error count or queue depth thresholds.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Message Storage</span>
+                    <div class="prop-desc">
+                        Persist messages at each pipeline stage (received, transformed, sent, error) for
+                        audit, debugging, and replay. Browse stored messages with <code>intu message list</code>.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Map Variables</span>
+                    <div class="prop-desc">
+                        Share data across pipeline stages using <code>globalMap</code>, <code>channelMap</code>,
+                        <code>responseMap</code>, and <code>connectorMap</code> &mdash; available in every
+                        transformer and filter context.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Batch Processing</span>
+                    <div class="prop-desc">
+                        Split inbound messages using HL7 batch, FHIR bundle, newline, or XML root splitters.
+                        Each sub-message is processed independently through the pipeline.
+                    </div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">Code Template Libraries</span>
+                    <div class="prop-desc">
+                        Define shared TypeScript functions in <code>code_templates</code> directories and
+                        reference them across channels for consistent reuse of mapping logic.
+                    </div>
+                </div>
+            </div>
+
             <h2>Next Steps</h2>
             <div class="card-grid">
                 <div class="card">

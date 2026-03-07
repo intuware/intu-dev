@@ -257,11 +257,7 @@
 
             <!-- intu serve -->
             <h3><code>intu serve</code></h3>
-            <p>Start the runtime engine to process messages through configured channels.</p>
-            <div class="callout callout-warning">
-                <strong>Not yet implemented</strong>
-                This command is planned but not available in the current release.
-            </div>
+            <p>Start the runtime engine to process messages through configured channels. Loads configuration, boots all enabled channels (respecting dependency order), initializes message storage, alerting, and metrics, then processes messages until interrupted.</p>
             <table class="docs-table">
                 <thead>
                     <tr>
@@ -494,6 +490,202 @@
                         <td><code>--port</code></td>
                         <td><code>3000</code></td>
                         <td>Port for the dashboard web server</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- intu channel clone -->
+            <h3><code>intu channel clone &lt;source&gt; &lt;new-name&gt;</code></h3>
+            <p>Clone an existing channel to create a new one. Copies all files from the source channel directory and updates the channel ID in <code>channel.yaml</code>.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--profile</code></td>
+                        <td><code>dev</code></td>
+                        <td>Config profile</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu channel clone sample-channel hl7-inbound --dir .</code></pre>
+            </div>
+
+            <!-- intu channel export -->
+            <h3><code>intu channel export &lt;channel-id&gt;</code></h3>
+            <p>Export a channel as a portable <code>.tar.gz</code> archive for sharing or backup.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>-o</code>, <code>--output</code></td>
+                        <td><code>&lt;channel-id&gt;.tar.gz</code></td>
+                        <td>Output file path</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu channel export adt-inbound --dir . -o adt-inbound.tar.gz</code></pre>
+            </div>
+
+            <!-- intu channel import -->
+            <h3><code>intu channel import &lt;archive-path&gt;</code></h3>
+            <p>Import a channel from a <code>.tar.gz</code> archive into the channels directory.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--force</code></td>
+                        <td><code>false</code></td>
+                        <td>Overwrite existing files</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu channel import adt-inbound.tar.gz --dir .</code></pre>
+            </div>
+
+            <!-- intu message list -->
+            <h3><code>intu message list</code></h3>
+            <p>List messages from the message store. Supports filtering by channel, status, and time range.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--channel</code></td>
+                        <td>&mdash;</td>
+                        <td>Filter by channel ID</td>
+                    </tr>
+                    <tr>
+                        <td><code>--status</code></td>
+                        <td>&mdash;</td>
+                        <td>Filter by status (RECEIVED, TRANSFORMED, SENT, ERROR, FILTERED)</td>
+                    </tr>
+                    <tr>
+                        <td><code>--since</code></td>
+                        <td>&mdash;</td>
+                        <td>Messages since date (RFC3339 or YYYY-MM-DD)</td>
+                    </tr>
+                    <tr>
+                        <td><code>--before</code></td>
+                        <td>&mdash;</td>
+                        <td>Messages before date (RFC3339 or YYYY-MM-DD)</td>
+                    </tr>
+                    <tr>
+                        <td><code>--limit</code></td>
+                        <td><code>50</code></td>
+                        <td>Maximum number of results</td>
+                    </tr>
+                    <tr>
+                        <td><code>--json</code></td>
+                        <td><code>false</code></td>
+                        <td>Output in JSON format</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                <pre><code>intu message list --channel adt-inbound --status ERROR --limit 20</code></pre>
+            </div>
+
+            <!-- intu message get -->
+            <h3><code>intu message get &lt;message-id&gt;</code></h3>
+            <p>Retrieve a specific message by its ID, including full content and metadata.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--json</code></td>
+                        <td><code>false</code></td>
+                        <td>Output in JSON format</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- intu message count -->
+            <h3><code>intu message count</code></h3>
+            <p>Count messages in the store, optionally filtered by channel and status.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Flag</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>--dir</code></td>
+                        <td><code>.</code></td>
+                        <td>Project directory</td>
+                    </tr>
+                    <tr>
+                        <td><code>--channel</code></td>
+                        <td>&mdash;</td>
+                        <td>Filter by channel ID</td>
+                    </tr>
+                    <tr>
+                        <td><code>--status</code></td>
+                        <td>&mdash;</td>
+                        <td>Filter by status</td>
                     </tr>
                 </tbody>
             </table>

@@ -47,7 +47,7 @@
     { title: 'Schema Reference', href: '/schema.html', id: 'schema' }
   ];
 
-  var FAVICON = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230ea5e9'/><path d='M50 20C50 20 52 35 65 37C52 39 50 54 50 54C50 54 48 39 35 37C48 35 50 20 50 20Z' fill='white'/><rect x='42' y='60' width='16' height='25' rx='4' fill='white'/></svg>";
+  var FAVICON = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%230ea5e9'/><path d='M50 15C50 15 52 30 65 32C52 34 50 49 50 49C50 49 48 34 35 32C48 30 50 15 50 15Z' fill='white'/><rect x='42' y='55' width='16' height='30' rx='5' fill='white'/></svg>";
 
   function setFavicon() {
     var link = document.querySelector("link[rel='icon']");

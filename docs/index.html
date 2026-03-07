@@ -12,7 +12,7 @@
     <meta name="duckduckbot" content="index, follow">
     <meta name="baidu" content="index, follow">
     <meta name="sogou" content="index, follow">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230ea5e9'/><path d='M50 20C50 20 52 35 65 37C52 39 50 54 50 54C50 54 48 39 35 37C48 35 50 20 50 20Z' fill='white'/><rect x='42' y='60' width='16' height='25' rx='4' fill='white'/></svg>">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%230ea5e9'/><path d='M50 15C50 15 52 30 65 32C52 34 50 49 50 49C50 49 48 34 35 32C48 30 50 15 50 15Z' fill='white'/><rect x='42' y='55' width='16' height='30' rx='5' fill='white'/></svg>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>intu.dev | Git-Native Healthcare Interoperability</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -142,16 +142,8 @@
                                 <td class="px-8 py-5 text-slate-300 text-sm">Fast alias to add a new channel</td>
                             </tr>
                             <tr class="command-row transition">
-                                <td class="px-8 py-5 mono text-sky-400 text-sm">intu channel add</td>
-                                <td class="px-8 py-5 text-slate-300 text-sm">Interactively add a new channel to project</td>
-                            </tr>
-                            <tr class="command-row transition">
-                                <td class="px-8 py-5 mono text-sky-400 text-sm">intu channel list</td>
-                                <td class="px-8 py-5 text-slate-300 text-sm">List all configured channels in project</td>
-                            </tr>
-                            <tr class="command-row transition">
-                                <td class="px-8 py-5 mono text-sky-400 text-sm">intu channel describe</td>
-                                <td class="px-8 py-5 text-slate-300 text-sm">Show detailed configuration for a specific channel</td>
+                                <td class="px-8 py-5 mono text-sky-400 text-sm">intu serve</td>
+                                <td class="px-8 py-5 text-slate-300 text-sm">Start the runtime engine and process messages</td>
                             </tr>
                             <tr class="command-row transition">
                                 <td class="px-8 py-5 mono text-sky-400 text-sm">intu validate</td>
@@ -160,6 +152,30 @@
                             <tr class="command-row transition">
                                 <td class="px-8 py-5 mono text-sky-400 text-sm">intu build</td>
                                 <td class="px-8 py-5 text-slate-300 text-sm">Compile TypeScript transformers into production runtime</td>
+                            </tr>
+                            <tr class="command-row transition">
+                                <td class="px-8 py-5 mono text-sky-400 text-sm">intu channel clone</td>
+                                <td class="px-8 py-5 text-slate-300 text-sm">Clone a channel to create a new one</td>
+                            </tr>
+                            <tr class="command-row transition">
+                                <td class="px-8 py-5 mono text-sky-400 text-sm">intu channel export</td>
+                                <td class="px-8 py-5 text-slate-300 text-sm">Export a channel as a portable archive</td>
+                            </tr>
+                            <tr class="command-row transition">
+                                <td class="px-8 py-5 mono text-sky-400 text-sm">intu channel import</td>
+                                <td class="px-8 py-5 text-slate-300 text-sm">Import a channel from a portable archive</td>
+                            </tr>
+                            <tr class="command-row transition">
+                                <td class="px-8 py-5 mono text-sky-400 text-sm">intu message list</td>
+                                <td class="px-8 py-5 text-slate-300 text-sm">Browse and search processed messages</td>
+                            </tr>
+                            <tr class="command-row transition">
+                                <td class="px-8 py-5 mono text-sky-400 text-sm">intu stats</td>
+                                <td class="px-8 py-5 text-slate-300 text-sm">Show live channel statistics and metrics</td>
+                            </tr>
+                            <tr class="command-row transition">
+                                <td class="px-8 py-5 mono text-sky-400 text-sm">intu dashboard</td>
+                                <td class="px-8 py-5 text-slate-300 text-sm">Launch real-time monitoring dashboard</td>
                             </tr>
                         </tbody>
                     </table>
@@ -220,11 +236,15 @@
                 <a href="https://github.com/intuware/intu-dev" class="bg-sky-600 hover:bg-sky-500 text-white px-10 py-4 rounded-2xl font-bold transition">Get Started on GitHub</a>
             </div>
             <div class="mt-16 text-slate-600 text-sm flex flex-col items-center gap-4">
-                <div class="flex items-center gap-2 grayscale">
-                    <div class="w-6 h-6 bg-slate-600 rounded flex items-center justify-center font-bold text-white italic text-[10px]">i</div>
+                <div class="flex items-center gap-2">
+                    <svg width="24" height="24" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="100" height="100" rx="24" fill="#334155"/>
+                        <path d="M50 15C50 15 52 30 65 32C52 34 50 49 50 49C50 49 48 34 35 32C48 30 50 15 50 15Z" fill="#64748b"/>
+                        <rect x="42" y="55" width="16" height="30" rx="5" fill="#64748b"/>
+                    </svg>
                     <span class="font-bold tracking-tight">intu.dev</span>
                 </div>
-                <p>© 2025 intuware. MIT Licensed Open Source Project.</p>
+                <p>© 2026 intuware. MPL-2.0 Licensed Open Source Project.</p>
             </div>
         </div>
     </footer>
