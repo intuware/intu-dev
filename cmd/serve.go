@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/intuware/intu/internal/alerting"
@@ -27,6 +29,18 @@ func newServeCmd() *cobra.Command {
 		Long:  "Loads configuration, boots all enabled channels, and processes messages.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logger := logging.New(rootOpts.logLevel)
+
+			if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
+				logger.Info("building TypeScript channels")
+				npm := exec.Command("npm", "run", "build")
+				npm.Dir = dir
+				npm.Stdout = cmd.OutOrStdout()
+				npm.Stderr = cmd.ErrOrStderr()
+				if err := npm.Run(); err != nil {
+					return fmt.Errorf("build failed (npm run build): %w", err)
+				}
+				logger.Info("build complete")
+			}
 
 			loader := config.NewLoader(dir)
 			cfg, err := loader.Load(profile)

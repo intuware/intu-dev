@@ -32,24 +32,16 @@ const intuYAML = `runtime:
 channels_dir: channels
 
 destinations:
-  kafka-output:
-    type: kafka
-    kafka:
-      brokers:
-        - ${INTU_KAFKA_BROKER}
-      topic: output-topic
-
-kafka:
-  brokers:
-    - ${INTU_KAFKA_BROKER}
+  file-output:
+    type: file
+    file:
+      directory: ./output
+      filename_pattern: "{{channelId}}_{{messageId}}_{{timestamp}}.json"
 `
 
 const intuDevYAML = `runtime:
   profile: dev
   log_level: debug
-
-kafka:
-  client_id: intu-dev
 `
 
 const intuProdYAML = `runtime:
@@ -57,13 +49,9 @@ const intuProdYAML = `runtime:
   log_level: info
   storage:
     driver: postgres
-
-kafka:
-  client_id: intu-prod
 `
 
 const dotEnv = `INTU_PROFILE=dev
-INTU_KAFKA_BROKER=localhost:9092
 INTU_POSTGRES_DSN=postgres://postgres:postgres@localhost:5432/intu?sslmode=disable
 `
 
@@ -84,7 +72,7 @@ transformer:
   entrypoint: transformer.ts
 
 destinations:
-  - kafka-output
+  - file-output
 `
 
 const transformerTSTpl = `export function transform(msg: unknown, ctx: { channelId: string; correlationId: string }): unknown {
@@ -97,13 +85,6 @@ const transformerTSTpl = `export function transform(msg: unknown, ctx: { channel
 `
 
 const validatorTSTpl = `export function validate(msg: unknown): void {
-  if (!msg || typeof msg !== "object") {
-    throw new Error("Message must be an object.");
-  }
-
-  if (!("patientId" in msg)) {
-    throw new Error("Missing required field: patientId.");
-  }
 }
 `
 

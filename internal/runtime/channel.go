@@ -128,7 +128,11 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 		cr.Pipeline.SetMapContext(cr.Maps, connectorMap)
 	}
 
-	cr.Logger.Debug("processing message", "channel", cr.ID, "messageId", msg.ID)
+	cr.Logger.Info("message received",
+		"channel", cr.ID,
+		"messageId", msg.ID,
+		"correlationId", msg.CorrelationID,
+	)
 
 	cr.storeMessage(msg, "received", "RECEIVED")
 
@@ -254,6 +258,14 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 	}
 
 	cr.storeMessage(msg, "sent", "SENT")
+
+	cr.Logger.Info("message processed",
+		"channel", cr.ID,
+		"messageId", msg.ID,
+		"correlationId", msg.CorrelationID,
+		"durationMs", time.Since(startTime).Milliseconds(),
+		"destinations", len(activeDests),
+	)
 
 	return nil
 }

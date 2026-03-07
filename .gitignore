@@ -1,6 +1,7 @@
 # Binaries
 npm/platform/
 intu
+sample/
 
 # Go
 *.exe
