@@ -17,6 +17,13 @@ type Config struct {
 	Cluster        *ClusterConfig           `mapstructure:"cluster"`
 	Global         *GlobalConfig            `mapstructure:"global"`
 	Tenancy        *TenancyConfig           `mapstructure:"tenancy"`
+	CodeTemplates  []CodeTemplateLibraryConfig `mapstructure:"code_templates"`
+}
+
+type CodeTemplateLibraryConfig struct {
+	Name      string   `mapstructure:"name"`
+	Directory string   `mapstructure:"directory"`
+	Channels  []string `mapstructure:"channels,omitempty"`
 }
 
 type RuntimeConfig struct {

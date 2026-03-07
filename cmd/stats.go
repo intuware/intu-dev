@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/intuware/intu/internal/observability"
 	"github.com/intuware/intu/pkg/config"
 	"github.com/spf13/cobra"
 )
@@ -81,6 +82,53 @@ func printChannelStats(cmd *cobra.Command, channelsDir, channelID string, jsonOu
 	}
 	stats["destinations"] = destNames
 
+	metrics := observability.Global()
+	snap := metrics.Snapshot()
+
+	channelMetrics := map[string]any{}
+	if counters, ok := snap["counters"].(map[string]int64); ok {
+		prefix := "messages_received_total." + chCfg.ID
+		if v, ok := counters[prefix]; ok {
+			channelMetrics["received"] = v
+		}
+		prefix = "messages_processed_total." + chCfg.ID
+		if v, ok := counters[prefix]; ok {
+			channelMetrics["processed"] = v
+		}
+		prefix = "messages_filtered_total." + chCfg.ID
+		if v, ok := counters[prefix]; ok {
+			channelMetrics["filtered"] = v
+		}
+		prefix = "messages_errored_total." + chCfg.ID
+		for k, v := range counters {
+			if len(k) > len(prefix)+1 && k[:len(prefix)] == prefix {
+				if channelMetrics["errored"] == nil {
+					channelMetrics["errored"] = v
+				} else {
+					channelMetrics["errored"] = channelMetrics["errored"].(int64) + v
+				}
+			}
+		}
+	}
+
+	if timings, ok := snap["timings"].(map[string]map[string]any); ok {
+		latencyKey := "processing_duration." + chCfg.ID + ".total"
+		if t, ok := timings[latencyKey]; ok {
+			channelMetrics["avg_latency"] = t["avg"]
+			channelMetrics["min_latency"] = t["min"]
+			channelMetrics["max_latency"] = t["max"]
+			channelMetrics["total_count"] = t["count"]
+		}
+	}
+
+	if len(channelMetrics) > 0 {
+		stats["metrics"] = channelMetrics
+	}
+
+	if len(chCfg.DependsOn) > 0 {
+		stats["depends_on"] = chCfg.DependsOn
+	}
+
 	if jsonOutput {
 		data, _ := json.MarshalIndent(stats, "", "  ")
 		fmt.Fprintln(cmd.OutOrStdout(), string(data))
@@ -95,6 +143,15 @@ func printChannelStats(cmd *cobra.Command, channelsDir, channelID string, jsonOu
 			fmt.Fprintf(cmd.OutOrStdout(), "  Group:        %s\n", chCfg.Group)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "  Destinations: %v\n", destNames)
+		if len(chCfg.DependsOn) > 0 {
+			fmt.Fprintf(cmd.OutOrStdout(), "  Depends on:   %v\n", chCfg.DependsOn)
+		}
+		if len(channelMetrics) > 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "  Metrics:")
+			for k, v := range channelMetrics {
+				fmt.Fprintf(cmd.OutOrStdout(), "    %-14s %v\n", k+":", v)
+			}
+		}
 		fmt.Fprintln(cmd.OutOrStdout())
 	}
 

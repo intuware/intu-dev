@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/intuware/intu/internal/storage"
+	"github.com/intuware/intu/pkg/config"
 	"github.com/spf13/cobra"
 )
 
 func newPruneCmd() *cobra.Command {
-	var dir, channel, before string
+	var dir, channel, before, profile string
 	var all, dryRun, confirm bool
 
 	cmd := &cobra.Command{
@@ -32,12 +34,16 @@ func newPruneCmd() *cobra.Command {
 
 			target := channel
 			if all {
-				target = "all channels"
+				target = ""
 			}
 
 			if dryRun {
+				displayTarget := channel
+				if all {
+					displayTarget = "all channels"
+				}
 				fmt.Fprintf(cmd.OutOrStdout(), "DRY RUN: Would prune messages for %s before %s\n",
-					target, beforeTime.Format("2006-01-02"))
+					displayTarget, beforeTime.Format("2006-01-02"))
 				return nil
 			}
 
@@ -45,14 +51,34 @@ func newPruneCmd() *cobra.Command {
 				return fmt.Errorf("add --confirm to actually prune data")
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Pruning messages for %s before %s\n",
-				target, beforeTime.Format("2006-01-02"))
-			fmt.Fprintln(cmd.OutOrStdout(), "Pruning complete.")
+			loader := config.NewLoader(dir)
+			cfg, err := loader.Load(profile)
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+
+			store, err := storage.NewMessageStore(cfg.MessageStorage)
+			if err != nil {
+				return fmt.Errorf("init message store: %w", err)
+			}
+
+			pruned, err := store.Prune(beforeTime, target)
+			if err != nil {
+				return fmt.Errorf("prune failed: %w", err)
+			}
+
+			displayTarget := channel
+			if all {
+				displayTarget = "all channels"
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Pruned %d messages for %s before %s\n",
+				pruned, displayTarget, beforeTime.Format("2006-01-02"))
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&dir, "dir", ".", "Project root directory")
+	cmd.Flags().StringVar(&profile, "profile", "dev", "Config profile")
 	cmd.Flags().StringVar(&channel, "channel", "", "Channel to prune")
 	cmd.Flags().BoolVar(&all, "all", false, "Prune all channels")
 	cmd.Flags().StringVar(&before, "before", "", "Prune messages before date (YYYY-MM-DD)")

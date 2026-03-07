@@ -9,12 +9,15 @@ func NewChannelCmd(logLevel *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "channel",
 		Short: "Manage channels",
-		Long:  "List, add, and describe channels in an intu project.",
+		Long:  "List, add, describe, clone, export, and import channels in an intu project.",
 	}
 
 	cmd.AddCommand(newAddCmd(logLevel))
 	cmd.AddCommand(newListCmd(logLevel))
 	cmd.AddCommand(newDescribeCmd(logLevel))
+	cmd.AddCommand(newCloneCmd(logLevel))
+	cmd.AddCommand(newExportCmd(logLevel))
+	cmd.AddCommand(newImportCmd(logLevel))
 
 	return cmd
 }

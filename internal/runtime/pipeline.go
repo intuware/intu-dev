@@ -7,20 +7,26 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/intuware/intu/internal/datatype"
 	"github.com/intuware/intu/internal/message"
+	"github.com/intuware/intu/internal/storage"
 	"github.com/intuware/intu/pkg/config"
 )
 
 type Pipeline struct {
-	channelDir string
-	projectDir string
-	channelID  string
-	config     *config.ChannelConfig
-	runner     JSRunner
-	logger     *slog.Logger
-	parser     datatype.Parser
+	channelDir   string
+	projectDir   string
+	channelID    string
+	config       *config.ChannelConfig
+	runner       JSRunner
+	logger       *slog.Logger
+	parser       datatype.Parser
+	store        storage.MessageStore
+	maps         *MapVariables
+	connectorMap *SyncMap
+	splitter     datatype.BatchSplitter
 }
 
 func NewPipeline(channelDir, projectDir, channelID string, cfg *config.ChannelConfig, runner JSRunner, logger *slog.Logger) *Pipeline {
@@ -34,6 +40,16 @@ func NewPipeline(channelDir, projectDir, channelID string, cfg *config.ChannelCo
 		parser, _ = datatype.NewParser("raw")
 	}
 
+	var splitter datatype.BatchSplitter
+	if cfg.Batch != nil && cfg.Batch.Enabled && cfg.Batch.SplitOn != "" {
+		s, err := datatype.NewBatchSplitter(cfg.Batch.SplitOn)
+		if err != nil {
+			logger.Warn("unsupported batch splitter, batch disabled", "splitOn", cfg.Batch.SplitOn, "error", err)
+		} else {
+			splitter = s
+		}
+	}
+
 	return &Pipeline{
 		channelDir: channelDir,
 		projectDir: projectDir,
@@ -42,7 +58,17 @@ func NewPipeline(channelDir, projectDir, channelID string, cfg *config.ChannelCo
 		runner:     runner,
 		logger:     logger,
 		parser:     parser,
+		splitter:   splitter,
 	}
+}
+
+func (p *Pipeline) SetMessageStore(store storage.MessageStore) {
+	p.store = store
+}
+
+func (p *Pipeline) SetMapContext(maps *MapVariables, connectorMap *SyncMap) {
+	p.maps = maps
+	p.connectorMap = connectorMap
 }
 
 type DestinationResult struct {
@@ -53,11 +79,18 @@ type DestinationResult struct {
 }
 
 type PipelineResult struct {
-	Filtered     bool
-	Output       any
-	OutputBytes  []byte
-	RouteTo      []string
-	DestResults  []DestinationResult
+	Filtered    bool
+	Output      any
+	OutputBytes []byte
+	RouteTo     []string
+	DestResults []DestinationResult
+	BatchItems  []BatchItem
+}
+
+type BatchItem struct {
+	Raw    []byte
+	Parsed any
+	Output any
 }
 
 func (p *Pipeline) Execute(ctx context.Context, msg *message.Message) (*PipelineResult, error) {
@@ -77,12 +110,69 @@ func (p *Pipeline) Execute(ctx context.Context, msg *message.Message) (*Pipeline
 		}
 	}
 
-	parsed, err := p.parser.Parse(msg.Raw)
+	if p.splitter != nil {
+		return p.executeBatch(ctx, msg)
+	}
+
+	return p.executeSingle(ctx, msg, msg.Raw)
+}
+
+func (p *Pipeline) executeBatch(ctx context.Context, msg *message.Message) (*PipelineResult, error) {
+	parts, err := p.splitter.Split(msg.Raw)
+	if err != nil {
+		p.logger.Warn("batch split failed, processing as single message", "error", err)
+		return p.executeSingle(ctx, msg, msg.Raw)
+	}
+
+	if len(parts) <= 1 {
+		return p.executeSingle(ctx, msg, msg.Raw)
+	}
+
+	p.logger.Debug("batch split", "channel", p.channelID, "parts", len(parts))
+
+	var allOutputs []any
+	var allBytes []byte
+	routeTo := []string{}
+
+	maxBatch := len(parts)
+	if p.config.Batch != nil && p.config.Batch.MaxBatchSize > 0 && maxBatch > p.config.Batch.MaxBatchSize {
+		maxBatch = p.config.Batch.MaxBatchSize
+	}
+
+	for i := 0; i < maxBatch; i++ {
+		part := parts[i]
+		result, err := p.executeSingle(ctx, msg, part)
+		if err != nil {
+			p.logger.Warn("batch item error", "index", i, "error", err)
+			continue
+		}
+		if result.Filtered {
+			continue
+		}
+		allOutputs = append(allOutputs, result.Output)
+		allBytes = append(allBytes, result.OutputBytes...)
+		allBytes = append(allBytes, '\n')
+		if len(result.RouteTo) > 0 {
+			routeTo = append(routeTo, result.RouteTo...)
+		}
+	}
+
+	outputBytes, _ := json.Marshal(allOutputs)
+
+	return &PipelineResult{
+		Output:      allOutputs,
+		OutputBytes: outputBytes,
+		RouteTo:     routeTo,
+	}, nil
+}
+
+func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw []byte) (*PipelineResult, error) {
+	parsed, err := p.parser.Parse(raw)
 	if err != nil {
 		p.logger.Warn("data type parsing failed, using raw", "error", err)
-		parsed = string(msg.Raw)
+		parsed = string(raw)
 	}
-	current = parsed
+	current := parsed
 
 	if validatorFile := p.resolveValidator(); validatorFile != "" {
 		out, err := p.callScript("validate", validatorFile, current, p.buildPipelineCtx(msg))
@@ -244,12 +334,23 @@ func (p *Pipeline) resolveScriptPath(file string) string {
 }
 
 func (p *Pipeline) buildPipelineCtx(msg *message.Message) map[string]any {
-	return map[string]any{
+	ctx := map[string]any{
 		"channelId":     p.channelID,
 		"correlationId": msg.CorrelationID,
 		"messageId":     msg.ID,
-		"timestamp":     msg.Timestamp.Format("2006-01-02T15:04:05.000Z"),
+		"timestamp":     msg.Timestamp.Format(time.RFC3339Nano),
 	}
+
+	if p.maps != nil {
+		ctx["globalMap"] = p.maps.GlobalMap().Snapshot()
+		ctx["channelMap"] = p.maps.ChannelMap(p.channelID).Snapshot()
+		ctx["responseMap"] = p.maps.ResponseMap(p.channelID).Snapshot()
+	}
+	if p.connectorMap != nil {
+		ctx["connectorMap"] = p.connectorMap.Snapshot()
+	}
+
+	return ctx
 }
 
 func (p *Pipeline) buildTransformCtx(msg *message.Message) map[string]any {
