@@ -289,6 +289,11 @@ func (cr *ChannelRuntime) storeMessage(msg *message.Message, stage, status strin
 	if cr.Store == nil {
 		return
 	}
+	if cs, ok := cr.Store.(*storage.CompositeStore); ok {
+		if !cs.ShouldStore(stage) {
+			return
+		}
+	}
 	record := &storage.MessageRecord{
 		ID:            msg.ID,
 		CorrelationID: msg.CorrelationID,
@@ -307,6 +312,11 @@ func (cr *ChannelRuntime) storeMessage(msg *message.Message, stage, status strin
 func (cr *ChannelRuntime) storeMessageWithContent(msg *message.Message, stage, status string, content []byte) {
 	if cr.Store == nil {
 		return
+	}
+	if cs, ok := cr.Store.(*storage.CompositeStore); ok {
+		if !cs.ShouldStore(stage) {
+			return
+		}
 	}
 	record := &storage.MessageRecord{
 		ID:            msg.ID,

@@ -62,6 +62,17 @@ func newServeCmd() *cobra.Command {
 				logger.Warn("message store init failed, using memory store", "error", err)
 				store = storage.NewMemoryStore()
 			}
+			storeDriver := "memory"
+			storeMode := "full"
+			if cfg.MessageStorage != nil {
+				if cfg.MessageStorage.Driver != "" {
+					storeDriver = cfg.MessageStorage.Driver
+				}
+				if cfg.MessageStorage.Mode != "" {
+					storeMode = cfg.MessageStorage.Mode
+				}
+			}
+			logger.Info("message store initialized", "driver", storeDriver, "mode", storeMode)
 
 			metrics := observability.Global()
 

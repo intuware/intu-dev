@@ -40,16 +40,42 @@ func NewMessageStore(cfg *config.MessageStorageConfig) (MessageStore, error) {
 	if cfg == nil {
 		return NewMemoryStore(), nil
 	}
+
+	var inner MessageStore
+	var err error
+
 	switch cfg.Driver {
 	case "", "memory":
-		return NewMemoryStore(), nil
+		inner = NewMemoryStore()
 	case "postgres":
-		return nil, fmt.Errorf("postgres message store not yet implemented")
+		if cfg.Postgres == nil {
+			return nil, fmt.Errorf("postgres config is required when driver is postgres")
+		}
+		inner, err = NewPostgresStore(cfg.Postgres)
+		if err != nil {
+			return nil, fmt.Errorf("create postgres store: %w", err)
+		}
 	case "s3":
-		return nil, fmt.Errorf("s3 message store not yet implemented")
+		if cfg.S3 == nil {
+			return nil, fmt.Errorf("s3 config is required when driver is s3")
+		}
+		inner, err = NewS3Store(cfg.S3)
+		if err != nil {
+			return nil, fmt.Errorf("create s3 store: %w", err)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported message store driver: %s", cfg.Driver)
 	}
+
+	mode := cfg.Mode
+	if mode != "" && mode != "full" {
+		return NewCompositeStore(inner, mode, cfg.Stages), nil
+	}
+	if len(cfg.Stages) > 0 {
+		return NewCompositeStore(inner, "full", cfg.Stages), nil
+	}
+
+	return inner, nil
 }
 
 type MemoryStore struct {

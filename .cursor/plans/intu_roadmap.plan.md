@@ -7,7 +7,7 @@ todos:
     status: completed
   - id: phase-2
     content: "Phase 2: Persistent Message Storage -- Postgres and S3 backends, profile-level + channel-level storage mode (none/status/full)"
-    status: pending
+    status: completed
   - id: phase-3
     content: "Phase 3: Log Transport Support -- CloudWatch, Datadog, Sumo Logic, Elasticsearch, file transport at profile level"
     status: pending

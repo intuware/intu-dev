@@ -235,19 +235,25 @@ type DeadLetterConfig struct {
 
 type MessageStorageConfig struct {
 	Driver    string                   `mapstructure:"driver"`
+	Mode      string                   `mapstructure:"mode"`
+	Stages    []string                 `mapstructure:"stages"`
 	Postgres  *StoragePostgresConfig   `mapstructure:"postgres"`
 	S3        *StorageS3Config         `mapstructure:"s3"`
 	Retention *StorageRetentionConfig  `mapstructure:"retention"`
 }
 
 type StoragePostgresConfig struct {
-	DSN         string `mapstructure:"dsn"`
-	TablePrefix string `mapstructure:"table_prefix"`
+	DSN          string `mapstructure:"dsn"`
+	TablePrefix  string `mapstructure:"table_prefix"`
+	MaxOpenConns int    `mapstructure:"max_open_conns"`
+	MaxIdleConns int    `mapstructure:"max_idle_conns"`
 }
 
 type StorageS3Config struct {
-	Bucket string `mapstructure:"bucket"`
-	Region string `mapstructure:"region"`
+	Bucket   string `mapstructure:"bucket"`
+	Region   string `mapstructure:"region"`
+	Prefix   string `mapstructure:"prefix"`
+	Endpoint string `mapstructure:"endpoint"`
 }
 
 type StorageRetentionConfig struct {
