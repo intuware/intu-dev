@@ -8,12 +8,16 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/intuware/intu/internal/alerting"
+	"github.com/intuware/intu/internal/cluster"
 	"github.com/intuware/intu/internal/connector"
 	"github.com/intuware/intu/internal/observability"
 	"github.com/intuware/intu/internal/storage"
 	"github.com/intuware/intu/pkg/config"
+	"github.com/redis/go-redis/v9"
 )
 
 type Engine interface {
@@ -38,28 +42,65 @@ type DefaultEngine struct {
 	maps          *MapVariables
 	codeTemplates *CodeTemplateLoader
 	jsRunner      JSRunner
+
+	coordinator    cluster.ChannelCoordinator
+	dedup          cluster.MessageDeduplicator
+	redisClient    *redis.Client
+	redisKeyPrefix string
+	clusterMode    bool
+	cancelAcq      context.CancelFunc
+	acqWg          *sync.WaitGroup
+
+	pendingChannels []pendingChannel
+}
+
+type pendingChannel struct {
+	dir  string
+	cfg  *config.ChannelConfig
 }
 
 func NewDefaultEngine(rootDir string, cfg *config.Config, factory ConnectorFactory, logger *slog.Logger) *DefaultEngine {
+	mode := cfg.Runtime.Mode
+	if mode == "" {
+		mode = "standalone"
+	}
+
 	return &DefaultEngine{
-		rootDir:  rootDir,
-		cfg:      cfg,
-		channels: make(map[string]*ChannelRuntime),
-		factory:  factory,
-		logger:   logger,
-		metrics:  observability.Global(),
-		maps:     NewMapVariables(),
+		rootDir:     rootDir,
+		cfg:         cfg,
+		channels:    make(map[string]*ChannelRuntime),
+		factory:     factory,
+		logger:      logger,
+		metrics:     observability.Global(),
+		maps:        NewMapVariables(),
+		clusterMode: mode == "cluster",
+		acqWg:       &sync.WaitGroup{},
 	}
 }
 
-// SetMessageStore injects the message store for pipeline persistence.
 func (e *DefaultEngine) SetMessageStore(store storage.MessageStore) {
 	e.store = store
 }
 
-// SetAlertManager injects the alert manager.
 func (e *DefaultEngine) SetAlertManager(am *alerting.AlertManager) {
 	e.alertMgr = am
+}
+
+func (e *DefaultEngine) SetCoordinator(coord cluster.ChannelCoordinator) {
+	e.coordinator = coord
+}
+
+func (e *DefaultEngine) SetDeduplicator(dedup cluster.MessageDeduplicator) {
+	e.dedup = dedup
+}
+
+func (e *DefaultEngine) SetRedisClient(client *redis.Client, keyPrefix string) {
+	e.redisClient = client
+	e.redisKeyPrefix = keyPrefix
+}
+
+func (e *DefaultEngine) Metrics() *observability.Metrics {
+	return e.metrics
 }
 
 func (e *DefaultEngine) Start(ctx context.Context) error {
@@ -143,14 +184,45 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 			continue
 		}
 
+		if e.clusterMode && e.coordinator != nil {
+			if !e.coordinator.ShouldAcquireChannel(ce.cfg.ID, ce.cfg.Tags) {
+				e.logger.Info("channel not eligible for this instance (tag affinity)",
+					"id", ce.cfg.ID,
+					"instance", e.coordinator.InstanceID(),
+				)
+				e.pendingChannels = append(e.pendingChannels, pendingChannel{dir: ce.dir, cfg: ce.cfg})
+				continue
+			}
+
+			acquired, err := e.coordinator.AcquireChannel(ctx, ce.cfg.ID)
+			if err != nil {
+				e.logger.Error("failed to acquire channel", "id", ce.cfg.ID, "error", err)
+				e.pendingChannels = append(e.pendingChannels, pendingChannel{dir: ce.dir, cfg: ce.cfg})
+				continue
+			}
+			if !acquired {
+				e.logger.Info("channel owned by another instance, skipping",
+					"id", ce.cfg.ID,
+				)
+				e.pendingChannels = append(e.pendingChannels, pendingChannel{dir: ce.dir, cfg: ce.cfg})
+				continue
+			}
+		}
+
 		cr, err := e.buildChannelRuntime(ce.dir, ce.cfg)
 		if err != nil {
 			e.logger.Error("failed to build channel runtime", "id", ce.cfg.ID, "error", err)
+			if e.clusterMode && e.coordinator != nil {
+				_ = e.coordinator.ReleaseChannel(ctx, ce.cfg.ID)
+			}
 			continue
 		}
 
 		if err := cr.Start(ctx); err != nil {
 			e.logger.Error("failed to start channel", "id", ce.cfg.ID, "error", err)
+			if e.clusterMode && e.coordinator != nil {
+				_ = e.coordinator.ReleaseChannel(ctx, ce.cfg.ID)
+			}
 			continue
 		}
 
@@ -165,17 +237,41 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 		}
 	}
 
-	e.logger.Info("engine started", "channels", len(e.channels))
+	if e.clusterMode && e.coordinator != nil && len(e.pendingChannels) > 0 {
+		acqCtx, acqCancel := context.WithCancel(ctx)
+		e.cancelAcq = acqCancel
+		e.acqWg.Add(1)
+		go e.channelAcquisitionLoop(acqCtx)
+	}
+
+	e.logger.Info("engine started",
+		"channels", len(e.channels),
+		"mode", e.cfg.Runtime.Mode,
+	)
 	return nil
 }
 
 func (e *DefaultEngine) Stop(ctx context.Context) error {
 	e.logger.Info("stopping engine")
 
+	if e.cancelAcq != nil {
+		e.cancelAcq()
+	}
+	e.acqWg.Wait()
+
 	for id, cr := range e.channels {
 		if err := cr.Stop(ctx); err != nil {
 			e.logger.Error("error stopping channel", "id", id, "error", err)
 		}
+	}
+
+	if e.clusterMode && e.coordinator != nil {
+		for id := range e.channels {
+			if err := e.coordinator.ReleaseChannel(ctx, id); err != nil {
+				e.logger.Warn("failed to release channel lease", "id", id, "error", err)
+			}
+		}
+		e.coordinator.Stop()
 	}
 
 	if e.alertMgr != nil {
@@ -262,9 +358,10 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 		Metrics:      e.metrics,
 		Store:        channelStore,
 		Maps:         e.maps,
+		Dedup:        e.dedup,
 	}
 
-	cr.initRetryAndQueue(e.cfg)
+	cr.initRetryAndQueue(e.cfg, e.redisClient, e.clusterMode, e.redisKeyPrefix)
 
 	return cr, nil
 }
@@ -354,4 +451,66 @@ func (e *DefaultEngine) preloadChannelScripts(channelDir string, cfg *config.Cha
 		preload(d.Filter)
 		preload(d.ResponseTransformer)
 	}
+}
+
+func (e *DefaultEngine) channelAcquisitionLoop(ctx context.Context) {
+	defer e.acqWg.Done()
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			e.tryAcquirePendingChannels(ctx)
+		}
+	}
+}
+
+func (e *DefaultEngine) tryAcquirePendingChannels(ctx context.Context) {
+	var remaining []pendingChannel
+
+	for _, pc := range e.pendingChannels {
+		if _, exists := e.channels[pc.cfg.ID]; exists {
+			continue
+		}
+
+		if !e.coordinator.ShouldAcquireChannel(pc.cfg.ID, pc.cfg.Tags) {
+			remaining = append(remaining, pc)
+			continue
+		}
+
+		acquired, err := e.coordinator.AcquireChannel(ctx, pc.cfg.ID)
+		if err != nil {
+			e.logger.Debug("failed to acquire pending channel", "id", pc.cfg.ID, "error", err)
+			remaining = append(remaining, pc)
+			continue
+		}
+		if !acquired {
+			remaining = append(remaining, pc)
+			continue
+		}
+
+		cr, err := e.buildChannelRuntime(pc.dir, pc.cfg)
+		if err != nil {
+			e.logger.Error("failed to build acquired channel runtime", "id", pc.cfg.ID, "error", err)
+			_ = e.coordinator.ReleaseChannel(ctx, pc.cfg.ID)
+			remaining = append(remaining, pc)
+			continue
+		}
+
+		if err := cr.Start(ctx); err != nil {
+			e.logger.Error("failed to start acquired channel", "id", pc.cfg.ID, "error", err)
+			_ = e.coordinator.ReleaseChannel(ctx, pc.cfg.ID)
+			remaining = append(remaining, pc)
+			continue
+		}
+
+		e.channels[pc.cfg.ID] = cr
+		e.logger.Info("acquired and started pending channel", "id", pc.cfg.ID)
+	}
+
+	e.pendingChannels = remaining
 }

@@ -8,11 +8,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/intuware/intu/internal/alerting"
 	"github.com/intuware/intu/internal/cluster"
 	"github.com/intuware/intu/internal/connector"
-	"github.com/intuware/intu/internal/observability"
 	"github.com/intuware/intu/internal/runtime"
 	"github.com/intuware/intu/internal/storage"
 	"github.com/intuware/intu/pkg/config"
@@ -75,13 +75,67 @@ func newServeCmd() *cobra.Command {
 			}
 			logger.Info("message store initialized", "driver", storeDriver, "mode", storeMode)
 
-			metrics := observability.Global()
-
 			factory := connector.NewFactory(logger)
 			engine := runtime.NewDefaultEngine(dir, cfg, factory, logger)
 			engine.SetMessageStore(store)
 
+			runtimeMode := cfg.Runtime.Mode
+			if runtimeMode == "" {
+				runtimeMode = "standalone"
+			}
+
+			var redisCluster *cluster.RedisClient
+			if runtimeMode == "cluster" && cfg.Cluster != nil && cfg.Cluster.Enabled {
+				if cfg.Cluster.Coordination != nil && cfg.Cluster.Coordination.Redis != nil {
+					rc, err := cluster.NewRedisClient(cfg.Cluster.Coordination.Redis)
+					if err != nil {
+						return fmt.Errorf("redis client init: %w", err)
+					}
+					redisCluster = rc
+					defer rc.Close()
+
+					coord := cluster.NewRedisCoordinator(rc, cfg.Cluster, logger)
+					engine.SetCoordinator(coord)
+					engine.SetRedisClient(rc.Client(), rc.Key())
+
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+
+					if err := coord.Start(ctx); err != nil {
+						return fmt.Errorf("coordinator start: %w", err)
+					}
+
+					if cfg.Cluster.Deduplication != nil && cfg.Cluster.Deduplication.Enabled {
+						window := 5 * time.Minute
+						if cfg.Cluster.Deduplication.Window != "" {
+							if d, err := time.ParseDuration(cfg.Cluster.Deduplication.Window); err == nil {
+								window = d
+							}
+						}
+
+						if cfg.Cluster.Deduplication.Store == "redis" {
+							dedup := cluster.NewRedisDeduplicator(rc, window)
+							engine.SetDeduplicator(dedup)
+						} else {
+							dedup := cluster.NewDeduplicator(window)
+							engine.SetDeduplicator(dedup)
+						}
+					}
+
+					logger.Info("cluster mode enabled",
+						"instanceID", cfg.Cluster.InstanceID,
+						"redis", cfg.Cluster.Coordination.Redis.Address,
+					)
+				}
+			} else {
+				coord := cluster.NewCoordinator(cfg.Cluster, logger)
+				engine.SetCoordinator(coord)
+			}
+
+			_ = redisCluster
+
 			if len(cfg.Alerts) > 0 {
+				metrics := engine.Metrics()
 				alertSend := func(ctx context.Context, destination string, payload []byte) error {
 					logger.Info("alert fired", "destination", destination, "payload", string(payload))
 					return nil

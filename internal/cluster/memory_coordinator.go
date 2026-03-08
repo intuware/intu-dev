@@ -10,13 +10,14 @@ import (
 )
 
 type Coordinator struct {
-	cfg        *config.ClusterConfig
-	logger     *slog.Logger
-	instanceID string
-	mu         sync.RWMutex
-	peers      map[string]PeerInfo
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	cfg           *config.ClusterConfig
+	logger        *slog.Logger
+	instanceID    string
+	mu            sync.RWMutex
+	peers         map[string]PeerInfo
+	ownedChannels map[string]bool
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
 }
 
 type PeerInfo struct {
@@ -32,10 +33,11 @@ func NewCoordinator(cfg *config.ClusterConfig, logger *slog.Logger) *Coordinator
 		instanceID = cfg.InstanceID
 	}
 	return &Coordinator{
-		cfg:        cfg,
-		logger:     logger,
-		instanceID: instanceID,
-		peers:      make(map[string]PeerInfo),
+		cfg:           cfg,
+		logger:        logger,
+		instanceID:    instanceID,
+		peers:         make(map[string]PeerInfo),
+		ownedChannels: make(map[string]bool),
 	}
 }
 
@@ -127,5 +129,37 @@ func (c *Coordinator) IsLeader() bool {
 			return false
 		}
 	}
+	return true
+}
+
+func (c *Coordinator) AcquireChannel(_ context.Context, channelID string) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ownedChannels[channelID] = true
+	return true, nil
+}
+
+func (c *Coordinator) RenewChannelLease(_ context.Context, _ string) error {
+	return nil
+}
+
+func (c *Coordinator) ReleaseChannel(_ context.Context, channelID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.ownedChannels, channelID)
+	return nil
+}
+
+func (c *Coordinator) OwnedChannels() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	result := make([]string, 0, len(c.ownedChannels))
+	for ch := range c.ownedChannels {
+		result = append(result, ch)
+	}
+	return result
+}
+
+func (c *Coordinator) ShouldAcquireChannel(_ string, _ []string) bool {
 	return true
 }
