@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/intuware/intu/internal/alerting"
+	"github.com/intuware/intu/internal/auth"
 	"github.com/intuware/intu/internal/cluster"
 	"github.com/intuware/intu/internal/connector"
+	"github.com/intuware/intu/internal/observability"
 	"github.com/intuware/intu/internal/runtime"
 	"github.com/intuware/intu/internal/storage"
 	"github.com/intuware/intu/pkg/config"
@@ -50,6 +52,52 @@ func newServeCmd() *cobra.Command {
 
 			logger := logging.New(rootOpts.logLevel, cfg.Logging)
 			logger.Info("config loaded", "name", cfg.Runtime.Name, "profile", profile)
+
+			secretsProvider, err := auth.NewSecretsProvider(cfg.Secrets)
+			if err != nil {
+				logger.Warn("secrets provider init failed, using env fallback", "error", err)
+				secretsProvider = &auth.EnvSecretsProvider{}
+			} else {
+				providerName := "env"
+				if cfg.Secrets != nil && cfg.Secrets.Provider != "" {
+					providerName = cfg.Secrets.Provider
+				}
+				logger.Info("secrets provider initialized", "provider", providerName)
+			}
+			_ = secretsProvider
+
+			var otelShutdown *observability.OTelShutdown
+			if cfg.Observability != nil && cfg.Observability.OpenTelemetry != nil && cfg.Observability.OpenTelemetry.Enabled {
+				shutdown, err := observability.InitOTel(cfg.Observability.OpenTelemetry)
+				if err != nil {
+					logger.Warn("OpenTelemetry init failed", "error", err)
+				} else {
+					otelShutdown = shutdown
+					logger.Info("OpenTelemetry initialized",
+						"endpoint", cfg.Observability.OpenTelemetry.Endpoint,
+						"traces", cfg.Observability.OpenTelemetry.Traces,
+						"metrics", cfg.Observability.OpenTelemetry.Metrics,
+					)
+				}
+			}
+
+			var promServer *observability.PrometheusServer
+			if cfg.Observability != nil && cfg.Observability.Prometheus != nil && cfg.Observability.Prometheus.Enabled {
+				ps, err := observability.NewPrometheusServer(cfg.Observability.Prometheus, logger)
+				if err != nil {
+					logger.Warn("Prometheus server init failed", "error", err)
+				} else if ps != nil {
+					promServer = ps
+					if err := promServer.Start(); err != nil {
+						logger.Warn("Prometheus server start failed", "error", err)
+					} else {
+						logger.Info("Prometheus metrics server started",
+							"port", cfg.Observability.Prometheus.Port,
+							"path", cfg.Observability.Prometheus.Path,
+						)
+					}
+				}
+			}
 
 			if cfg.Runtime.Health != nil {
 				hc := cluster.NewHealthChecker(cfg.Runtime.Health, logger)
@@ -162,6 +210,20 @@ func newServeCmd() *cobra.Command {
 
 			if err := engine.Stop(context.Background()); err != nil {
 				logger.Error("engine stop error", "error", err)
+			}
+
+			if promServer != nil {
+				if err := promServer.Stop(); err != nil {
+					logger.Error("Prometheus server stop error", "error", err)
+				}
+			}
+
+			if otelShutdown != nil {
+				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer shutdownCancel()
+				if err := otelShutdown.Shutdown(shutdownCtx); err != nil {
+					logger.Error("OpenTelemetry shutdown error", "error", err)
+				}
 			}
 
 			fmt.Fprintln(cmd.OutOrStdout(), "intu engine stopped.")

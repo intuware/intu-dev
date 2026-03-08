@@ -212,8 +212,23 @@ type RetryMapConfig struct {
 }
 
 type SecretsConfig struct {
-	Provider string       `mapstructure:"provider"`
-	Vault    *VaultConfig `mapstructure:"vault"`
+	Provider string                  `mapstructure:"provider"`
+	Vault    *VaultConfig            `mapstructure:"vault"`
+	AWS      *AWSSecretsManagerConfig `mapstructure:"aws"`
+	GCP      *GCPSecretManagerConfig  `mapstructure:"gcp"`
+}
+
+type AWSSecretsManagerConfig struct {
+	Region    string `mapstructure:"region"`
+	AccessKey string `mapstructure:"access_key"`
+	SecretKey string `mapstructure:"secret_key"`
+	CacheTTL  string `mapstructure:"cache_ttl"`
+}
+
+type GCPSecretManagerConfig struct {
+	ProjectID          string `mapstructure:"project_id"`
+	CredentialsFile    string `mapstructure:"credentials_file"`
+	CacheTTL           string `mapstructure:"cache_ttl"`
 }
 
 type VaultConfig struct {

@@ -16,7 +16,7 @@ todos:
     status: completed
   - id: phase-5
     content: "Phase 5: Secrets and Observability -- Vault, AWS SM, GCP SM providers, OpenTelemetry traces/metrics, Prometheus endpoint"
-    status: pending
+    status: completed
   - id: phase-6
     content: "Phase 6: Enterprise Operations -- message reprocessing, enhanced dashboard, Mirth XML import, audit persistence, LDAP/OIDC, channel hot-reload"
     status: pending

@@ -20,11 +20,11 @@ func NewSecretsProvider(cfg *config.SecretsConfig) (SecretsProvider, error) {
 	case "", "env":
 		return &EnvSecretsProvider{}, nil
 	case "vault":
-		return &VaultSecretsProvider{cfg: cfg.Vault}, nil
+		return NewVaultSecretsProvider(cfg.Vault)
 	case "aws_secrets_manager":
-		return &StubSecretsProvider{provider: "aws_secrets_manager"}, nil
+		return NewAWSSecretsProvider(cfg.AWS)
 	case "gcp_secret_manager":
-		return &StubSecretsProvider{provider: "gcp_secret_manager"}, nil
+		return NewGCPSecretsProvider(cfg.GCP)
 	default:
 		return nil, fmt.Errorf("unsupported secrets provider: %s", cfg.Provider)
 	}
@@ -38,20 +38,4 @@ func (e *EnvSecretsProvider) Get(key string) (string, error) {
 		return "", fmt.Errorf("env var %s not set", key)
 	}
 	return val, nil
-}
-
-type VaultSecretsProvider struct {
-	cfg *config.VaultConfig
-}
-
-func (v *VaultSecretsProvider) Get(key string) (string, error) {
-	return "", fmt.Errorf("vault secrets provider not yet implemented (path: %s, key: %s)", v.cfg.Path, key)
-}
-
-type StubSecretsProvider struct {
-	provider string
-}
-
-func (s *StubSecretsProvider) Get(key string) (string, error) {
-	return "", fmt.Errorf("%s secrets provider not yet implemented", s.provider)
 }

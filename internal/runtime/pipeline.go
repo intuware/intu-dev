@@ -13,6 +13,10 @@ import (
 	"github.com/intuware/intu/internal/message"
 	"github.com/intuware/intu/internal/storage"
 	"github.com/intuware/intu/pkg/config"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Pipeline struct {
@@ -94,13 +98,29 @@ type BatchItem struct {
 }
 
 func (p *Pipeline) Execute(ctx context.Context, msg *message.Message) (*PipelineResult, error) {
+	tracer := otel.Tracer("intu.pipeline")
+	ctx, span := tracer.Start(ctx, "pipeline.execute",
+		trace.WithAttributes(
+			attribute.String("channel.id", p.channelID),
+			attribute.String("message.id", msg.ID),
+		),
+	)
+	defer span.End()
+
 	var current any = msg.Raw
 
 	if p.config.Pipeline != nil && p.config.Pipeline.Preprocessor != "" {
+		_, preprocessSpan := tracer.Start(ctx, "pipeline.preprocess",
+			trace.WithAttributes(attribute.String("script", p.config.Pipeline.Preprocessor)),
+		)
 		out, err := p.callScript("preprocess", p.config.Pipeline.Preprocessor, current)
 		if err != nil {
+			preprocessSpan.SetStatus(codes.Error, err.Error())
+			preprocessSpan.End()
+			span.SetStatus(codes.Error, err.Error())
 			return nil, fmt.Errorf("preprocessor: %w", err)
 		}
+		preprocessSpan.End()
 		if b, ok := out.([]byte); ok {
 			msg.Raw = b
 			current = b
@@ -167,6 +187,8 @@ func (p *Pipeline) executeBatch(ctx context.Context, msg *message.Message) (*Pip
 }
 
 func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw []byte) (*PipelineResult, error) {
+	tracer := otel.Tracer("intu.pipeline")
+
 	parsed, err := p.parser.Parse(raw)
 	if err != nil {
 		p.logger.Warn("data type parsing failed, using raw", "error", err)
@@ -175,10 +197,16 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 	current := parsed
 
 	if validatorFile := p.resolveValidator(); validatorFile != "" {
+		_, validatorSpan := tracer.Start(ctx, "pipeline.validate",
+			trace.WithAttributes(attribute.String("script", validatorFile)),
+		)
 		out, err := p.callScript("validate", validatorFile, current, p.buildPipelineCtx(msg))
 		if err != nil {
+			validatorSpan.SetStatus(codes.Error, err.Error())
+			validatorSpan.End()
 			return nil, fmt.Errorf("validator: %w", err)
 		}
+		validatorSpan.End()
 		if valid, ok := out.(bool); ok && !valid {
 			p.logger.Info("message rejected by validator", "channel", p.channelID, "messageId", msg.ID)
 			return &PipelineResult{Filtered: true}, nil
@@ -186,10 +214,16 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 	}
 
 	if p.config.Pipeline != nil && p.config.Pipeline.SourceFilter != "" {
+		_, filterSpan := tracer.Start(ctx, "pipeline.source_filter",
+			trace.WithAttributes(attribute.String("script", p.config.Pipeline.SourceFilter)),
+		)
 		out, err := p.callScript("filter", p.config.Pipeline.SourceFilter, current, p.buildPipelineCtx(msg))
 		if err != nil {
+			filterSpan.SetStatus(codes.Error, err.Error())
+			filterSpan.End()
 			return nil, fmt.Errorf("source filter: %w", err)
 		}
+		filterSpan.End()
 		if keep, ok := out.(bool); ok && !keep {
 			p.logger.Info("message filtered at source", "channel", p.channelID, "messageId", msg.ID)
 			return &PipelineResult{Filtered: true}, nil
@@ -199,11 +233,17 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 	routeTo := []string{}
 	transformerFile := p.resolveTransformer()
 	if transformerFile != "" {
+		_, transformSpan := tracer.Start(ctx, "pipeline.transform",
+			trace.WithAttributes(attribute.String("script", transformerFile)),
+		)
 		tctx := p.buildTransformCtx(msg)
 		out, err := p.callScript("transform", transformerFile, current, tctx)
 		if err != nil {
+			transformSpan.SetStatus(codes.Error, err.Error())
+			transformSpan.End()
 			return nil, fmt.Errorf("transformer: %w", err)
 		}
+		transformSpan.End()
 		current = out
 
 		if routes, ok := tctx["_routeTo"].([]string); ok && len(routes) > 0 {
@@ -221,24 +261,50 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 }
 
 func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.Message, transformed any, dest config.ChannelDestination) (*message.Message, bool, error) {
+	tracer := otel.Tracer("intu.pipeline")
+	destName := dest.Name
+	if destName == "" {
+		destName = dest.Ref
+	}
+	ctx, span := tracer.Start(ctx, "pipeline.destination",
+		trace.WithAttributes(
+			attribute.String("destination", destName),
+			attribute.String("message.id", msg.ID),
+		),
+	)
+	defer span.End()
+
 	current := transformed
 
 	if dest.Filter != "" {
+		_, filterSpan := tracer.Start(ctx, "pipeline.destination.filter",
+			trace.WithAttributes(attribute.String("script", dest.Filter)),
+		)
 		out, err := p.callScript("filter", dest.Filter, current, p.buildDestCtx(msg, dest.Name))
 		if err != nil {
+			filterSpan.SetStatus(codes.Error, err.Error())
+			filterSpan.End()
 			return nil, false, fmt.Errorf("destination filter %s: %w", dest.Name, err)
 		}
+		filterSpan.End()
 		if keep, ok := out.(bool); ok && !keep {
 			p.logger.Debug("message filtered at destination", "destination", dest.Name, "messageId", msg.ID)
+			span.SetAttributes(attribute.Bool("filtered", true))
 			return nil, true, nil
 		}
 	}
 
 	if dest.TransformerFile != "" {
+		_, transformSpan := tracer.Start(ctx, "pipeline.destination.transform",
+			trace.WithAttributes(attribute.String("script", dest.TransformerFile)),
+		)
 		out, err := p.callScript("transform", dest.TransformerFile, current, p.buildDestCtx(msg, dest.Name))
 		if err != nil {
+			transformSpan.SetStatus(codes.Error, err.Error())
+			transformSpan.End()
 			return nil, false, fmt.Errorf("destination transformer %s: %w", dest.Name, err)
 		}
+		transformSpan.End()
 		current = out
 	}
 

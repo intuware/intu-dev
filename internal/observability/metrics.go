@@ -113,26 +113,44 @@ func (m *Metrics) Timing(name string) *TimingStat {
 
 func (m *Metrics) IncrReceived(channel string) {
 	m.Counter("messages_received_total." + channel).Add(1)
+	if om := GetOTelMetrics(); om != nil {
+		om.IncrReceived(channel)
+	}
 }
 
 func (m *Metrics) IncrProcessed(channel string) {
 	m.Counter("messages_processed_total." + channel).Add(1)
+	if om := GetOTelMetrics(); om != nil {
+		om.IncrProcessed(channel)
+	}
 }
 
 func (m *Metrics) IncrErrored(channel, destination string) {
 	m.Counter("messages_errored_total." + channel + "." + destination).Add(1)
+	if om := GetOTelMetrics(); om != nil {
+		om.IncrErrored(channel, destination)
+	}
 }
 
 func (m *Metrics) IncrFiltered(channel string) {
 	m.Counter("messages_filtered_total." + channel).Add(1)
+	if om := GetOTelMetrics(); om != nil {
+		om.IncrFiltered(channel)
+	}
 }
 
 func (m *Metrics) RecordLatency(channel, stage string, d time.Duration) {
 	m.Timing("processing_duration." + channel + "." + stage).Record(d)
+	if om := GetOTelMetrics(); om != nil {
+		om.RecordLatency(channel, stage, d)
+	}
 }
 
 func (m *Metrics) RecordDestLatency(channel, destination string, d time.Duration) {
 	m.Timing("destination_latency." + channel + "." + destination).Record(d)
+	if om := GetOTelMetrics(); om != nil {
+		om.RecordDestLatency(channel, destination, d)
+	}
 }
 
 func (m *Metrics) Snapshot() map[string]any {

@@ -14,6 +14,10 @@ import (
 	"github.com/intuware/intu/internal/storage"
 	"github.com/intuware/intu/pkg/config"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type ChannelRuntime struct {
@@ -145,6 +149,15 @@ func (cr *ChannelRuntime) Stop(ctx context.Context) error {
 }
 
 func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Message) error {
+	tracer := otel.Tracer("intu.channel")
+	ctx, span := tracer.Start(ctx, "channel.process",
+		trace.WithAttributes(
+			attribute.String("channel.id", cr.ID),
+			attribute.String("message.id", msg.ID),
+		),
+	)
+	defer span.End()
+
 	startTime := time.Now()
 	msg.ChannelID = cr.ID
 
@@ -159,6 +172,7 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 				"channel", cr.ID,
 				"messageId", msg.ID,
 			)
+			span.SetAttributes(attribute.Bool("duplicate", true))
 			return nil
 		}
 	}
@@ -182,6 +196,7 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 			cr.Metrics.IncrErrored(cr.ID, "pipeline")
 		}
 		cr.storeMessage(msg, "error", "ERROR")
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("pipeline execute: %w", err)
 	}
 
@@ -190,12 +205,14 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 			cr.Metrics.IncrFiltered(cr.ID)
 		}
 		cr.storeMessage(msg, "filtered", "FILTERED")
+		span.SetAttributes(attribute.Bool("filtered", true))
 		return nil
 	}
 
 	cr.storeMessageWithContent(msg, "transformed", "TRANSFORMED", result.OutputBytes)
 
 	activeDests := cr.resolveActiveDestinations(result.RouteTo)
+	span.SetAttributes(attribute.Int("destinations.count", len(activeDests)))
 
 	var destResults []DestinationResult
 
@@ -205,9 +222,18 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 			destName = destCfg.Ref
 		}
 
+		_, destSpan := tracer.Start(ctx, "channel.destination.send",
+			trace.WithAttributes(
+				attribute.String("destination", destName),
+				attribute.String("message.id", msg.ID),
+			),
+		)
+
 		dest, ok := cr.Destinations[destName]
 		if !ok {
 			cr.Logger.Warn("destination not found", "name", destName, "channel", cr.ID)
+			destSpan.SetStatus(codes.Error, "destination not found")
+			destSpan.End()
 			destResults = append(destResults, DestinationResult{
 				Name:    destName,
 				Success: false,
@@ -222,6 +248,8 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 			if cr.Metrics != nil {
 				cr.Metrics.IncrErrored(cr.ID, destName)
 			}
+			destSpan.SetStatus(codes.Error, err.Error())
+			destSpan.End()
 			destResults = append(destResults, DestinationResult{
 				Name:    destName,
 				Success: false,
@@ -230,6 +258,8 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 			continue
 		}
 		if filtered {
+			destSpan.SetAttributes(attribute.Bool("filtered", true))
+			destSpan.End()
 			destResults = append(destResults, DestinationResult{
 				Name:    destName,
 				Success: true,
@@ -256,6 +286,8 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 			if cr.dlq != nil {
 				cr.dlq.Send(ctx, msg, destName, sendErr)
 			}
+			destSpan.SetStatus(codes.Error, sendErr.Error())
+			destSpan.End()
 			destResults = append(destResults, DestinationResult{
 				Name:    destName,
 				Success: false,
@@ -283,8 +315,10 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 				if cr.dlq != nil {
 					cr.dlq.Send(ctx, msg, destName, resp.Error)
 				}
+				destSpan.SetStatus(codes.Error, resp.Error.Error())
 			}
 		}
+		destSpan.End()
 		destResults = append(destResults, dr)
 	}
 
