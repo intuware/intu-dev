@@ -4,7 +4,7 @@ overview: "Six-phase enterprise roadmap for Intu: Node.js runtime, persistent st
 todos:
   - id: phase-1
     content: "Phase 1: Node.js Worker Pool Runtime -- replace Goja with pre-loaded Node.js workers, console.log forwarding, sub-ms execution, timing in JSON logs"
-    status: pending
+    status: completed
   - id: phase-2
     content: "Phase 2: Persistent Message Storage -- Postgres and S3 backends, profile-level + channel-level storage mode (none/status/full)"
     status: pending

@@ -320,7 +320,16 @@ func (p *Pipeline) resolveTransformer() string {
 
 func (p *Pipeline) callScript(fn, file string, args ...any) (any, error) {
 	entrypoint := p.resolveScriptPath(file)
-	return p.runner.Call(fn, entrypoint, args...)
+	start := time.Now()
+	result, err := p.runner.Call(fn, entrypoint, args...)
+	elapsed := time.Since(start)
+	p.logger.Info("script executed",
+		"channel", p.channelID,
+		"function", fn,
+		"file", file,
+		"duration_ms", float64(elapsed.Microseconds())/1000.0,
+	)
+	return result, err
 }
 
 func (p *Pipeline) resolveScriptPath(file string) string {
