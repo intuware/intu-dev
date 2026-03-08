@@ -10,7 +10,7 @@ todos:
     status: completed
   - id: phase-3
     content: "Phase 3: Log Transport Support -- CloudWatch, Datadog, Sumo Logic, Elasticsearch, file transport at profile level"
-    status: pending
+    status: completed
   - id: phase-4
     content: "Phase 4: Horizontal Scaling -- Redis coordination, channel partitioning, persistent queues, deduplication, standalone/cluster modes"
     status: pending

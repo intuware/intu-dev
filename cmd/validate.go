@@ -18,7 +18,7 @@ func newValidateCmd() *cobra.Command {
 		Short: "Validate project configuration and channels",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger := logging.New(rootOpts.logLevel)
+			logger := logging.New(rootOpts.logLevel, nil)
 			var errs []error
 
 			loader := config.NewLoader(dir)

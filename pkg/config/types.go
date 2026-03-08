@@ -10,6 +10,7 @@ type Config struct {
 	MessageStorage *MessageStorageConfig    `mapstructure:"message_storage"`
 	Pruning        *PruningConfig           `mapstructure:"pruning"`
 	Observability  *ObservabilityConfig     `mapstructure:"observability"`
+	Logging        *LoggingConfig           `mapstructure:"logging"`
 	Alerts         []AlertConfig            `mapstructure:"alerts"`
 	AccessControl  *AccessControlConfig     `mapstructure:"access_control"`
 	Roles          []RoleConfig             `mapstructure:"roles"`
@@ -384,4 +385,52 @@ type TenancyConfig struct {
 	Mode         string `mapstructure:"mode"`
 	Isolation    string `mapstructure:"isolation"`
 	TenantHeader string `mapstructure:"tenant_header"`
+}
+
+type LoggingConfig struct {
+	Transports []LogTransportConfig `mapstructure:"transports"`
+}
+
+type LogTransportConfig struct {
+	Type          string                  `mapstructure:"type"`
+	CloudWatch    *CloudWatchLogConfig    `mapstructure:"cloudwatch"`
+	Datadog       *DatadogLogConfig       `mapstructure:"datadog"`
+	SumoLogic     *SumoLogicLogConfig     `mapstructure:"sumologic"`
+	Elasticsearch *ElasticsearchLogConfig `mapstructure:"elasticsearch"`
+	File          *FileLogConfig          `mapstructure:"file"`
+}
+
+type CloudWatchLogConfig struct {
+	Region    string `mapstructure:"region"`
+	LogGroup  string `mapstructure:"log_group"`
+	LogStream string `mapstructure:"log_stream"`
+}
+
+type DatadogLogConfig struct {
+	APIKey  string   `mapstructure:"api_key"`
+	Site    string   `mapstructure:"site"`
+	Service string   `mapstructure:"service"`
+	Source  string   `mapstructure:"source"`
+	Tags    []string `mapstructure:"tags"`
+}
+
+type SumoLogicLogConfig struct {
+	Endpoint       string `mapstructure:"endpoint"`
+	SourceCategory string `mapstructure:"source_category"`
+	SourceName     string `mapstructure:"source_name"`
+}
+
+type ElasticsearchLogConfig struct {
+	URLs     []string `mapstructure:"urls"`
+	Index    string   `mapstructure:"index"`
+	Username string   `mapstructure:"username"`
+	Password string   `mapstructure:"password"`
+	APIKey   string   `mapstructure:"api_key"`
+}
+
+type FileLogConfig struct {
+	Path      string `mapstructure:"path"`
+	MaxSizeMB int    `mapstructure:"max_size_mb"`
+	MaxFiles  int    `mapstructure:"max_files"`
+	Compress  bool   `mapstructure:"compress"`
 }

@@ -28,10 +28,10 @@ func newServeCmd() *cobra.Command {
 		Short: "Start the intu runtime engine",
 		Long:  "Loads configuration, boots all enabled channels, and processes messages.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger := logging.New(rootOpts.logLevel)
+			buildLogger := logging.New(rootOpts.logLevel, nil)
 
 			if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
-				logger.Info("building TypeScript channels")
+				buildLogger.Info("building TypeScript channels")
 				npm := exec.Command("npm", "run", "build")
 				npm.Dir = dir
 				npm.Stdout = cmd.OutOrStdout()
@@ -39,7 +39,7 @@ func newServeCmd() *cobra.Command {
 				if err := npm.Run(); err != nil {
 					return fmt.Errorf("build failed (npm run build): %w", err)
 				}
-				logger.Info("build complete")
+				buildLogger.Info("build complete")
 			}
 
 			loader := config.NewLoader(dir)
@@ -48,6 +48,7 @@ func newServeCmd() *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
+			logger := logging.New(rootOpts.logLevel, cfg.Logging)
 			logger.Info("config loaded", "name", cfg.Runtime.Name, "profile", profile)
 
 			if cfg.Runtime.Health != nil {

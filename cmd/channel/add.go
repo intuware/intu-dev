@@ -23,7 +23,7 @@ func newAddCmd(logLevel *string) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			channelName := args[0]
-			logger := logging.New(*logLevel)
+			logger := logging.New(*logLevel, nil)
 			scaffolder := bootstrap.NewScaffolder(logger)
 
 			result, err := scaffolder.BootstrapChannel(opts.dir, channelName, opts.force)

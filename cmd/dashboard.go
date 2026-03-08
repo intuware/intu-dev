@@ -21,7 +21,7 @@ func newDashboardCmd() *cobra.Command {
 		Use:   "dashboard",
 		Short: "Start the web dashboard",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger := logging.New(rootOpts.logLevel)
+			logger := logging.New(rootOpts.logLevel, nil)
 			loader := config.NewLoader(dir)
 			cfg, err := loader.Load(profile)
 			if err != nil {

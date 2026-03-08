@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -16,6 +17,10 @@ type ChannelLogger struct {
 }
 
 func NewChannelLogger(channelID string, logCfg *config.ChannelLogging, globalLevel string) *ChannelLogger {
+	return NewChannelLoggerWithWriter(channelID, logCfg, globalLevel, nil)
+}
+
+func NewChannelLoggerWithWriter(channelID string, logCfg *config.ChannelLogging, globalLevel string, w io.Writer) *ChannelLogger {
 	level := globalLevel
 	if logCfg != nil && logCfg.Level != "" {
 		level = logCfg.Level
@@ -35,7 +40,11 @@ func NewChannelLogger(channelID string, logCfg *config.ChannelLogging, globalLev
 		slogLevel = slog.LevelInfo
 	}
 
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slogLevel})
+	if w == nil {
+		w = os.Stdout
+	}
+
+	handler := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slogLevel})
 	logger := slog.New(handler).With("channel", channelID)
 
 	var payloadCfg *config.PayloadLogging

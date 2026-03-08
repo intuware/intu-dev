@@ -18,7 +18,7 @@ func newListCmd(logLevel *string) *cobra.Command {
 		Short: "List all channels in the project",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logger := logging.New(*logLevel)
+			logger := logging.New(*logLevel, nil)
 			loader := config.NewLoader(dir)
 			cfg, err := loader.Load(profile)
 			if err != nil {
