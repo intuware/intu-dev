@@ -13,7 +13,7 @@ todos:
     status: completed
   - id: phase-4
     content: "Phase 4: Horizontal Scaling -- Redis coordination, channel partitioning, persistent queues, deduplication, standalone/cluster modes"
-    status: pending
+    status: completed
   - id: phase-5
     content: "Phase 5: Secrets and Observability -- Vault, AWS SM, GCP SM providers, OpenTelemetry traces/metrics, Prometheus endpoint"
     status: pending

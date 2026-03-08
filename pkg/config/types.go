@@ -31,6 +31,7 @@ type RuntimeConfig struct {
 	Name       string            `mapstructure:"name"`
 	Profile    string            `mapstructure:"profile"`
 	LogLevel   string            `mapstructure:"log_level"`
+	Mode       string            `mapstructure:"mode"`
 	Storage    StorageConfig     `mapstructure:"storage"`
 	Encryption *EncryptionConfig `mapstructure:"encryption"`
 	Health     *HealthConfig     `mapstructure:"health"`
@@ -355,8 +356,13 @@ type CoordinationConfig struct {
 }
 
 type RedisConfig struct {
-	Address  string `mapstructure:"address"`
-	Password string `mapstructure:"password"`
+	Address      string `mapstructure:"address"`
+	Password     string `mapstructure:"password"`
+	DB           int    `mapstructure:"db"`
+	PoolSize     int    `mapstructure:"pool_size"`
+	MinIdleConns int    `mapstructure:"min_idle_conns"`
+	TLS          *TLSMapConfig `mapstructure:"tls"`
+	KeyPrefix    string `mapstructure:"key_prefix"`
 }
 
 type ChannelAssignConfig struct {

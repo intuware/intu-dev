@@ -6,12 +6,14 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/intuware/intu/internal/cluster"
 	"github.com/intuware/intu/internal/connector"
 	"github.com/intuware/intu/internal/message"
 	"github.com/intuware/intu/internal/observability"
 	"github.com/intuware/intu/internal/retry"
 	"github.com/intuware/intu/internal/storage"
 	"github.com/intuware/intu/pkg/config"
+	"github.com/redis/go-redis/v9"
 )
 
 type ChannelRuntime struct {
@@ -25,15 +27,18 @@ type ChannelRuntime struct {
 	Metrics      *observability.Metrics
 	Store        storage.MessageStore
 	Maps         *MapVariables
+	Dedup        cluster.MessageDeduplicator
 
-	retryers map[string]*retry.Retryer
-	dlq      *retry.DeadLetterQueue
-	queues   map[string]*retry.DestinationQueue
+	retryers    map[string]*retry.Retryer
+	dlq         *retry.DeadLetterQueue
+	queues      map[string]*retry.DestinationQueue
+	redisQueues map[string]*retry.RedisDestinationQueue
 }
 
-func (cr *ChannelRuntime) initRetryAndQueue(rootCfg *config.Config) {
+func (cr *ChannelRuntime) initRetryAndQueue(rootCfg *config.Config, redisClient *redis.Client, clusterMode bool, redisKeyPrefix string) {
 	cr.retryers = make(map[string]*retry.Retryer)
 	cr.queues = make(map[string]*retry.DestinationQueue)
+	cr.redisQueues = make(map[string]*retry.RedisDestinationQueue)
 
 	for _, destCfg := range cr.DestConfigs {
 		destName := destCfg.Name
@@ -64,14 +69,33 @@ func (cr *ChannelRuntime) initRetryAndQueue(rootCfg *config.Config) {
 				sendFn := func(ctx context.Context, msg *message.Message) (*message.Response, error) {
 					return dest.Send(ctx, msg)
 				}
-				cr.queues[destName] = retry.NewDestinationQueue(
-					destName,
-					destCfg.Queue.MaxSize,
-					destCfg.Queue.Overflow,
-					destCfg.Queue.Threads,
-					sendFn,
-					cr.Logger,
-				)
+
+				if destCfg.Queue.Persist && clusterMode && redisClient != nil {
+					prefix := redisKeyPrefix
+					if prefix == "" {
+						prefix = "intu"
+					}
+					cr.redisQueues[destName] = retry.NewRedisDestinationQueue(
+						redisClient,
+						prefix,
+						cr.ID,
+						destName,
+						destCfg.Queue.MaxSize,
+						destCfg.Queue.Overflow,
+						destCfg.Queue.Threads,
+						sendFn,
+						cr.Logger,
+					)
+				} else {
+					cr.queues[destName] = retry.NewDestinationQueue(
+						destName,
+						destCfg.Queue.MaxSize,
+						destCfg.Queue.Overflow,
+						destCfg.Queue.Threads,
+						sendFn,
+						cr.Logger,
+					)
+				}
 			}
 		}
 	}
@@ -106,6 +130,11 @@ func (cr *ChannelRuntime) Stop(ctx context.Context) error {
 		q.Stop()
 	}
 
+	for name, rq := range cr.redisQueues {
+		cr.Logger.Debug("stopping redis destination queue", "channel", cr.ID, "destination", name)
+		rq.Stop()
+	}
+
 	for name, dest := range cr.Destinations {
 		if err := dest.Stop(ctx); err != nil {
 			cr.Logger.Error("error stopping destination", "channel", cr.ID, "name", name, "error", err)
@@ -121,6 +150,17 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 
 	if cr.Metrics != nil {
 		cr.Metrics.IncrReceived(cr.ID)
+	}
+
+	if cr.Dedup != nil {
+		dedupKey := cr.ID + ":" + msg.ID
+		if cr.Dedup.IsDuplicate(dedupKey) {
+			cr.Logger.Info("duplicate message detected, skipping",
+				"channel", cr.ID,
+				"messageId", msg.ID,
+			)
+			return nil
+		}
 	}
 
 	connectorMap := NewConnectorMap()
@@ -271,6 +311,10 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 }
 
 func (cr *ChannelRuntime) sendToDestination(ctx context.Context, destName string, dest connector.DestinationConnector, msg *message.Message) (*message.Response, error) {
+	if rq, ok := cr.redisQueues[destName]; ok {
+		return nil, rq.Enqueue(ctx, msg)
+	}
+
 	if q, ok := cr.queues[destName]; ok {
 		return nil, q.Enqueue(ctx, msg)
 	}
