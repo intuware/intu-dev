@@ -416,9 +416,10 @@ type DashboardConfig struct {
 }
 
 type DashboardAuthConfig struct {
-	Provider string `mapstructure:"provider"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
+	Provider         string `mapstructure:"provider"`
+	Username         string `mapstructure:"username"`
+	Password         string `mapstructure:"password"`
+	DisableLoginPage bool   `mapstructure:"disable_login_page"`
 }
 
 type LoggingConfig struct {

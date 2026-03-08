@@ -328,7 +328,7 @@ func (op *OIDCProvider) GetUserInfo(r *http.Request) (map[string]any, error) {
 	return info, nil
 }
 
-func NewOIDCAuthMiddleware(provider *OIDCProvider) func(http.Handler) http.Handler {
+func NewOIDCAuthMiddleware(provider *OIDCProvider, disableLoginPage bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/auth/login" {
@@ -356,23 +356,27 @@ func NewOIDCAuthMiddleware(provider *OIDCProvider) func(http.Handler) http.Handl
 				return
 			}
 
-			if !strings.HasPrefix(r.URL.Path, "/api/") {
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			ok, user, err := provider.Authenticate(r)
 			if err != nil {
 				http.Error(w, "authentication error", http.StatusInternalServerError)
 				return
 			}
+
 			if !ok {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(map[string]string{
-					"error":     "authentication required",
-					"login_url": "/auth/login",
-				})
+				if strings.HasPrefix(r.URL.Path, "/api/") {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusUnauthorized)
+					json.NewEncoder(w).Encode(map[string]string{
+						"error":     "authentication required",
+						"login_url": "/auth/login",
+					})
+					return
+				}
+				if disableLoginPage {
+					provider.HandleLogin(w, r)
+					return
+				}
+				next.ServeHTTP(w, r)
 				return
 			}
 

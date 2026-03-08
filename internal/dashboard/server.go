@@ -74,6 +74,7 @@ func (s *Server) BuildHandler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", s.handleIndex)
+	mux.HandleFunc("/api/stats", s.handleStats)
 	mux.HandleFunc("/api/channels", s.handleChannels)
 	mux.HandleFunc("/api/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/messages", s.handleMessages)
@@ -119,6 +120,98 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, dashboardSPA)
+}
+
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	channels := s.listChannels()
+	totalChannels := len(channels)
+	activeChannels := 0
+	for _, ch := range channels {
+		if enabled, ok := ch["enabled"].(bool); ok && enabled {
+			activeChannels++
+		}
+	}
+
+	result := map[string]any{
+		"total_channels":  totalChannels,
+		"active_channels": activeChannels,
+	}
+
+	msgCounts := map[string]int{}
+	if s.store != nil {
+		now := time.Now()
+		windows := []struct {
+			key string
+			dur time.Duration
+		}{
+			{"last_60s", 60 * time.Second},
+			{"last_5m", 5 * time.Minute},
+			{"last_1h", time.Hour},
+			{"last_24h", 24 * time.Hour},
+		}
+		for _, w := range windows {
+			records, err := s.store.Query(storage.QueryOpts{
+				Since: now.Add(-w.dur),
+				Limit: 100000,
+			})
+			if err == nil {
+				msgCounts[w.key] = len(records)
+			}
+		}
+	}
+	result["message_counts"] = msgCounts
+
+	snap := s.metrics.Snapshot()
+	var volume []map[string]any
+	if counters, ok := snap["counters"].(map[string]int64); ok {
+		receivedPrefix := "messages_received_total."
+		processedPrefix := "messages_processed_total."
+		erroredPrefix := "messages_errored_total."
+
+		channelReceived := map[string]int64{}
+		channelProcessed := map[string]int64{}
+		channelErrored := map[string]int64{}
+
+		for k, v := range counters {
+			if strings.HasPrefix(k, receivedPrefix) {
+				ch := strings.TrimPrefix(k, receivedPrefix)
+				channelReceived[ch] = v
+			} else if strings.HasPrefix(k, processedPrefix) {
+				ch := strings.TrimPrefix(k, processedPrefix)
+				channelProcessed[ch] = v
+			} else if strings.HasPrefix(k, erroredPrefix) {
+				rest := strings.TrimPrefix(k, erroredPrefix)
+				parts := strings.SplitN(rest, ".", 2)
+				ch := parts[0]
+				channelErrored[ch] += v
+			}
+		}
+
+		allCh := map[string]bool{}
+		for ch := range channelReceived {
+			allCh[ch] = true
+		}
+		for ch := range channelProcessed {
+			allCh[ch] = true
+		}
+
+		for ch := range allCh {
+			volume = append(volume, map[string]any{
+				"channel":   ch,
+				"received":  channelReceived[ch],
+				"processed": channelProcessed[ch],
+				"errored":   channelErrored[ch],
+			})
+		}
+	}
+	result["channel_volume"] = volume
+
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
@@ -348,19 +441,25 @@ func (s *Server) handleChannelDetail(w http.ResponseWriter, r *http.Request, cha
 		"enabled": chCfg.Enabled,
 	}
 
-	if chCfg.Listener.Type != "" {
-		result["listener_type"] = chCfg.Listener.Type
-	}
+	result["listener"] = listenerConfigMap(chCfg.Listener)
 
-	destNames := []string{}
+	var dests []map[string]any
 	for _, d := range chCfg.Destinations {
-		n := d.Name
-		if n == "" {
-			n = d.Ref
+		dm := map[string]any{}
+		name := d.Name
+		if name == "" {
+			name = d.Ref
 		}
-		destNames = append(destNames, n)
+		dm["name"] = name
+		if d.Type != "" {
+			dm["type"] = d.Type
+		} else if d.Ref != "" {
+			dm["type"] = "ref"
+		}
+		dm["config"] = destinationConfigMap(d)
+		dests = append(dests, dm)
 	}
-	result["destinations"] = destNames
+	result["destinations"] = dests
 
 	if len(chCfg.Tags) > 0 {
 		result["tags"] = chCfg.Tags
@@ -368,15 +467,53 @@ func (s *Server) handleChannelDetail(w http.ResponseWriter, r *http.Request, cha
 	if chCfg.Group != "" {
 		result["group"] = chCfg.Group
 	}
+	if chCfg.Priority != "" {
+		result["priority"] = chCfg.Priority
+	}
 	if chCfg.Pipeline != nil {
-		result["pipeline"] = chCfg.Pipeline
+		pipe := map[string]any{}
+		if chCfg.Pipeline.Preprocessor != "" {
+			pipe["preprocessor"] = chCfg.Pipeline.Preprocessor
+		}
+		if chCfg.Pipeline.Validator != "" {
+			pipe["validator"] = chCfg.Pipeline.Validator
+		}
+		if chCfg.Pipeline.SourceFilter != "" {
+			pipe["source_filter"] = chCfg.Pipeline.SourceFilter
+		}
+		if chCfg.Pipeline.Transformer != "" {
+			pipe["transformer"] = chCfg.Pipeline.Transformer
+		}
+		if chCfg.Pipeline.Postprocessor != "" {
+			pipe["postprocessor"] = chCfg.Pipeline.Postprocessor
+		}
+		result["pipeline"] = pipe
+	}
+	if chCfg.DataTypes != nil {
+		dt := map[string]any{}
+		if chCfg.DataTypes.Inbound != "" {
+			dt["inbound"] = chCfg.DataTypes.Inbound
+		}
+		if chCfg.DataTypes.Outbound != "" {
+			dt["outbound"] = chCfg.DataTypes.Outbound
+		}
+		result["data_types"] = dt
 	}
 
 	snap := s.metrics.Snapshot()
 	channelMetrics := map[string]any{}
-	for key, v := range snap {
-		if strings.Contains(key, channelID) {
-			channelMetrics[key] = v
+	if counters, ok := snap["counters"].(map[string]int64); ok {
+		for key, v := range counters {
+			if strings.Contains(key, channelID) {
+				channelMetrics[key] = v
+			}
+		}
+	}
+	if timings, ok := snap["timings"].(map[string]map[string]any); ok {
+		for key, v := range timings {
+			if strings.Contains(key, channelID) {
+				channelMetrics[key] = v
+			}
 		}
 	}
 	if len(channelMetrics) > 0 {
@@ -384,6 +521,232 @@ func (s *Server) handleChannelDetail(w http.ResponseWriter, r *http.Request, cha
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+func listenerConfigMap(l config.ListenerConfig) map[string]any {
+	m := map[string]any{"type": l.Type}
+	var cfg map[string]any
+
+	switch l.Type {
+	case "http":
+		if h := l.HTTP; h != nil {
+			cfg = map[string]any{"port": h.Port}
+			if h.Path != "" {
+				cfg["path"] = h.Path
+			}
+			if len(h.Methods) > 0 {
+				cfg["methods"] = h.Methods
+			}
+		}
+	case "tcp":
+		if t := l.TCP; t != nil {
+			cfg = map[string]any{"port": t.Port}
+			if t.Mode != "" {
+				cfg["mode"] = t.Mode
+			}
+			if t.MaxConnections > 0 {
+				cfg["max_connections"] = t.MaxConnections
+			}
+			if t.TimeoutMs > 0 {
+				cfg["timeout_ms"] = t.TimeoutMs
+			}
+		}
+	case "sftp":
+		if s := l.SFTP; s != nil {
+			cfg = map[string]any{}
+			if s.Host != "" {
+				cfg["host"] = s.Host
+			}
+			if s.Port > 0 {
+				cfg["port"] = s.Port
+			}
+			if s.Directory != "" {
+				cfg["directory"] = s.Directory
+			}
+			if s.PollInterval != "" {
+				cfg["poll_interval"] = s.PollInterval
+			}
+			if s.FilePattern != "" {
+				cfg["file_pattern"] = s.FilePattern
+			}
+			if s.MoveTo != "" {
+				cfg["move_to"] = s.MoveTo
+			}
+		}
+	case "file":
+		if f := l.File; f != nil {
+			cfg = map[string]any{}
+			if f.Directory != "" {
+				cfg["directory"] = f.Directory
+			}
+			if f.PollInterval != "" {
+				cfg["poll_interval"] = f.PollInterval
+			}
+			if f.FilePattern != "" {
+				cfg["file_pattern"] = f.FilePattern
+			}
+			if f.Scheme != "" {
+				cfg["scheme"] = f.Scheme
+			}
+			if f.MoveTo != "" {
+				cfg["move_to"] = f.MoveTo
+			}
+		}
+	case "kafka":
+		if k := l.Kafka; k != nil {
+			cfg = map[string]any{}
+			if k.Topic != "" {
+				cfg["topic"] = k.Topic
+			}
+			if k.GroupID != "" {
+				cfg["group_id"] = k.GroupID
+			}
+			if len(k.Brokers) > 0 {
+				cfg["brokers"] = k.Brokers
+			}
+		}
+	case "database":
+		if d := l.Database; d != nil {
+			cfg = map[string]any{}
+			if d.Driver != "" {
+				cfg["driver"] = d.Driver
+			}
+			if d.PollInterval != "" {
+				cfg["poll_interval"] = d.PollInterval
+			}
+		}
+	case "channel":
+		if c := l.Channel; c != nil {
+			cfg = map[string]any{}
+			if c.SourceChannelID != "" {
+				cfg["source_channel_id"] = c.SourceChannelID
+			}
+		}
+	case "dicom":
+		if d := l.DICOM; d != nil {
+			cfg = map[string]any{"port": d.Port}
+			if d.AETitle != "" {
+				cfg["ae_title"] = d.AETitle
+			}
+		}
+	case "fhir":
+		if f := l.FHIR; f != nil {
+			cfg = map[string]any{"port": f.Port}
+			if f.BasePath != "" {
+				cfg["base_path"] = f.BasePath
+			}
+			if f.Version != "" {
+				cfg["version"] = f.Version
+			}
+		}
+	case "email":
+		if e := l.Email; e != nil {
+			cfg = map[string]any{}
+			if e.Host != "" {
+				cfg["host"] = e.Host
+			}
+			if e.Port > 0 {
+				cfg["port"] = e.Port
+			}
+			if e.Protocol != "" {
+				cfg["protocol"] = e.Protocol
+			}
+			if e.PollInterval != "" {
+				cfg["poll_interval"] = e.PollInterval
+			}
+			if e.Folder != "" {
+				cfg["folder"] = e.Folder
+			}
+		}
+	case "soap":
+		if s := l.SOAP; s != nil {
+			cfg = map[string]any{"port": s.Port}
+			if s.ServiceName != "" {
+				cfg["service_name"] = s.ServiceName
+			}
+		}
+	case "ihe":
+		if i := l.IHE; i != nil {
+			cfg = map[string]any{"port": i.Port}
+			if i.Profile != "" {
+				cfg["profile"] = i.Profile
+			}
+		}
+	}
+
+	if cfg != nil {
+		m["config"] = cfg
+	}
+	return m
+}
+
+func destinationConfigMap(d config.ChannelDestination) map[string]any {
+	cfg := map[string]any{}
+	if d.HTTP != nil {
+		if d.HTTP.URL != "" {
+			cfg["url"] = d.HTTP.URL
+		}
+		if d.HTTP.Method != "" {
+			cfg["method"] = d.HTTP.Method
+		}
+		if d.HTTP.TimeoutMs > 0 {
+			cfg["timeout_ms"] = d.HTTP.TimeoutMs
+		}
+	}
+	if d.TCP != nil {
+		if d.TCP.Host != "" {
+			cfg["host"] = d.TCP.Host
+		}
+		if d.TCP.Port > 0 {
+			cfg["port"] = d.TCP.Port
+		}
+	}
+	if d.File != nil {
+		if d.File.Directory != "" {
+			cfg["directory"] = d.File.Directory
+		}
+		if d.File.FilenamePattern != "" {
+			cfg["filename_pattern"] = d.File.FilenamePattern
+		}
+	}
+	if d.Kafka != nil {
+		if d.Kafka.Topic != "" {
+			cfg["topic"] = d.Kafka.Topic
+		}
+	}
+	if d.Database != nil {
+		if d.Database.Driver != "" {
+			cfg["driver"] = d.Database.Driver
+		}
+	}
+	if d.ChannelDest != nil {
+		if d.ChannelDest.TargetChannelID != "" {
+			cfg["target_channel_id"] = d.ChannelDest.TargetChannelID
+		}
+	}
+	if d.FHIR != nil {
+		if d.FHIR.BaseURL != "" {
+			cfg["base_url"] = d.FHIR.BaseURL
+		}
+		if d.FHIR.Version != "" {
+			cfg["version"] = d.FHIR.Version
+		}
+	}
+	if d.SMTP != nil {
+		if d.SMTP.Host != "" {
+			cfg["smtp_host"] = d.SMTP.Host
+		}
+		if len(d.SMTP.To) > 0 {
+			cfg["to"] = d.SMTP.To
+		}
+	}
+	if d.Filter != "" {
+		cfg["filter"] = d.Filter
+	}
+	if d.TransformerFile != "" {
+		cfg["transformer"] = d.TransformerFile
+	}
+	return cfg
 }
 
 func (s *Server) setChannelState(w http.ResponseWriter, channelID string, enabled bool, action string) {
@@ -433,9 +796,10 @@ func (s *Server) listChannels() []map[string]any {
 			continue
 		}
 		ch := map[string]any{
-			"id":       chCfg.ID,
-			"enabled":  chCfg.Enabled,
-			"listener": chCfg.Listener.Type,
+			"id":            chCfg.ID,
+			"enabled":       chCfg.Enabled,
+			"listener":      chCfg.Listener.Type,
+			"listener_type": chCfg.Listener.Type,
 		}
 		if len(chCfg.Tags) > 0 {
 			ch["tags"] = chCfg.Tags
@@ -444,14 +808,21 @@ func (s *Server) listChannels() []map[string]any {
 			ch["group"] = chCfg.Group
 		}
 		destNames := []string{}
+		destTypes := []string{}
 		for _, d := range chCfg.Destinations {
 			n := d.Name
 			if n == "" {
 				n = d.Ref
 			}
 			destNames = append(destNames, n)
+			if d.Type != "" {
+				destTypes = append(destTypes, d.Type)
+			} else if d.Ref != "" {
+				destTypes = append(destTypes, "ref")
+			}
 		}
 		ch["destinations"] = destNames
+		ch["destination_types"] = destTypes
 		channels = append(channels, ch)
 	}
 	return channels
@@ -567,7 +938,7 @@ func (fa *FormAuth) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Name:     "intu_session",
 		Value:    token,
 		Path:     "/",
-		MaxAge:   28800, // 8 hours
+		MaxAge:   28800,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -593,7 +964,7 @@ func (fa *FormAuth) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (fa *FormAuth) serveLoginPage(w http.ResponseWriter, _ *http.Request, errMsg string) {
 	errorHTML := ""
 	if errMsg != "" {
-		errorHTML = `<div class="error">` + errMsg + `</div>`
+		errorHTML = `<div class="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm mb-6 text-center">` + errMsg + `</div>`
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -607,71 +978,54 @@ func generateSessionToken() string {
 }
 
 const loginPageHTML = `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>intu - Login</title>
+  <title>intu - Sign In</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%%3Csvg width='32' height='32' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%%3E%%3Crect width='100' height='100' rx='24' fill='%%230ea5e9'/%%3E%%3Cpath d='M50 15C50 15 52 30 65 32C52 34 50 49 50 49C50 49 48 34 35 32C48 30 50 15 50 15Z' fill='white'/%%3E%%3Crect x='42' y='55' width='16' height='30' rx='5' fill='white'/%%3E%%3C/svg%%3E">
+  <script>(function(){var t=localStorage.getItem('intu-theme');if(t==='light')document.documentElement.classList.remove('dark');})()</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class'}</script>
   <style>
-    :root {
-      --bg-primary: #0f172a; --bg-secondary: #1e293b; --bg-tertiary: #334155;
-      --text-primary: #f1f5f9; --text-secondary: #94a3b8; --text-muted: #64748b;
-      --accent: #38bdf8; --accent-hover: #7dd3fc;
-      --error: #ef4444; --border: #334155; --radius: 12px;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg-primary); color: var(--text-primary);
-      min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    }
-    .login-card {
-      background: var(--bg-secondary); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 40px; width: 100%%; max-width: 400px;
-      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
-    }
-    .logo { text-align: center; margin-bottom: 32px; }
-    .logo h1 { font-size: 2rem; color: var(--accent); font-weight: 800; letter-spacing: -0.5px; }
-    .logo p { color: var(--text-muted); font-size: 0.9rem; margin-top: 4px; }
-    .field { margin-bottom: 20px; }
-    .field label { display: block; color: var(--text-secondary); font-size: 0.85rem; font-weight: 500; margin-bottom: 6px; }
-    .field input {
-      width: 100%%; padding: 10px 14px; background: var(--bg-tertiary); border: 1px solid var(--border);
-      border-radius: 8px; color: var(--text-primary); font-size: 0.95rem; outline: none;
-      transition: border-color 0.2s;
-    }
-    .field input:focus { border-color: var(--accent); }
-    .btn {
-      width: 100%%; padding: 12px; background: var(--accent); color: var(--bg-primary);
-      border: none; border-radius: 8px; font-size: 1rem; font-weight: 600;
-      cursor: pointer; transition: background 0.2s;
-    }
-    .btn:hover { background: var(--accent-hover); }
-    .error {
-      background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3);
-      color: var(--error); padding: 10px 14px; border-radius: 8px;
-      font-size: 0.85rem; margin-bottom: 20px; text-align: center;
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    @keyframes pulse-line { 0%%,100%% { opacity: 0.3; } 50%% { opacity: 1; } }
+    .animate-pulse-line { animation: pulse-line 2s ease-in-out infinite; }
   </style>
 </head>
-<body>
-  <div class="login-card">
-    <div class="logo">
-      <h1>intu</h1>
-      <p>Dashboard</p>
+<body class="bg-gray-50 dark:bg-slate-900 text-gray-800 dark:text-slate-100 min-h-screen flex items-center justify-center p-4 font-[Inter,system-ui,sans-serif] transition-colors duration-200">
+  <div class="w-full max-w-md">
+    <div class="text-center mb-10">
+      <div class="inline-flex items-center justify-center mb-4">
+        <svg width="56" height="56" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="100" height="100" rx="24" fill="#0ea5e9"/>
+          <path d="M50 15C50 15 52 30 65 32C52 34 50 49 50 49C50 49 48 34 35 32C48 30 50 15 50 15Z" fill="white"/>
+          <rect x="42" y="55" width="16" height="30" rx="5" fill="white"/>
+        </svg>
+      </div>
+      <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">intu<span class="text-sky-500">.dev</span></h1>
+      <p class="text-gray-400 dark:text-slate-500 mt-1 text-sm">Healthcare Interoperability Engine</p>
     </div>
-    %s
-    <form method="POST" action="/login">
-      <div class="field">
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" autocomplete="username" autofocus required>
-      </div>
-      <div class="field">
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" autocomplete="current-password" required>
-      </div>
-      <button type="submit" class="btn">Sign In</button>
-    </form>
+    <div class="bg-white dark:bg-slate-800/80 backdrop-blur border border-gray-200 dark:border-slate-700/50 rounded-2xl p-8 shadow-xl dark:shadow-2xl dark:shadow-black/20 transition-colors duration-200">
+      %s
+      <form method="POST" action="/login" class="space-y-5">
+        <div>
+          <label for="username" class="block text-sm font-medium text-gray-500 dark:text-slate-400 mb-1.5">Username</label>
+          <input type="text" id="username" name="username" autocomplete="username" autofocus required
+            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-900/60 border border-gray-300 dark:border-slate-600/50 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-400/60 focus:ring-1 focus:ring-sky-400/30 transition-all text-sm">
+        </div>
+        <div>
+          <label for="password" class="block text-sm font-medium text-gray-500 dark:text-slate-400 mb-1.5">Password</label>
+          <input type="password" id="password" name="password" autocomplete="current-password" required
+            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-900/60 border border-gray-300 dark:border-slate-600/50 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-400/60 focus:ring-1 focus:ring-sky-400/30 transition-all text-sm">
+        </div>
+        <button type="submit"
+          class="w-full py-2.5 bg-sky-500 hover:bg-sky-400 text-white dark:text-slate-900 font-semibold rounded-xl transition-all duration-200 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800">
+          Sign In
+        </button>
+      </form>
+    </div>
+    <p class="text-center text-gray-300 dark:text-slate-600 text-xs mt-6">Powered by intu engine</p>
   </div>
 </body>
 </html>`

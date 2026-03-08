@@ -392,7 +392,8 @@ func buildDashboardAuth(dashCfg *config.DashboardConfig, cfg *config.Config, log
 				logger.Warn("OIDC provider init failed, falling back to basic auth", "error", err)
 				return dashboard.BasicAuthMiddleware("admin", "admin")
 			}
-			return auth.NewOIDCAuthMiddleware(oidcProvider)
+			disableLogin := dashCfg.Auth != nil && dashCfg.Auth.DisableLoginPage
+			return auth.NewOIDCAuthMiddleware(oidcProvider, disableLogin)
 		}
 		logger.Warn("dashboard auth set to oidc but no OIDC config found, falling back to basic auth")
 		return dashboard.BasicAuthMiddleware("admin", "admin")
