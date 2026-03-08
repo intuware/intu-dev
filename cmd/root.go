@@ -36,6 +36,8 @@ func init() {
 	rootCmd.AddCommand(newPruneCmd())
 	rootCmd.AddCommand(newDashboardCmd())
 	rootCmd.AddCommand(newMessageCmd())
+	rootCmd.AddCommand(newReprocessCmd())
+	rootCmd.AddCommand(newImportCmd())
 }
 
 func newChannelCmd() *cobra.Command {

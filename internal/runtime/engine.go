@@ -51,6 +51,7 @@ type DefaultEngine struct {
 	cancelAcq      context.CancelFunc
 	acqWg          *sync.WaitGroup
 
+	hotReloader     *HotReloader
 	pendingChannels []pendingChannel
 }
 
@@ -101,6 +102,18 @@ func (e *DefaultEngine) SetRedisClient(client *redis.Client, keyPrefix string) {
 
 func (e *DefaultEngine) Metrics() *observability.Metrics {
 	return e.metrics
+}
+
+func (e *DefaultEngine) MessageStore() storage.MessageStore {
+	return e.store
+}
+
+func (e *DefaultEngine) RootDir() string {
+	return e.rootDir
+}
+
+func (e *DefaultEngine) Config() *config.Config {
+	return e.cfg
 }
 
 func (e *DefaultEngine) Start(ctx context.Context) error {
@@ -272,6 +285,10 @@ func (e *DefaultEngine) Stop(ctx context.Context) error {
 			}
 		}
 		e.coordinator.Stop()
+	}
+
+	if e.hotReloader != nil {
+		e.hotReloader.Stop()
 	}
 
 	if e.alertMgr != nil {
@@ -451,6 +468,29 @@ func (e *DefaultEngine) preloadChannelScripts(channelDir string, cfg *config.Cha
 		preload(d.Filter)
 		preload(d.ResponseTransformer)
 	}
+}
+
+func (e *DefaultEngine) WatchChannels(ctx context.Context) error {
+	channelsDir := filepath.Join(e.rootDir, e.cfg.ChannelsDir)
+	hr, err := NewHotReloader(e, channelsDir, e.logger)
+	if err != nil {
+		return fmt.Errorf("init hot-reloader: %w", err)
+	}
+	e.hotReloader = hr
+	return hr.Start(ctx)
+}
+
+func (e *DefaultEngine) GetChannelRuntime(channelID string) (*ChannelRuntime, bool) {
+	cr, ok := e.channels[channelID]
+	return cr, ok
+}
+
+func (e *DefaultEngine) ListChannelIDs() []string {
+	var ids []string
+	for id := range e.channels {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func (e *DefaultEngine) channelAcquisitionLoop(ctx context.Context) {
