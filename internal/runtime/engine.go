@@ -246,8 +246,9 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 
 	pipeline := NewPipeline(channelDir, e.rootDir, chCfg.ID, chCfg, e.jsRunner, e.logger)
 
-	if e.store != nil {
-		pipeline.SetMessageStore(e.store)
+	channelStore := e.resolveChannelStore(chCfg)
+	if channelStore != nil {
+		pipeline.SetMessageStore(channelStore)
 	}
 
 	cr := &ChannelRuntime{
@@ -259,13 +260,39 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 		Pipeline:     pipeline,
 		Logger:       e.logger,
 		Metrics:      e.metrics,
-		Store:        e.store,
+		Store:        channelStore,
 		Maps:         e.maps,
 	}
 
 	cr.initRetryAndQueue(e.cfg)
 
 	return cr, nil
+}
+
+func (e *DefaultEngine) resolveChannelStore(chCfg *config.ChannelConfig) storage.MessageStore {
+	if e.store == nil {
+		return nil
+	}
+
+	if chCfg.MessageStorage == nil {
+		return e.store
+	}
+
+	chStorage := chCfg.MessageStorage
+
+	if chStorage.Mode == "" && len(chStorage.Stages) == 0 {
+		if chStorage.Enabled {
+			return e.store
+		}
+		return e.store
+	}
+
+	mode := chStorage.Mode
+	if mode == "" {
+		mode = "full"
+	}
+
+	return storage.NewCompositeStore(e.store, mode, chStorage.Stages)
 }
 
 func (e *DefaultEngine) initJSRunner() error {

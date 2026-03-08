@@ -412,6 +412,8 @@ type PayloadLogging struct {
 
 type ChannelStorageConfig struct {
 	Enabled       bool     `yaml:"enabled,omitempty"`
+	Mode          string   `yaml:"mode,omitempty"`
+	Stages        []string `yaml:"stages,omitempty"`
 	ContentTypes  []string `yaml:"content_types,omitempty"`
 	RetentionDays int      `yaml:"retention_days,omitempty"`
 }
