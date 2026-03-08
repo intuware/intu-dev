@@ -31,13 +31,10 @@ func newInitCmd() *cobra.Command {
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Project created: %s (1 channel)\n", projectName)
-			fmt.Fprintf(cmd.OutOrStdout(), "\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "Next steps:\n")
 			fmt.Fprintf(cmd.OutOrStdout(), "  cd %s\n", result.Root)
-			fmt.Fprintf(cmd.OutOrStdout(), "  npm install\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  intu build --dir .\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  intu serve --dir .\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "Dashboard: http://localhost:3000 (admin / admin)\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "  npm i\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "  intu serve\n")
 			return nil
 		},
 	}

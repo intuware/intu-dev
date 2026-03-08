@@ -22,18 +22,21 @@ type MessageRecord struct {
 type MessageStore interface {
 	Save(record *MessageRecord) error
 	Get(id string) (*MessageRecord, error)
+	GetStage(id, stage string) (*MessageRecord, error)
 	Query(opts QueryOpts) ([]*MessageRecord, error)
 	Delete(id string) error
 	Prune(before time.Time, channel string) (int, error)
 }
 
 type QueryOpts struct {
-	ChannelID string
-	Status    string
-	Since     time.Time
-	Before    time.Time
-	Limit     int
-	Offset    int
+	ChannelID      string
+	Status         string
+	Stage          string
+	Since          time.Time
+	Before         time.Time
+	Limit          int
+	Offset         int
+	ExcludeContent bool
 }
 
 func NewMessageStore(cfg *config.MessageStorageConfig) (MessageStore, error) {
@@ -112,6 +115,16 @@ func (m *MemoryStore) Get(id string) (*MessageRecord, error) {
 	return nil, fmt.Errorf("message %s not found", id)
 }
 
+func (m *MemoryStore) GetStage(id, stage string) (*MessageRecord, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	key := id + "." + stage
+	if rec, ok := m.records[key]; ok {
+		return rec, nil
+	}
+	return nil, fmt.Errorf("message %s stage %s not found", id, stage)
+}
+
 func (m *MemoryStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -119,12 +132,15 @@ func (m *MemoryStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 	var results []*MessageRecord
 	skipped := 0
 
-	for _, key := range m.order {
-		rec := m.records[key]
+	for i := len(m.order) - 1; i >= 0; i-- {
+		rec := m.records[m.order[i]]
 		if opts.ChannelID != "" && rec.ChannelID != opts.ChannelID {
 			continue
 		}
 		if opts.Status != "" && rec.Status != opts.Status {
+			continue
+		}
+		if opts.Stage != "" && rec.Stage != opts.Stage {
 			continue
 		}
 		if !opts.Since.IsZero() && rec.Timestamp.Before(opts.Since) {
@@ -139,7 +155,13 @@ func (m *MemoryStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 			continue
 		}
 
-		results = append(results, rec)
+		if opts.ExcludeContent {
+			clone := *rec
+			clone.Content = nil
+			results = append(results, &clone)
+		} else {
+			results = append(results, rec)
+		}
 		if opts.Limit > 0 && len(results) >= opts.Limit {
 			break
 		}

@@ -452,6 +452,74 @@ type ChannelPruningConfig struct {
 	PruneErrored  bool `yaml:"prune_errored,omitempty"`
 }
 
+// ListenerEndpoint extracts the port and path from a channel's listener config.
+// Returns port=0 for non-HTTP listener types (tcp, file, etc.) which are skipped
+// during duplicate detection.
+func ListenerEndpoint(ch *ChannelConfig) (port int, path string) {
+	l := ch.Listener
+	switch l.Type {
+	case "http":
+		if l.HTTP != nil {
+			port = l.HTTP.Port
+			path = l.HTTP.Path
+		}
+	case "soap":
+		if l.SOAP != nil {
+			port = l.SOAP.Port
+			path = l.SOAP.WSDLPath
+		}
+	case "fhir":
+		if l.FHIR != nil {
+			port = l.FHIR.Port
+			path = l.FHIR.BasePath
+		}
+	case "ihe":
+		if l.IHE != nil {
+			port = l.IHE.Port
+			path = "/" + l.IHE.Profile
+		}
+	default:
+		return 0, ""
+	}
+	if path == "" {
+		path = "/"
+	}
+	return port, path
+}
+
+// ValidateListenerEndpoints checks that no two enabled channels share the same
+// port+path combination. Returns a list of human-readable error strings
+// (empty if no duplicates).
+func ValidateListenerEndpoints(channels []*ChannelConfig) []string {
+	type endpoint struct {
+		port int
+		path string
+	}
+
+	seen := make(map[endpoint]string) // endpoint → first channel ID
+	var errs []string
+
+	for _, ch := range channels {
+		if !ch.Enabled {
+			continue
+		}
+		port, path := ListenerEndpoint(ch)
+		if port == 0 {
+			continue
+		}
+		ep := endpoint{port, path}
+		if first, ok := seen[ep]; ok {
+			errs = append(errs, fmt.Sprintf(
+				"duplicate listener: channels %q and %q both use port %d path %q",
+				first, ch.ID, port, path,
+			))
+		} else {
+			seen[ep] = ch.ID
+		}
+	}
+	return errs
+}
+
 func LoadChannelConfig(channelDir string) (*ChannelConfig, error) {
 	path := filepath.Join(channelDir, "channel.yaml")
 	data, err := os.ReadFile(path)

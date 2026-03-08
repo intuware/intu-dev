@@ -429,6 +429,153 @@ func TestMemoryStorePrune(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreQueryStageFilter(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now()
+
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("r")})
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "transformed", Status: "TRANSFORMED", Timestamp: now, Content: []byte("t")})
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "sent", Status: "SENT", Timestamp: now, Content: []byte("s")})
+
+	records, err := store.Query(QueryOpts{Stage: "received"})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 received record, got %d", len(records))
+	}
+	if records[0].Stage != "received" {
+		t.Fatalf("expected stage=received, got %s", records[0].Stage)
+	}
+
+	records, err = store.Query(QueryOpts{Stage: "sent"})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 sent record, got %d", len(records))
+	}
+
+	records, err = store.Query(QueryOpts{Stage: "nonexistent"})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("expected 0 records for nonexistent stage, got %d", len(records))
+	}
+}
+
+func TestMemoryStoreQueryExcludeContent(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now()
+
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("big payload here")})
+
+	records, err := store.Query(QueryOpts{ExcludeContent: true})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Content != nil {
+		t.Fatal("expected nil content with ExcludeContent=true")
+	}
+	if records[0].ID != "m1" {
+		t.Fatalf("expected m1, got %s", records[0].ID)
+	}
+
+	// original record should be untouched
+	rec, _ := store.Get("m1")
+	if rec.Content == nil || string(rec.Content) != "big payload here" {
+		t.Fatal("original record content should not be modified")
+	}
+}
+
+func TestMemoryStoreQueryStageAndExcludeContent(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now()
+
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("r")})
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "sent", Status: "SENT", Timestamp: now, Content: []byte("s")})
+
+	records, err := store.Query(QueryOpts{Stage: "received", ExcludeContent: true})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Content != nil {
+		t.Fatal("expected nil content")
+	}
+	if records[0].Stage != "received" {
+		t.Fatalf("expected received, got %s", records[0].Stage)
+	}
+}
+
+func TestMemoryStoreGetStage(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now()
+
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("recv-data")})
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "transformed", Status: "TRANSFORMED", Timestamp: now, Content: []byte("xfm-data")})
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "sent", Status: "SENT", Timestamp: now, Content: []byte("sent-data")})
+
+	rec, err := store.GetStage("m1", "transformed")
+	if err != nil {
+		t.Fatalf("GetStage failed: %v", err)
+	}
+	if string(rec.Content) != "xfm-data" {
+		t.Fatalf("expected xfm-data, got %s", string(rec.Content))
+	}
+
+	rec, err = store.GetStage("m1", "sent")
+	if err != nil {
+		t.Fatalf("GetStage failed: %v", err)
+	}
+	if string(rec.Content) != "sent-data" {
+		t.Fatalf("expected sent-data, got %s", string(rec.Content))
+	}
+
+	_, err = store.GetStage("m1", "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent stage")
+	}
+
+	_, err = store.GetStage("nonexistent", "received")
+	if err == nil {
+		t.Fatal("expected error for nonexistent message")
+	}
+}
+
+func TestCompositeStoreGetStageNoneMode(t *testing.T) {
+	cs := NewCompositeStore(NewMemoryStore(), "none", nil)
+	rec, err := cs.GetStage("m1", "received")
+	if err != nil {
+		t.Fatalf("expected no error in none mode, got %v", err)
+	}
+	if rec != nil {
+		t.Fatal("expected nil record in none mode")
+	}
+}
+
+func TestCompositeStoreGetStageDelegates(t *testing.T) {
+	inner := NewMemoryStore()
+	cs := NewCompositeStore(inner, "full", nil)
+	now := time.Now()
+
+	cs.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("data")})
+
+	rec, err := cs.GetStage("m1", "received")
+	if err != nil {
+		t.Fatalf("GetStage failed: %v", err)
+	}
+	if rec == nil || string(rec.Content) != "data" {
+		t.Fatal("expected record with content")
+	}
+}
+
 func TestMemoryStorePruneByChannel(t *testing.T) {
 	store := NewMemoryStore()
 	past := time.Now().Add(-2 * time.Hour)

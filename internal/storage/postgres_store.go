@@ -139,6 +139,16 @@ func (p *PostgresStore) Get(id string) (*MessageRecord, error) {
 	return p.scanRecord(row)
 }
 
+func (p *PostgresStore) GetStage(id, stage string) (*MessageRecord, error) {
+	query := fmt.Sprintf(`
+		SELECT id, correlation_id, channel_id, stage, content, status, timestamp, metadata
+		FROM %s WHERE id = $1 AND stage = $2
+		LIMIT 1`, p.tableName())
+
+	row := p.db.QueryRow(query, id, stage)
+	return p.scanRecord(row)
+}
+
 func (p *PostgresStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 	var conditions []string
 	var args []any
@@ -152,6 +162,11 @@ func (p *PostgresStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 	if opts.Status != "" {
 		conditions = append(conditions, fmt.Sprintf("status = $%d", argIdx))
 		args = append(args, opts.Status)
+		argIdx++
+	}
+	if opts.Stage != "" {
+		conditions = append(conditions, fmt.Sprintf("stage = $%d", argIdx))
+		args = append(args, opts.Stage)
 		argIdx++
 	}
 	if !opts.Since.IsZero() {
@@ -170,8 +185,13 @@ func (p *PostgresStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 		where = " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	query := fmt.Sprintf("SELECT id, correlation_id, channel_id, stage, content, status, timestamp, metadata FROM %s%s ORDER BY timestamp DESC",
-		p.tableName(), where)
+	columns := "id, correlation_id, channel_id, stage, content, status, timestamp, metadata"
+	if opts.ExcludeContent {
+		columns = "id, correlation_id, channel_id, stage, NULL AS content, status, timestamp, metadata"
+	}
+
+	query := fmt.Sprintf("SELECT %s FROM %s%s ORDER BY timestamp DESC",
+		columns, p.tableName(), where)
 
 	if opts.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", opts.Limit)

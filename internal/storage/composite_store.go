@@ -79,6 +79,13 @@ func (c *CompositeStore) Get(id string) (*MessageRecord, error) {
 	return c.inner.Get(id)
 }
 
+func (c *CompositeStore) GetStage(id, stage string) (*MessageRecord, error) {
+	if c.mode == "none" {
+		return nil, nil
+	}
+	return c.inner.GetStage(id, stage)
+}
+
 func (c *CompositeStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 	if c.mode == "none" {
 		return nil, nil

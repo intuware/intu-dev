@@ -123,21 +123,48 @@ const dashboardSPA = `<!DOCTYPE html>
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Messages</h1>
           <p class="text-gray-400 dark:text-slate-500 text-sm mt-1">Browse and inspect message flow</p>
         </div>
+        <div id="storage-mode-pill" class="hidden"></div>
       </div>
-      <div class="flex flex-wrap gap-3 mb-6">
-        <select id="msg-channel" onchange="loadMessages()"
-          class="px-4 py-2 bg-white dark:bg-slate-900/60 border border-gray-300 dark:border-slate-700/50 rounded-xl text-sm text-gray-600 dark:text-slate-300 focus:outline-none focus:border-sky-400/50 transition-all cursor-pointer">
-          <option value="">All Channels</option>
-        </select>
-        <select id="msg-limit" onchange="loadMessages()"
-          class="px-4 py-2 bg-white dark:bg-slate-900/60 border border-gray-300 dark:border-slate-700/50 rounded-xl text-sm text-gray-600 dark:text-slate-300 focus:outline-none focus:border-sky-400/50 transition-all cursor-pointer">
-          <option value="10">Last 10</option>
-          <option value="25">Last 25</option>
-          <option value="50" selected>Last 50</option>
-          <option value="100">Last 100</option>
-        </select>
+      <div id="msg-storage-banner" class="hidden mb-6 p-4 bg-amber-50 dark:bg-amber-400/10 border border-amber-200 dark:border-amber-400/20 rounded-xl text-amber-700 dark:text-amber-400 text-sm"></div>
+      <div id="msg-grid-wrapper">
+        <div class="flex flex-wrap gap-3 mb-4">
+          <select id="msg-channel" onchange="msgCurrentPage=0;loadMessages()"
+            class="px-4 py-2 bg-white dark:bg-slate-900/60 border border-gray-300 dark:border-slate-700/50 rounded-xl text-sm text-gray-600 dark:text-slate-300 focus:outline-none focus:border-sky-400/50 transition-all cursor-pointer">
+            <option value="">All Channels</option>
+          </select>
+          <select id="msg-page-size" onchange="msgCurrentPage=0;loadMessages()"
+            class="px-4 py-2 bg-white dark:bg-slate-900/60 border border-gray-300 dark:border-slate-700/50 rounded-xl text-sm text-gray-600 dark:text-slate-300 focus:outline-none focus:border-sky-400/50 transition-all cursor-pointer">
+            <option value="25">25 per page</option>
+            <option value="50" selected>50 per page</option>
+            <option value="100">100 per page</option>
+          </select>
+        </div>
+        <div id="message-grid"></div>
+        <div id="msg-pagination" class="flex items-center justify-between mt-4 hidden">
+          <button onclick="msgPrevPage()" id="msg-prev-btn" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all" disabled>Previous</button>
+          <span id="msg-page-info" class="text-sm text-gray-500 dark:text-slate-400"></span>
+          <button onclick="msgNextPage()" id="msg-next-btn" class="px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all" disabled>Next</button>
+        </div>
       </div>
-      <div id="message-list"></div>
+    </div>
+
+    <!-- Payload modal -->
+    <div id="payload-modal-backdrop" class="fixed inset-0 bg-black/50 dark:bg-black/60 backdrop-blur-sm z-[60] hidden transition-opacity duration-200 opacity-0" onclick="closePayloadModal()"></div>
+    <div id="payload-modal" class="fixed inset-0 z-[61] flex items-center justify-center pointer-events-none hidden">
+      <div class="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-2xl shadow-2xl w-[640px] max-w-[92vw] max-h-[80vh] flex flex-col pointer-events-auto" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-slate-800">
+          <div class="flex items-center gap-3">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Payload Preview</h3>
+            <span id="modal-stage-badge" class="px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase"></span>
+          </div>
+          <button onclick="closePayloadModal()" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-400 dark:text-slate-400 transition-all"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+        </div>
+        <div id="modal-body" class="p-5 overflow-y-auto flex-1"></div>
+        <div id="modal-footer" class="px-5 py-3 border-t border-gray-200 dark:border-slate-800 flex items-center justify-between">
+          <span id="modal-size" class="text-xs text-gray-400 dark:text-slate-500"></span>
+          <button id="modal-download-btn" onclick="downloadCurrentPayload()" class="px-4 py-2 rounded-xl text-xs font-medium bg-sky-500 hover:bg-sky-400 text-white transition-all hidden">Download Full Payload</button>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -204,7 +231,7 @@ function navigate(page) {
   });
   if (page === 'home') fetchStats();
   if (page === 'channels') fetchChannels();
-  if (page === 'messages') { populateChannelFilter(); loadMessages(); }
+  if (page === 'messages') { populateChannelFilter(); fetchStorageInfo().then(function() { if (msgStorageMode !== 'none') loadMessages(); }); }
 }
 
 // --- Stats / Home ---
@@ -514,6 +541,11 @@ function channelAction(id, action) {
 }
 
 // --- Messages ---
+var msgCurrentPage = 0;
+var msgStorageMode = 'full';
+var modalPayloadMsgID = '';
+var modalPayloadStage = '';
+
 function populateChannelFilter() {
   var sel = document.getElementById('msg-channel');
   var cur = sel.value;
@@ -524,126 +556,204 @@ function populateChannelFilter() {
   sel.value = cur;
 }
 
+function fetchStorageInfo() {
+  return fetch('/api/storage-info').then(function(r) { return r.json(); }).then(function(d) {
+    msgStorageMode = d.mode || 'full';
+    var pill = document.getElementById('storage-mode-pill');
+    var banner = document.getElementById('msg-storage-banner');
+    if (msgStorageMode === 'none') {
+      banner.innerHTML = 'Message storage is disabled. Enable it in <code class="bg-amber-100 dark:bg-amber-400/20 px-1 py-0.5 rounded text-xs">intu.yaml</code> under <code class="bg-amber-100 dark:bg-amber-400/20 px-1 py-0.5 rounded text-xs">message_storage</code>.';
+      banner.classList.remove('hidden');
+      document.getElementById('msg-grid-wrapper').classList.add('hidden');
+      pill.classList.add('hidden');
+    } else {
+      banner.classList.add('hidden');
+      document.getElementById('msg-grid-wrapper').classList.remove('hidden');
+      if (msgStorageMode === 'status') {
+        pill.innerHTML = '<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-400/20">Storage: status-only</span>';
+        pill.classList.remove('hidden');
+      } else {
+        pill.classList.add('hidden');
+      }
+    }
+  }).catch(function() { msgStorageMode = 'full'; });
+}
+
 function loadMessages() {
   var ch = document.getElementById('msg-channel').value;
-  var limit = document.getElementById('msg-limit').value || '50';
-  var url = '/api/messages?limit=' + limit;
+  var pageSize = parseInt(document.getElementById('msg-page-size').value) || 50;
+  var offset = msgCurrentPage * pageSize;
+  var url = '/api/messages?dedupe=1&exclude_content=1&limit=' + pageSize + '&offset=' + offset;
   if (ch) url += '&channel=' + encodeURIComponent(ch);
 
-  var el = document.getElementById('message-list');
-  el.innerHTML = '<div class="space-y-3"><div class="skeleton h-20 rounded-xl"></div><div class="skeleton h-20 rounded-xl"></div><div class="skeleton h-20 rounded-xl"></div></div>';
+  var el = document.getElementById('message-grid');
+  el.innerHTML = '<div class="space-y-2"><div class="skeleton h-12 rounded-lg"></div><div class="skeleton h-12 rounded-lg"></div><div class="skeleton h-12 rounded-lg"></div><div class="skeleton h-12 rounded-lg"></div></div>';
 
   fetch(url).then(function(r) { return r.json(); }).then(function(msgs) {
     if (!msgs || !msgs.length) {
-      el.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-slate-600"><svg class="w-12 h-12 mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg><p class="text-sm">No messages found</p></div>';
+      el.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-slate-600"><svg class="w-12 h-12 mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg><p class="text-sm">No messages available</p></div>';
+      document.getElementById('msg-pagination').classList.add('hidden');
       return;
     }
-    renderGroupedMessages(msgs);
-  }).catch(function(e) {
+    renderMessageGrid(msgs);
+    updatePagination(msgs.length, pageSize);
+  }).catch(function() {
     el.innerHTML = '<p class="text-red-500 dark:text-red-400 text-sm">Failed to load messages.</p>';
   });
 }
 
-function renderGroupedMessages(msgs) {
-  var groups = {};
-  var groupOrder = [];
-  msgs.forEach(function(m) {
-    var key = m.CorrelationID || m.ID;
-    if (!groups[key]) { groups[key] = []; groupOrder.push(key); }
-    groups[key].push(m);
+function getChannelLookup() {
+  var lookup = {};
+  (state.channels || []).forEach(function(c) {
+    lookup[c.id] = c;
   });
+  return lookup;
+}
 
-  var html = '';
-  var bandColors = [
-    'bg-white dark:bg-slate-900/40 border-gray-200 dark:border-slate-800/60',
-    'bg-gray-50 dark:bg-slate-800/20 border-gray-100 dark:border-slate-700/40'
-  ];
-  groupOrder.forEach(function(key, gi) {
-    var items = groups[key];
-    items.sort(function(a, b) {
-      var order = { RECEIVED: 0, TRANSFORMED: 1, FILTERED: 2, SENT: 3, ERROR: 4, REPROCESSED: 5 };
-      return (order[a.Status] || 99) - (order[b.Status] || 99);
-    });
-    var bandClass = bandColors[gi % 2];
-    html += '<div class="' + bandClass + ' border rounded-xl mb-3 overflow-hidden fade-up transition-colors duration-200" style="animation-delay:' + (gi * 40) + 'ms">';
-    html += '<div class="px-4 py-2 border-b border-gray-100 dark:border-slate-800/40 flex items-center justify-between">' +
-      '<div class="flex items-center gap-2">' +
-        '<span class="text-[10px] text-gray-400 dark:text-slate-500 font-mono">' + esc(key.substring(0, 16)) + '...</span>' +
-        '<span class="text-[10px] text-gray-400 dark:text-slate-600">' + esc(items[0].ChannelID || '') + '</span>' +
-      '</div>' +
-      '<span class="text-[10px] text-gray-400 dark:text-slate-600">' + items.length + ' stage' + (items.length > 1 ? 's' : '') + '</span>' +
-    '</div>';
+function renderMessageGrid(msgs) {
+  var chLookup = getChannelLookup();
+  var statusCls = {
+    'RECEIVED':    'bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-400/20',
+    'TRANSFORMED': 'bg-violet-50 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-400/20',
+    'SENT':        'bg-emerald-50 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-400/20',
+    'ERROR':       'bg-red-50 dark:bg-red-400/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-400/20',
+    'FILTERED':    'bg-amber-50 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-400/20',
+    'REPROCESSED': 'bg-blue-50 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-400/20'
+  };
+  var thCls = 'px-3 py-3 text-left text-[10px] font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wider';
+  var tdCls = 'px-3 py-3 text-sm';
+  var html = '<div class="bg-white dark:bg-slate-900/50 border border-gray-200 dark:border-slate-800/60 rounded-xl overflow-hidden transition-colors duration-200">' +
+    '<div class="overflow-x-auto"><table class="w-full"><thead><tr class="border-b border-gray-100 dark:border-slate-800/40">' +
+    '<th class="' + thCls + '">Date</th>' +
+    '<th class="' + thCls + '">Time</th>' +
+    '<th class="' + thCls + '">Channel</th>' +
+    '<th class="' + thCls + '">Source</th>' +
+    '<th class="' + thCls + '">Destinations</th>' +
+    '<th class="' + thCls + '">Status</th>' +
+    '<th class="' + thCls + '">Stages</th>' +
+    '<th class="' + thCls + ' text-right">Actions</th>' +
+    '</tr></thead><tbody>';
 
-    items.forEach(function(m) {
-      var statusCls = {
-        'RECEIVED':    'bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-400/20',
-        'TRANSFORMED': 'bg-violet-50 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-400/20',
-        'SENT':        'bg-emerald-50 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-400/20',
-        'ERROR':       'bg-red-50 dark:bg-red-400/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-400/20',
-        'FILTERED':    'bg-amber-50 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-400/20',
-        'REPROCESSED': 'bg-blue-50 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-400/20'
-      };
-      var cls = statusCls[m.Status] || 'bg-gray-100 dark:bg-slate-700/10 text-gray-500 dark:text-slate-400 border-gray-200 dark:border-slate-600/20';
-      var content = '';
-      if (m.Content) { try { content = atob(m.Content); } catch(e) { content = m.Content; } }
-      var contentPreview = content.length > 120 ? content.substring(0, 120) + '...' : content;
-      var ts = m.Timestamp ? new Date(m.Timestamp).toLocaleString() : '';
+  msgs.forEach(function(m, i) {
+    var ts = m.Timestamp ? new Date(m.Timestamp) : null;
+    var dateStr = ts ? ts.toLocaleDateString() : '-';
+    var timeStr = ts ? ts.toLocaleTimeString() : '-';
+    var cls = statusCls[m.Status] || 'bg-gray-100 dark:bg-slate-700/10 text-gray-500 dark:text-slate-400 border-gray-200 dark:border-slate-600/20';
+    var rowBg = i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-slate-800/20';
+    var eyeIcon = '<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    var stageBtnCls = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium border transition-all hover:opacity-80 cursor-pointer';
 
-      html += '<div class="px-4 py-3 border-b border-gray-100/50 dark:border-slate-800/20 last:border-b-0 hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors">' +
-        '<div class="flex items-center justify-between mb-2">' +
-          '<div class="flex items-center gap-2">' +
-            '<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase border ' + cls + '">' + esc(m.Status || '') + '</span>' +
-            '<span class="text-[10px] text-gray-400 dark:text-slate-500">' + esc(m.Stage || '') + '</span>' +
-            '<span class="text-[10px] text-gray-300 dark:text-slate-600">' + esc(ts) + '</span>' +
-          '</div>' +
-          '<div class="flex items-center gap-1.5">' +
-            '<button class="px-2 py-1 rounded-md text-[10px] font-medium bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-400/20 hover:bg-sky-100 dark:hover:bg-sky-400/20 transition-all" onclick="reprocessMessage(\'' + esc(m.ID) + '\')">Reprocess</button>' +
-            (content ? '<button class="px-2 py-1 rounded-md text-[10px] font-medium bg-gray-100 dark:bg-slate-700/50 text-gray-500 dark:text-slate-400 border border-gray-200 dark:border-slate-600/30 hover:bg-gray-200 dark:hover:bg-slate-700 hover:text-gray-700 dark:hover:text-white transition-all" onclick="copyPayload(\'' + esc(m.ID) + '\')">Copy</button>' : '') +
-          '</div>' +
+    var ch = chLookup[m.ChannelID];
+    var srcType = ch && ch.listener_type ? ch.listener_type.toUpperCase() : '-';
+    var destNames = ch && ch.destinations ? ch.destinations.join(', ') : '-';
+
+    var srcBadge = srcType !== '-'
+      ? '<span class="px-2 py-0.5 rounded-md text-[10px] font-medium uppercase bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-400/20">' + esc(srcType) + '</span>'
+      : '<span class="text-xs text-gray-400 dark:text-slate-500">-</span>';
+
+    html += '<tr class="border-b border-gray-100/50 dark:border-slate-800/20 ' + rowBg + ' hover:bg-sky-50/30 dark:hover:bg-sky-400/[0.03] transition-colors">' +
+      '<td class="' + tdCls + ' text-gray-500 dark:text-slate-400 text-xs whitespace-nowrap">' + esc(dateStr) + '</td>' +
+      '<td class="' + tdCls + ' text-gray-500 dark:text-slate-400 text-xs whitespace-nowrap">' + esc(timeStr) + '</td>' +
+      '<td class="' + tdCls + ' font-medium text-gray-800 dark:text-slate-200 text-xs">' + esc(m.ChannelID || '') + '</td>' +
+      '<td class="' + tdCls + '">' + srcBadge + '</td>' +
+      '<td class="' + tdCls + ' text-xs text-gray-500 dark:text-slate-400 max-w-[200px] truncate" title="' + esc(destNames) + '">' + esc(destNames) + '</td>' +
+      '<td class="' + tdCls + '"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase border ' + cls + '">' + esc(m.Status || '') + '</span></td>' +
+      '<td class="' + tdCls + '">' +
+        '<div class="flex items-center gap-1.5">' +
+          '<button class="' + stageBtnCls + ' bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'received\')" title="View received payload">' + eyeIcon + 'Received</button>' +
+          '<button class="' + stageBtnCls + ' bg-violet-50 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'transformed\')" title="View transformed payload">' + eyeIcon + 'Transformed</button>' +
+          '<button class="' + stageBtnCls + ' bg-emerald-50 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'sent\')" title="View sent payload">' + eyeIcon + 'Sent</button>' +
+        '</div>' +
+      '</td>' +
+      '<td class="' + tdCls + ' text-right">' +
+        '<button class="px-2.5 py-1 rounded-md text-[10px] font-medium bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-400/20 hover:bg-sky-100 dark:hover:bg-sky-400/20 transition-all" onclick="reprocessMessage(\'' + esc(m.ID) + '\')">Reprocess</button>' +
+      '</td>' +
+    '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+  document.getElementById('message-grid').innerHTML = html;
+}
+
+function updatePagination(count, pageSize) {
+  var pag = document.getElementById('msg-pagination');
+  pag.classList.remove('hidden');
+  document.getElementById('msg-prev-btn').disabled = (msgCurrentPage === 0);
+  document.getElementById('msg-next-btn').disabled = (count < pageSize);
+  document.getElementById('msg-page-info').textContent = 'Page ' + (msgCurrentPage + 1);
+}
+
+function msgPrevPage() {
+  if (msgCurrentPage > 0) { msgCurrentPage--; loadMessages(); }
+}
+
+function msgNextPage() {
+  msgCurrentPage++;
+  loadMessages();
+}
+
+function viewPayload(msgID, stage) {
+  modalPayloadMsgID = msgID;
+  modalPayloadStage = stage;
+  var body = document.getElementById('modal-body');
+  body.innerHTML = '<div class="flex items-center justify-center py-8"><div class="skeleton h-6 w-48"></div></div>';
+
+  var badgeColors = {
+    'received':    'bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-400/20',
+    'transformed': 'bg-violet-50 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-400/20',
+    'sent':        'bg-emerald-50 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-400/20'
+  };
+  var badge = document.getElementById('modal-stage-badge');
+  badge.className = 'px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase ' + (badgeColors[stage] || '');
+  badge.textContent = stage;
+
+  document.getElementById('modal-download-btn').classList.add('hidden');
+  document.getElementById('modal-size').textContent = '';
+
+  openPayloadModal();
+
+  fetch('/api/messages/' + encodeURIComponent(msgID) + '/payload?stage=' + encodeURIComponent(stage))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.unavailable) {
+        body.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-slate-500">' +
+          '<svg class="w-10 h-10 mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636"/></svg>' +
+          '<p class="text-sm font-medium">Payload not available</p>' +
+          '<p class="text-xs mt-1">This stage payload was not stored (status-only mode or not yet processed).</p>' +
         '</div>';
-      if (content) {
-        html += '<div class="relative"><pre id="payload-' + esc(m.ID) + '" class="text-[11px] text-gray-500 dark:text-slate-400 font-mono bg-gray-100 dark:bg-slate-950/50 rounded-lg p-3 overflow-x-auto max-h-28 border border-gray-200 dark:border-slate-800/30 transition-colors duration-200">' + esc(contentPreview) + '</pre>';
-        if (content.length > 120) {
-          html += '<button class="text-[10px] text-sky-600 dark:text-sky-400 hover:text-sky-500 dark:hover:text-sky-300 mt-1" onclick="togglePayload(this, \'' + esc(m.ID) + '\')">Show more</button>';
+        document.getElementById('modal-download-btn').classList.add('hidden');
+        document.getElementById('modal-size').textContent = '';
+      } else {
+        body.innerHTML = '<pre class="text-xs text-gray-600 dark:text-slate-300 font-mono bg-gray-50 dark:bg-slate-950/50 rounded-lg p-4 overflow-x-auto max-h-[50vh] border border-gray-200 dark:border-slate-800/30 whitespace-pre-wrap break-all">' + esc(data.preview || '') + '</pre>';
+        if (data.size > 500) {
+          body.innerHTML += '<p class="text-[10px] text-gray-400 dark:text-slate-500 mt-2">Showing first 500 characters of ' + formatBytes(data.size) + '</p>';
         }
-        html += '<textarea id="full-' + esc(m.ID) + '" class="hidden">' + esc(content) + '</textarea></div>';
+        document.getElementById('modal-size').textContent = formatBytes(data.size);
+        document.getElementById('modal-download-btn').classList.remove('hidden');
       }
-      html += '</div>';
+    })
+    .catch(function() {
+      body.innerHTML = '<p class="text-red-500 dark:text-red-400 text-sm">Failed to load payload.</p>';
     });
-    html += '</div>';
-  });
-  document.getElementById('message-list').innerHTML = html;
 }
 
-function togglePayload(btn, id) {
-  var pre = document.getElementById('payload-' + id);
-  var full = document.getElementById('full-' + id);
-  if (!pre || !full) return;
-  if (btn.textContent === 'Show more') {
-    pre.textContent = full.value;
-    pre.classList.remove('max-h-28');
-    btn.textContent = 'Show less';
-  } else {
-    pre.textContent = full.value.substring(0, 120) + '...';
-    pre.classList.add('max-h-28');
-    btn.textContent = 'Show more';
-  }
+function downloadCurrentPayload() {
+  if (!modalPayloadMsgID || !modalPayloadStage) return;
+  window.open('/api/messages/' + encodeURIComponent(modalPayloadMsgID) + '/payload?stage=' + encodeURIComponent(modalPayloadStage) + '&download=true', '_blank');
 }
 
-function copyPayload(id) {
-  var full = document.getElementById('full-' + id);
-  if (!full) return;
-  navigator.clipboard.writeText(full.value).then(function() {
-    showToast('Copied to clipboard', 'success');
-  }).catch(function() {
-    var ta = document.createElement('textarea');
-    ta.value = full.value;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    showToast('Copied to clipboard', 'success');
-  });
+function openPayloadModal() {
+  var backdrop = document.getElementById('payload-modal-backdrop');
+  var modal = document.getElementById('payload-modal');
+  backdrop.classList.remove('hidden');
+  modal.classList.remove('hidden');
+  setTimeout(function() { backdrop.classList.remove('opacity-0'); }, 10);
+}
+
+function closePayloadModal() {
+  var backdrop = document.getElementById('payload-modal-backdrop');
+  var modal = document.getElementById('payload-modal');
+  backdrop.classList.add('opacity-0');
+  setTimeout(function() { backdrop.classList.add('hidden'); modal.classList.add('hidden'); }, 200);
 }
 
 function reprocessMessage(id) {
@@ -658,6 +768,14 @@ function reprocessMessage(id) {
       }
     })
     .catch(function(e) { showToast('Reprocess failed: ' + e.message, 'error'); });
+}
+
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  var k = 1024;
+  var sizes = ['B', 'KB', 'MB', 'GB'];
+  var i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 // --- Utilities ---

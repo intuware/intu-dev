@@ -22,19 +22,23 @@ import (
 )
 
 type ReprocessFunc func(ctx context.Context, channelID string, rawContent []byte) error
+type ChannelActionFunc func(ctx context.Context, channelID string) error
 
 type Server struct {
-	cfg         *config.Config
-	channelsDir string
-	store       storage.MessageStore
-	metrics     *observability.Metrics
-	logger      *slog.Logger
-	rbac        *auth.RBACManager
-	auditLogger *auth.AuditLogger
-	authMw      func(http.Handler) http.Handler
-	reprocessFn ReprocessFunc
-	server      *http.Server
-	mu          sync.RWMutex
+	cfg          *config.Config
+	channelsDir  string
+	store        storage.MessageStore
+	metrics      *observability.Metrics
+	logger       *slog.Logger
+	rbac         *auth.RBACManager
+	auditLogger  *auth.AuditLogger
+	authMw       func(http.Handler) http.Handler
+	reprocessFn  ReprocessFunc
+	deployFn     ChannelActionFunc
+	undeployFn   ChannelActionFunc
+	restartFn    ChannelActionFunc
+	server       *http.Server
+	mu           sync.RWMutex
 }
 
 type ServerConfig struct {
@@ -47,6 +51,9 @@ type ServerConfig struct {
 	AuditLogger    *auth.AuditLogger
 	AuthMiddleware func(http.Handler) http.Handler
 	ReprocessFunc  ReprocessFunc
+	DeployFunc     ChannelActionFunc
+	UndeployFunc   ChannelActionFunc
+	RestartFunc    ChannelActionFunc
 	Port           int
 }
 
@@ -61,6 +68,9 @@ func NewServer(scfg *ServerConfig) *Server {
 		auditLogger: scfg.AuditLogger,
 		authMw:      scfg.AuthMiddleware,
 		reprocessFn: scfg.ReprocessFunc,
+		deployFn:    scfg.DeployFunc,
+		undeployFn:  scfg.UndeployFunc,
+		restartFn:   scfg.RestartFunc,
 	}
 
 	if s.metrics == nil {
@@ -80,6 +90,7 @@ func (s *Server) BuildHandler() http.Handler {
 	mux.HandleFunc("/api/messages", s.handleMessages)
 	mux.HandleFunc("/api/messages/", s.handleMessageByID)
 	mux.HandleFunc("/api/channels/", s.handleChannelAction)
+	mux.HandleFunc("/api/storage-info", s.handleStorageInfo)
 
 	var handler http.Handler = mux
 	if s.authMw != nil {
@@ -156,8 +167,10 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, w := range windows {
 			records, err := s.store.Query(storage.QueryOpts{
-				Since: now.Add(-w.dur),
-				Limit: 100000,
+				Since:          now.Add(-w.dur),
+				Stage:          "received",
+				ExcludeContent: true,
+				Limit:          100000,
 			})
 			if err == nil {
 				msgCounts[w.key] = len(records)
@@ -234,6 +247,24 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snap)
 }
 
+func (s *Server) handleStorageInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	mode := "none"
+	if s.store != nil {
+		if cs, ok := s.store.(*storage.CompositeStore); ok {
+			mode = cs.Mode()
+		} else {
+			mode = "full"
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"mode": mode})
+}
+
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -247,9 +278,11 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	q := r.URL.Query()
 	opts := storage.QueryOpts{
-		ChannelID: q.Get("channel"),
-		Status:    q.Get("status"),
-		Limit:     50,
+		ChannelID:      q.Get("channel"),
+		Status:         q.Get("status"),
+		Stage:          q.Get("stage"),
+		ExcludeContent: q.Get("exclude_content") == "1",
+		Limit:          50,
 	}
 
 	if lim := q.Get("limit"); lim != "" {
@@ -282,6 +315,36 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	dedupe := q.Get("dedupe") == "1"
+
+	if dedupe {
+		requestedLimit := opts.Limit
+		requestedOffset := opts.Offset
+		opts.Stage = ""
+		opts.Limit = requestedLimit * 4
+		opts.Offset = 0
+
+		records, err := s.store.Query(opts)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+
+		deduped := deduplicateMessages(records)
+
+		if requestedOffset > 0 && requestedOffset < len(deduped) {
+			deduped = deduped[requestedOffset:]
+		} else if requestedOffset >= len(deduped) {
+			deduped = nil
+		}
+		if requestedLimit > 0 && len(deduped) > requestedLimit {
+			deduped = deduped[:requestedLimit]
+		}
+
+		writeJSON(w, http.StatusOK, deduped)
+		return
+	}
+
 	records, err := s.store.Query(opts)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -289,6 +352,34 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, records)
+}
+
+var statusPriority = map[string]int{
+	"RECEIVED":    1,
+	"TRANSFORMED": 2,
+	"FILTERED":    3,
+	"SENT":        4,
+	"ERROR":       5,
+	"REPROCESSED": 6,
+}
+
+func deduplicateMessages(records []*storage.MessageRecord) []*storage.MessageRecord {
+	seen := map[string]int{}
+	var result []*storage.MessageRecord
+
+	for _, rec := range records {
+		idx, exists := seen[rec.ID]
+		if !exists {
+			seen[rec.ID] = len(result)
+			result = append(result, rec)
+		} else {
+			existing := result[idx]
+			if statusPriority[rec.Status] > statusPriority[existing.Status] {
+				result[idx] = rec
+			}
+		}
+	}
+	return result
 }
 
 func (s *Server) handleMessageByID(w http.ResponseWriter, r *http.Request) {
@@ -303,6 +394,11 @@ func (s *Server) handleMessageByID(w http.ResponseWriter, r *http.Request) {
 
 	if len(parts) == 2 && parts[1] == "reprocess" {
 		s.handleReprocess(w, r, msgID)
+		return
+	}
+
+	if len(parts) == 2 && parts[1] == "payload" {
+		s.handlePayload(w, r, msgID)
 		return
 	}
 
@@ -394,6 +490,53 @@ func (s *Server) handleReprocess(w http.ResponseWriter, r *http.Request, msgID s
 	})
 }
 
+func (s *Server) handlePayload(w http.ResponseWriter, r *http.Request, msgID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.store == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"preview": nil, "size": 0, "unavailable": true})
+		return
+	}
+
+	stage := r.URL.Query().Get("stage")
+	if stage == "" {
+		stage = "received"
+	}
+
+	record, err := s.store.GetStage(msgID, stage)
+	if err != nil || record == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"preview": nil, "size": 0, "unavailable": true})
+		return
+	}
+
+	if record.Content == nil || len(record.Content) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"preview": nil, "size": 0, "unavailable": true})
+		return
+	}
+
+	if r.URL.Query().Get("download") == "true" {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s_%s.dat"`, msgID, stage))
+		w.WriteHeader(http.StatusOK)
+		w.Write(record.Content)
+		return
+	}
+
+	preview := string(record.Content)
+	size := len(record.Content)
+	if len(preview) > 500 {
+		preview = preview[:500]
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"preview": preview,
+		"size":    size,
+	})
+}
+
 func (s *Server) handleChannelAction(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/channels/")
 	parts := strings.SplitN(path, "/", 2)
@@ -417,15 +560,72 @@ func (s *Server) handleChannelAction(w http.ResponseWriter, r *http.Request) {
 
 	switch action {
 	case "deploy":
-		s.setChannelState(w, channelID, true, "deployed")
+		s.handleDeploy(w, r, channelID)
 	case "undeploy":
-		s.setChannelState(w, channelID, false, "undeployed")
+		s.handleUndeploy(w, r, channelID)
 	case "restart":
-		s.setChannelState(w, channelID, false, "restarting")
-		s.setChannelState(w, channelID, true, "restarted")
+		s.handleRestart(w, r, channelID)
 	default:
 		http.Error(w, "unknown action: "+action, http.StatusBadRequest)
 	}
+}
+
+func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request, channelID string) {
+	if err := setChannelEnabledDashboard(s.channelsDir, channelID, true); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if s.deployFn != nil {
+		if err := s.deployFn(r.Context(), channelID); err != nil {
+			s.logger.Error("deploy channel failed", "channel", channelID, "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
+	if s.auditLogger != nil {
+		s.auditLogger.Log("channel.deploy", "dashboard", map[string]any{"channel": channelID, "enabled": true})
+	}
+	s.logger.Info("channel deployed via dashboard", "channel", channelID)
+	writeJSON(w, http.StatusOK, map[string]any{"channel": channelID, "action": "deployed", "enabled": true})
+}
+
+func (s *Server) handleUndeploy(w http.ResponseWriter, r *http.Request, channelID string) {
+	if s.undeployFn != nil {
+		if err := s.undeployFn(r.Context(), channelID); err != nil {
+			s.logger.Error("undeploy channel failed", "channel", channelID, "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
+	if err := setChannelEnabledDashboard(s.channelsDir, channelID, false); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if s.auditLogger != nil {
+		s.auditLogger.Log("channel.undeploy", "dashboard", map[string]any{"channel": channelID, "enabled": false})
+	}
+	s.logger.Info("channel undeployed via dashboard", "channel", channelID)
+	writeJSON(w, http.StatusOK, map[string]any{"channel": channelID, "action": "undeployed", "enabled": false})
+}
+
+func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request, channelID string) {
+	if s.restartFn != nil {
+		if err := s.restartFn(r.Context(), channelID); err != nil {
+			s.logger.Error("restart channel failed", "channel", channelID, "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
+	if s.auditLogger != nil {
+		s.auditLogger.Log("channel.restart", "dashboard", map[string]any{"channel": channelID})
+	}
+	s.logger.Info("channel restarted via dashboard", "channel", channelID)
+	writeJSON(w, http.StatusOK, map[string]any{"channel": channelID, "action": "restarted", "enabled": true})
 }
 
 func (s *Server) handleChannelDetail(w http.ResponseWriter, r *http.Request, channelID string) {
@@ -749,38 +949,6 @@ func destinationConfigMap(d config.ChannelDestination) map[string]any {
 	return cfg
 }
 
-func (s *Server) setChannelState(w http.ResponseWriter, channelID string, enabled bool, action string) {
-	channelPath := filepath.Join(s.channelsDir, channelID, "channel.yaml")
-	if _, err := os.Stat(channelPath); os.IsNotExist(err) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "channel not found"})
-		return
-	}
-
-	if err := setChannelEnabledDashboard(s.channelsDir, channelID, enabled); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-
-	if s.auditLogger != nil {
-		s.auditLogger.Log("channel."+action, "dashboard", map[string]any{
-			"channel": channelID,
-			"enabled": enabled,
-		})
-	}
-
-	s.logger.Info("channel state changed via dashboard",
-		"channel", channelID,
-		"action", action,
-		"enabled", enabled,
-	)
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"channel": channelID,
-		"action":  action,
-		"enabled": enabled,
-	})
-}
-
 func (s *Server) listChannels() []map[string]any {
 	var channels []map[string]any
 	entries, err := os.ReadDir(s.channelsDir)
@@ -1025,7 +1193,6 @@ const loginPageHTML = `<!DOCTYPE html>
         </button>
       </form>
     </div>
-    <p class="text-center text-gray-300 dark:text-slate-600 text-xs mt-6">Powered by intu engine</p>
   </div>
 </body>
 </html>`

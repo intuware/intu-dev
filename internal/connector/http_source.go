@@ -5,21 +5,19 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/intuware/intu/internal/message"
 	"github.com/intuware/intu/pkg/config"
 )
 
 type HTTPSource struct {
-	cfg      *config.HTTPListener
-	server   *http.Server
-	listener net.Listener
-	logger   *slog.Logger
+	cfg     *config.HTTPListener
+	cfgPort int // port value used as key in shared listener map (may be 0)
+	path    string
+	started bool
+	logger  *slog.Logger
 }
 
 func NewHTTPSource(cfg *config.HTTPListener, logger *slog.Logger) *HTTPSource {
@@ -36,8 +34,15 @@ func (h *HTTPSource) Start(ctx context.Context, handler MessageHandler) error {
 		methods = []string{"POST"}
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+	h.cfgPort = h.cfg.Port
+	h.path = path
+
+	sl, err := acquireSharedHTTPListener(h.cfgPort, h.cfg.TLS, h.logger)
+	if err != nil {
+		return err
+	}
+
+	handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		allowed := false
 		for _, m := range methods {
 			if strings.EqualFold(r.Method, m) {
@@ -82,45 +87,29 @@ func (h *HTTPSource) Start(ctx context.Context, handler MessageHandler) error {
 		fmt.Fprint(w, `{"status":"accepted"}`)
 	})
 
-	addr := ":" + strconv.Itoa(h.cfg.Port)
-	h.server = &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+	if err := sl.router.Register(path, handlerFunc); err != nil {
+		releaseSharedHTTPListener(h.cfgPort, ctx)
+		return fmt.Errorf("register path on port %d: %w", h.cfgPort, err)
 	}
 
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("listen on %s: %w", addr, err)
-	}
-	h.listener = ln
-
-	tlsEnabled := false
-	if h.cfg.TLS != nil && h.cfg.TLS.Enabled {
-		ln, err = applyTLSToListener(ln, h.server, h.cfg.TLS)
-		if err != nil {
-			h.listener.Close()
-			return fmt.Errorf("HTTP TLS: %w", err)
-		}
-		tlsEnabled = true
-	}
-
-	h.logger.Info("HTTP listener started", "addr", addr, "path", path, "tls", tlsEnabled)
-
-	go func() {
-		if err := h.server.Serve(ln); err != nil && err != http.ErrServerClosed {
-			h.logger.Error("HTTP server error", "error", err)
-		}
-	}()
-
+	h.started = true
+	h.logger.Info("HTTP channel registered", "port", h.cfgPort, "path", path)
 	return nil
 }
 
 func (h *HTTPSource) Stop(ctx context.Context) error {
-	if h.server != nil {
-		return h.server.Shutdown(ctx)
+	if !h.started {
+		return nil
 	}
+	h.started = false
+
+	sharedMu.Lock()
+	if sl, ok := sharedListeners[h.cfgPort]; ok {
+		sl.router.Deregister(h.path)
+	}
+	sharedMu.Unlock()
+
+	releaseSharedHTTPListener(h.cfgPort, ctx)
 	return nil
 }
 
@@ -129,8 +118,11 @@ func (h *HTTPSource) Type() string {
 }
 
 func (h *HTTPSource) Addr() string {
-	if h.listener != nil {
-		return h.listener.Addr().String()
+	sharedMu.Lock()
+	sl, ok := sharedListeners[h.cfgPort]
+	sharedMu.Unlock()
+	if ok {
+		return sl.listener.Addr().String()
 	}
 	return ""
 }

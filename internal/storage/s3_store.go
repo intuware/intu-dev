@@ -130,6 +130,20 @@ func (s *S3Store) Get(id string) (*MessageRecord, error) {
 	return records[0], nil
 }
 
+func (s *S3Store) GetStage(id, stage string) (*MessageRecord, error) {
+	ctx := context.Background()
+	records, err := s.listByPrefix(ctx, s.prefix, func(env *s3MessageEnvelope) bool {
+		return env.ID == id && env.Stage == stage
+	}, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, fmt.Errorf("message %s stage %s not found", id, stage)
+	}
+	return records[0], nil
+}
+
 func (s *S3Store) Query(opts QueryOpts) ([]*MessageRecord, error) {
 	ctx := context.Background()
 
@@ -143,8 +157,15 @@ func (s *S3Store) Query(opts QueryOpts) ([]*MessageRecord, error) {
 		limit = 1000
 	}
 
+	if opts.Stage != "" && opts.ChannelID != "" {
+		searchPrefix = fmt.Sprintf("%s%s/%s/", s.prefix, opts.ChannelID, opts.Stage)
+	}
+
 	records, err := s.listByPrefix(ctx, searchPrefix, func(env *s3MessageEnvelope) bool {
 		if opts.Status != "" && env.Status != opts.Status {
+			return false
+		}
+		if opts.Stage != "" && env.Stage != opts.Stage {
 			return false
 		}
 		if !opts.Since.IsZero() && env.Timestamp.Before(opts.Since) {
@@ -167,6 +188,12 @@ func (s *S3Store) Query(opts QueryOpts) ([]*MessageRecord, error) {
 
 	if limit > 0 && len(records) > limit {
 		records = records[:limit]
+	}
+
+	if opts.ExcludeContent {
+		for _, rec := range records {
+			rec.Content = nil
+		}
 	}
 
 	return records, nil

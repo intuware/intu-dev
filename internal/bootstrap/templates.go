@@ -4,21 +4,24 @@ import "fmt"
 
 var projectDirectories = []string{
 	"channels/sample-channel",
-	"lib",
 }
 
-var projectFiles = map[string]string{
-	"intu.yaml":                              intuYAML,
-	"intu.dev.yaml":                          intuDevYAML,
-	"intu.prod.yaml":                         intuProdYAML,
-	".env":                                   dotEnv,
-	"channels/sample-channel/channel.yaml":   fmt.Sprintf(channelYAMLTpl, "sample-channel"),
-	"channels/sample-channel/transformer.ts": transformerTSTpl,
-	"channels/sample-channel/validator.ts":   validatorTSTpl,
-	"lib/index.ts":                           libIndexTS,
-	"package.json":                           packageJSON,
-	"tsconfig.json":                          tsConfigJSON,
-	"README.md":                              projectREADME,
+func projectFiles(projectName string) map[string]string {
+	return map[string]string{
+		"intu.yaml":                              intuYAML,
+		"intu.dev.yaml":                          intuDevYAML,
+		"intu.prod.yaml":                         intuProdYAML,
+		".env":                                   dotEnv,
+		"channels/sample-channel/channel.yaml":   fmt.Sprintf(channelYAMLTpl, "sample-channel"),
+		"channels/sample-channel/transformer.ts": transformerTSTpl,
+		"channels/sample-channel/validator.ts":   validatorTSTpl,
+		"package.json":                           packageJSON,
+		"tsconfig.json":                          tsConfigJSON,
+		"README.md":                              projectREADME,
+		"Dockerfile":                             dockerfile,
+		"docker-compose.yml":                     fmt.Sprintf(dockerComposeTpl, projectName, projectName),
+		".dockerignore":                          dockerignore,
+	}
 }
 
 const intuYAML = `runtime:
@@ -33,6 +36,10 @@ const intuYAML = `runtime:
     postgres_dsn: ${INTU_POSTGRES_DSN}
 
 channels_dir: channels
+
+message_storage:
+  driver: memory
+  mode: full
 
 destinations:
   file-output:
@@ -83,7 +90,7 @@ runtime:
 message_storage:
   driver: postgres
   dsn: ${INTU_POSTGRES_DSN}
-  mode: full                 # none | status | full
+  mode: status               # none | status (metadata only) | full (payloads + metadata)
 
 # To use S3 instead of postgres for message content:
 # message_storage:
@@ -403,7 +410,7 @@ enabled: true
 listener:
   type: http
   http:
-    port: 8080
+    port: 8081
 
 validator:
   runtime: node
@@ -439,21 +446,6 @@ func channelFiles(channelName string) map[string]string {
 	}
 }
 
-const libIndexTS = `/**
- * Shared library for intu transformers.
- * Import from channel transformers:
- *   import { formatTimestamp } from "../../lib/index";
- */
-
-export function formatTimestamp(date: Date): string {
-  return date.toISOString();
-}
-
-export function generateId(): string {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
-}
-`
-
 const packageJSON = `{
   "name": "intu-channel-runtime",
   "private": true,
@@ -481,7 +473,7 @@ const tsConfigJSON = `{
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["channels/**/*.ts", "lib/**/*.ts"]
+  "include": ["channels/**/*.ts"]
 }
 `
 
@@ -511,7 +503,6 @@ Bootstrapped project for the [intu](https://intu.dev) interoperability framework
 - channels/sample-channel/channel.yaml: sample channel definition.
 - channels/sample-channel/transformer.ts: pure transformer (JSON in, JSON out).
 - channels/sample-channel/validator.ts: sample validator.
-- lib/index.ts: shared utility functions for transformers.
 
 ## Add a Channel
 
@@ -546,4 +537,34 @@ properties, types, and descriptions for channel.yaml and intu.yaml files.
 ## Documentation
 
 Full documentation: https://intu.dev/documentation/
+`
+
+const dockerfile = `FROM node:22-alpine
+RUN npm install -g intu-dev
+WORKDIR /app
+COPY package.json ./
+RUN npm install
+COPY . .
+EXPOSE 8081 3000
+CMD ["intu", "serve", "--dir", ".", "--profile", "prod"]
+`
+
+const dockerComposeTpl = `services:
+  %s:
+    build: .
+    container_name: %s
+    ports:
+      - "8081:8081"
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./output:/app/output
+`
+
+const dockerignore = `node_modules
+dist
+output
+.git
+*.log
 `

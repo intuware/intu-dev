@@ -545,6 +545,66 @@ func (e *DefaultEngine) WatchChannels(ctx context.Context) error {
 	return hr.Start(ctx)
 }
 
+func (e *DefaultEngine) UndeployChannel(ctx context.Context, channelID string) error {
+	cr, ok := e.channels[channelID]
+	if !ok {
+		return nil
+	}
+
+	if err := cr.Stop(ctx); err != nil {
+		e.logger.Error("error stopping channel", "id", channelID, "error", err)
+		return fmt.Errorf("stop channel %s: %w", channelID, err)
+	}
+
+	if e.clusterMode && e.coordinator != nil {
+		_ = e.coordinator.ReleaseChannel(ctx, channelID)
+	}
+
+	delete(e.channels, channelID)
+	e.logger.Info("channel undeployed", "id", channelID)
+	return nil
+}
+
+func (e *DefaultEngine) DeployChannel(ctx context.Context, channelID string) error {
+	if _, ok := e.channels[channelID]; ok {
+		return nil
+	}
+
+	channelDir := e.findChannelDir(channelID)
+	if channelDir == "" {
+		return fmt.Errorf("channel %q not found", channelID)
+	}
+
+	chCfg, err := config.LoadChannelConfig(channelDir)
+	if err != nil {
+		return fmt.Errorf("load channel config %s: %w", channelID, err)
+	}
+
+	if !chCfg.Enabled {
+		return fmt.Errorf("channel %s is disabled in config", channelID)
+	}
+
+	cr, err := e.buildChannelRuntime(channelDir, chCfg)
+	if err != nil {
+		return fmt.Errorf("build channel runtime %s: %w", channelID, err)
+	}
+
+	if err := cr.Start(ctx); err != nil {
+		return fmt.Errorf("start channel %s: %w", channelID, err)
+	}
+
+	e.channels[channelID] = cr
+	e.logger.Info("channel deployed", "id", channelID)
+	return nil
+}
+
+func (e *DefaultEngine) RestartChannel(ctx context.Context, channelID string) error {
+	if err := e.UndeployChannel(ctx, channelID); err != nil {
+		return err
+	}
+	return e.DeployChannel(ctx, channelID)
+}
+
 func (e *DefaultEngine) GetChannelRuntime(channelID string) (*ChannelRuntime, bool) {
 	cr, ok := e.channels[channelID]
 	return cr, ok

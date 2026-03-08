@@ -41,7 +41,7 @@ func (s *Scaffolder) BootstrapProject(dir, projectName string, force bool) (*Res
 		s.logger.Debug("ensured directory", "path", absDir)
 	}
 
-	for relPath, content := range projectFiles {
+	for relPath, content := range projectFiles(projectName) {
 		absPath := filepath.Join(cleanRoot, relPath)
 		status, err := writeFile(absPath, content, force)
 		if err != nil {

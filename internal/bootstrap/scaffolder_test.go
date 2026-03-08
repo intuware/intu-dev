@@ -21,11 +21,12 @@ func TestBootstrapProjectCreatesProject(t *testing.T) {
 		t.Fatalf("expected root %s, got %s", root, result.Root)
 	}
 
-	if result.Created != len(projectFiles) {
-		t.Fatalf("expected %d created files, got %d", len(projectFiles), result.Created)
+	files := projectFiles("test-project")
+	if result.Created != len(files) {
+		t.Fatalf("expected %d created files, got %d", len(files), result.Created)
 	}
 
-	for relPath := range projectFiles {
+	for relPath := range files {
 		absPath := filepath.Join(root, relPath)
 		if _, err := os.Stat(absPath); err != nil {
 			t.Fatalf("expected file %s to exist: %v", absPath, err)
@@ -46,8 +47,8 @@ func TestBootstrapProjectIsIdempotentWithoutForce(t *testing.T) {
 		t.Fatalf("second bootstrap failed: %v", err)
 	}
 
-	if result.Skipped != len(projectFiles) {
-		t.Fatalf("expected %d skipped files, got %d", len(projectFiles), result.Skipped)
+	if result.Skipped != len(projectFiles("test")) {
+		t.Fatalf("expected %d skipped files, got %d", len(projectFiles("test")), result.Skipped)
 	}
 }
 
@@ -69,8 +70,8 @@ func TestBootstrapProjectForceOverwritesFiles(t *testing.T) {
 		t.Fatalf("bootstrap with force failed: %v", err)
 	}
 
-	if result.Overwritten != len(projectFiles) {
-		t.Fatalf("expected %d overwritten files, got %d", len(projectFiles), result.Overwritten)
+	if result.Overwritten != len(projectFiles("test")) {
+		t.Fatalf("expected %d overwritten files, got %d", len(projectFiles("test")), result.Overwritten)
 	}
 
 	content, err := os.ReadFile(samplePath)

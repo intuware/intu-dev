@@ -267,18 +267,31 @@ func newServeCmd() *cobra.Command {
 					rbac = auth.NewRBACManager(cfg.Roles)
 				}
 
-				dashSrv = dashboard.NewServer(&dashboard.ServerConfig{
-					Config:         cfg,
-					ChannelsDir:    channelsDir,
-					Store:          store,
-					Metrics:        observability.Global(),
-					Logger:         logger,
-					RBAC:           rbac,
-					AuditLogger:    auditLogger,
-					AuthMiddleware: authMw,
-					ReprocessFunc:  reprocessFn,
-					Port:           port,
-				})
+			deployFn := func(ctx context.Context, channelID string) error {
+				return engine.DeployChannel(ctx, channelID)
+			}
+			undeployFn := func(ctx context.Context, channelID string) error {
+				return engine.UndeployChannel(ctx, channelID)
+			}
+			restartFn := func(ctx context.Context, channelID string) error {
+				return engine.RestartChannel(ctx, channelID)
+			}
+
+			dashSrv = dashboard.NewServer(&dashboard.ServerConfig{
+				Config:         cfg,
+				ChannelsDir:    channelsDir,
+				Store:          store,
+				Metrics:        observability.Global(),
+				Logger:         logger,
+				RBAC:           rbac,
+				AuditLogger:    auditLogger,
+				AuthMiddleware: authMw,
+				ReprocessFunc:  reprocessFn,
+				DeployFunc:     deployFn,
+				UndeployFunc:   undeployFn,
+				RestartFunc:    restartFn,
+				Port:           port,
+			})
 
 				dashErrCh := make(chan error, 1)
 				go func() {
