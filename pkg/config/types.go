@@ -27,12 +27,14 @@ type CodeTemplateLibraryConfig struct {
 }
 
 type RuntimeConfig struct {
-	Name       string         `mapstructure:"name"`
-	Profile    string         `mapstructure:"profile"`
-	LogLevel   string         `mapstructure:"log_level"`
-	Storage    StorageConfig  `mapstructure:"storage"`
+	Name       string            `mapstructure:"name"`
+	Profile    string            `mapstructure:"profile"`
+	LogLevel   string            `mapstructure:"log_level"`
+	Storage    StorageConfig     `mapstructure:"storage"`
 	Encryption *EncryptionConfig `mapstructure:"encryption"`
-	Health     *HealthConfig  `mapstructure:"health"`
+	Health     *HealthConfig     `mapstructure:"health"`
+	JSRuntime  string            `mapstructure:"js_runtime"`
+	WorkerPool int               `mapstructure:"worker_pool"`
 }
 
 type StorageConfig struct {

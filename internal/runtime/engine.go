@@ -27,16 +27,17 @@ type ConnectorFactory interface {
 }
 
 type DefaultEngine struct {
-	rootDir      string
-	cfg          *config.Config
-	channels     map[string]*ChannelRuntime
-	factory      ConnectorFactory
-	logger       *slog.Logger
-	metrics      *observability.Metrics
-	store        storage.MessageStore
-	alertMgr     *alerting.AlertManager
-	maps         *MapVariables
+	rootDir       string
+	cfg           *config.Config
+	channels      map[string]*ChannelRuntime
+	factory       ConnectorFactory
+	logger        *slog.Logger
+	metrics       *observability.Metrics
+	store         storage.MessageStore
+	alertMgr      *alerting.AlertManager
+	maps          *MapVariables
 	codeTemplates *CodeTemplateLoader
+	jsRunner      JSRunner
 }
 
 func NewDefaultEngine(rootDir string, cfg *config.Config, factory ConnectorFactory, logger *slog.Logger) *DefaultEngine {
@@ -73,11 +74,14 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 		}
 	}
 
+	if err := e.initJSRunner(); err != nil {
+		return fmt.Errorf("init JS runner: %w", err)
+	}
+
 	if e.cfg.Global != nil && e.cfg.Global.Hooks != nil && e.cfg.Global.Hooks.OnStartup != "" {
-		runner := NewGojaRunner()
 		hookPath := filepath.Join(e.rootDir, "dist", e.cfg.Global.Hooks.OnStartup)
 		hookPath = strings.TrimSuffix(hookPath, ".ts") + ".js"
-		if _, err := runner.Call("onStartup", hookPath, map[string]any{}); err != nil {
+		if _, err := e.jsRunner.Call("onStartup", hookPath, map[string]any{}); err != nil {
 			e.logger.Warn("global startup hook failed", "error", err)
 		} else {
 			e.logger.Info("global startup hook executed")
@@ -155,6 +159,12 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 		e.logger.Info("channel started", "id", ce.cfg.ID)
 	}
 
+	if nr, ok := e.jsRunner.(*NodeRunner); ok {
+		for _, ce := range channelEntries {
+			e.preloadChannelScripts(ce.dir, ce.cfg, nr)
+		}
+	}
+
 	e.logger.Info("engine started", "channels", len(e.channels))
 	return nil
 }
@@ -173,13 +183,18 @@ func (e *DefaultEngine) Stop(ctx context.Context) error {
 	}
 
 	if e.cfg.Global != nil && e.cfg.Global.Hooks != nil && e.cfg.Global.Hooks.OnShutdown != "" {
-		runner := NewGojaRunner()
 		hookPath := filepath.Join(e.rootDir, "dist", e.cfg.Global.Hooks.OnShutdown)
 		hookPath = strings.TrimSuffix(hookPath, ".ts") + ".js"
-		if _, err := runner.Call("onShutdown", hookPath, map[string]any{}); err != nil {
+		if _, err := e.jsRunner.Call("onShutdown", hookPath, map[string]any{}); err != nil {
 			e.logger.Warn("global shutdown hook failed", "error", err)
 		} else {
 			e.logger.Info("global shutdown hook executed")
+		}
+	}
+
+	if e.jsRunner != nil {
+		if err := e.jsRunner.Close(); err != nil {
+			e.logger.Error("error closing JS runner", "error", err)
 		}
 	}
 
@@ -229,8 +244,7 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 		dests[name] = dest
 	}
 
-	runner := NewGojaRunner()
-	pipeline := NewPipeline(channelDir, e.rootDir, chCfg.ID, chCfg, runner, e.logger)
+	pipeline := NewPipeline(channelDir, e.rootDir, chCfg.ID, chCfg, e.jsRunner, e.logger)
 
 	if e.store != nil {
 		pipeline.SetMessageStore(e.store)
@@ -252,4 +266,65 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 	cr.initRetryAndQueue(e.cfg)
 
 	return cr, nil
+}
+
+func (e *DefaultEngine) initJSRunner() error {
+	jsRuntime := e.cfg.Runtime.JSRuntime
+	if jsRuntime == "" {
+		jsRuntime = "node"
+	}
+
+	switch jsRuntime {
+	case "goja":
+		e.jsRunner = NewGojaRunner()
+		e.logger.Info("using Goja JS runtime")
+	default:
+		poolSize := e.cfg.Runtime.WorkerPool
+		nr, err := NewNodeRunner(poolSize, e.logger)
+		if err != nil {
+			e.logger.Warn("failed to start Node.js worker pool, falling back to Goja", "error", err)
+			e.jsRunner = NewGojaRunner()
+			return nil
+		}
+		e.jsRunner = nr
+	}
+	return nil
+}
+
+func (e *DefaultEngine) preloadChannelScripts(channelDir string, cfg *config.ChannelConfig, nr *NodeRunner) {
+	preload := func(file string) {
+		if file == "" {
+			return
+		}
+		var entrypoint string
+		if strings.HasSuffix(file, ".ts") {
+			jsFile := strings.TrimSuffix(file, ".ts") + ".js"
+			rel, _ := filepath.Rel(e.rootDir, channelDir)
+			entrypoint = filepath.Join(e.rootDir, "dist", rel, jsFile)
+		} else {
+			entrypoint = filepath.Join(channelDir, file)
+		}
+		if err := nr.PreloadModule(entrypoint); err != nil {
+			e.logger.Debug("preload skipped", "path", entrypoint, "error", err)
+		}
+	}
+
+	if cfg.Pipeline != nil {
+		preload(cfg.Pipeline.Validator)
+		preload(cfg.Pipeline.Transformer)
+		preload(cfg.Pipeline.Preprocessor)
+		preload(cfg.Pipeline.Postprocessor)
+		preload(cfg.Pipeline.SourceFilter)
+	}
+	if cfg.Validator != nil {
+		preload(cfg.Validator.Entrypoint)
+	}
+	if cfg.Transformer != nil {
+		preload(cfg.Transformer.Entrypoint)
+	}
+	for _, d := range cfg.Destinations {
+		preload(d.TransformerFile)
+		preload(d.Filter)
+		preload(d.ResponseTransformer)
+	}
 }
