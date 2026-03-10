@@ -82,24 +82,6 @@ body {
   color: var(--accent);
 }
 
-.docs-topnav .github-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #f8fafc;
-  color: #020617;
-  padding: 6px 16px;
-  border-radius: 9999px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 0.875rem;
-  font-weight: 700;
-  text-decoration: none;
-  transition: background 0.2s;
-}
-
-.docs-topnav .github-btn:hover {
-  background: #38bdf8;
-}
 
 .mobile-menu-btn {
   display: none;
