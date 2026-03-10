@@ -1,6 +1,6 @@
 {
   "name": "intu-dev",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Git-native, AI-friendly healthcare interoperability framework. Build, version, and deploy integration pipelines with YAML config and TypeScript transformers.",
   "bin": {
     "intu": "./bin/intu.js"
@@ -20,7 +20,8 @@
     "fhir",
     "integration"
   ],
-  "license": "MIT",
+  "license": "MPL-2.0",
+  "homepage": "https://intu.dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/intuware/intu-dev"
