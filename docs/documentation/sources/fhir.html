@@ -40,6 +40,10 @@
     port: 8090
     base_path: /fhir
     version: R4
+    resources:
+      - Patient
+      - Observation
+      - Bundle
     subscription_type: rest-hook
     tls:
       cert_file: /etc/intu/certs/fhir.crt
@@ -70,6 +74,12 @@
                     <span class="prop-type">string</span>
                     <span class="prop-optional">optional</span>
                     <div class="prop-desc">FHIR specification version. Supported values: <code>R4</code> (default), <code>STU3</code>.</div>
+                </div>
+                <div class="prop-item">
+                    <span class="prop-name">resources</span>
+                    <span class="prop-type">string[]</span>
+                    <span class="prop-optional">optional</span>
+                    <div class="prop-desc">List of FHIR resource types this endpoint accepts (e.g. <code>Patient</code>, <code>Observation</code>, <code>Bundle</code>). POST/PUT requests for resource types not in this list are rejected with a <code>404</code> OperationOutcome. The <code>/metadata</code> CapabilityStatement is derived from this list. When omitted, all resource types are accepted and the CapabilityStatement defaults to Patient, Observation, and Bundle.</div>
                 </div>
                 <div class="prop-item">
                     <span class="prop-name">subscription_type</span>
@@ -115,7 +125,7 @@
             </table>
 
             <h2>Complete Example</h2>
-            <p>A FHIR R4 endpoint that receives Patient resources via REST interactions and forwards them to an internal system after validation and transformation.</p>
+            <p>A FHIR R4 endpoint that receives Patient resources via REST interactions and forwards them to an internal system after validation and transformation. The <code>resources</code> field restricts the endpoint to Patient only — other resource types are rejected at the source level with a FHIR OperationOutcome.</p>
 
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
@@ -128,6 +138,8 @@ listener:
     port: 8090
     base_path: /fhir
     version: R4
+    resources:
+      - Patient
     tls:
       cert_file: /etc/intu/certs/fhir.crt
       key_file: /etc/intu/certs/fhir.key
@@ -151,122 +163,98 @@ destinations:
             </div>
 
             <h2>TypeScript Transformer Example</h2>
-            <p>This transformer validates an incoming FHIR Bundle, extracts Patient and related resources, and produces a normalized output for the master patient index.</p>
+            <p>This transformer converts a FHIR Patient to an HL7 v2 ADT message. Types come from the <code>@types/fhir</code> package (<code>fhir/r4</code>) and HL7 messages are built with <code>hl7-standard</code> — both included in scaffolded projects.</p>
 
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>import { Message, TransformResult } from "@intu/sdk";
+                <pre><code>import type { Patient } from "fhir/r4";
+import HL7 from "hl7-standard";
 
-interface FHIRResource {
-  resourceType: string;
-  id?: string;
-  [key: string]: unknown;
+function hl7Timestamp(): string {
+  const d = new Date();
+  const pad = (n: number, len = 2) =&gt; String(n).padStart(len, "0");
+  return d.getFullYear().toString()
+    + pad(d.getMonth() + 1) + pad(d.getDate())
+    + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
 }
 
-interface FHIRBundle {
-  resourceType: "Bundle";
-  type: string;
-  entry?: { resource: FHIRResource }[];
+function genderCode(g?: string): string {
+  switch (g?.toLowerCase()) {
+    case "male":   return "M";
+    case "female": return "F";
+    case "other":  return "O";
+    default:       return "U";
+  }
 }
 
-interface NormalizedPatient {
-  mrn: string;
-  source: string;
-  demographics: {
-    familyName: string;
-    givenNames: string[];
-    birthDate: string;
-    gender: string;
-    deceasedBoolean: boolean;
-  };
-  identifiers: { system: string; value: string }[];
-  contacts: { system: string; value: string; use: string }[];
-  addresses: {
-    use: string;
-    lines: string[];
-    city: string;
-    state: string;
-    postalCode: string;
-    country: string;
-  }[];
-}
+export function transform(msg: unknown): string {
+  const p = msg as Patient;
+  const ts = hl7Timestamp();
+  const hl7 = new HL7();
 
-export default function transform(msg: Message): TransformResult {
-  let resource: FHIRResource | FHIRBundle;
-  try {
-    resource = JSON.parse(msg.body as string);
-  } catch {
-    return { success: false, error: "Invalid JSON in FHIR payload" };
-  }
+  hl7.createSegment("MSH");
+  hl7.set("MSH.2", "^~\\&amp;");
+  hl7.set("MSH.3", "INTU");
+  hl7.set("MSH.4", "INTU_FAC");
+  hl7.set("MSH.5", "DEST");
+  hl7.set("MSH.6", "DEST_FAC");
+  hl7.set("MSH.7", ts);
+  hl7.set("MSH.9", { "MSH.9.1": "ADT", "MSH.9.2": "A08" });
+  hl7.set("MSH.10", "MSG" + Date.now());
+  hl7.set("MSH.11", "P");
+  hl7.set("MSH.12", "2.5.1");
 
-  const patients: FHIRResource[] = [];
+  hl7.createSegment("EVN");
+  hl7.set("EVN.1", "A08");
+  hl7.set("EVN.2", ts);
 
-  if (resource.resourceType === "Bundle") {
-    const bundle = resource as FHIRBundle;
-    for (const entry of bundle.entry || []) {
-      if (entry.resource?.resourceType === "Patient") {
-        patients.push(entry.resource);
-      }
-    }
-  } else if (resource.resourceType === "Patient") {
-    patients.push(resource);
-  } else {
-    return { success: false, error: `Unsupported resource type: ${resource.resourceType}` };
-  }
-
-  if (patients.length === 0) {
-    return { success: false, error: "No Patient resources found" };
-  }
-
-  const normalized: NormalizedPatient[] = patients.map((pt) =&gt; {
-    const names = (pt.name as any[]) || [];
-    const official = names.find((n: any) =&gt; n.use === "official") || names[0] || {};
-    const identifiers = (pt.identifier as any[]) || [];
-    const telecoms = (pt.telecom as any[]) || [];
-    const addrs = (pt.address as any[]) || [];
-
-    const mrn = identifiers.find(
-      (id: any) =&gt;
-        id.type?.coding?.some((c: any) =&gt; c.code === "MR")
-    );
-
-    return {
-      mrn: mrn?.value || pt.id || "",
-      source: msg.metadata?.source || "fhir-ingest",
-      demographics: {
-        familyName: official.family || "",
-        givenNames: official.given || [],
-        birthDate: (pt.birthDate as string) || "",
-        gender: (pt.gender as string) || "unknown",
-        deceasedBoolean: (pt.deceasedBoolean as boolean) || false,
-      },
-      identifiers: identifiers.map((id: any) =&gt; ({
-        system: id.system || "",
-        value: id.value || "",
-      })),
-      contacts: telecoms.map((t: any) =&gt; ({
-        system: t.system || "",
-        value: t.value || "",
-        use: t.use || "",
-      })),
-      addresses: addrs.map((a: any) =&gt; ({
-        use: a.use || "",
-        lines: a.line || [],
-        city: a.city || "",
-        state: a.state || "",
-        postalCode: a.postalCode || "",
-        country: a.country || "",
-      })),
-    };
+  hl7.createSegment("PID");
+  hl7.set("PID.3.1", p.id || p.identifier?.[0]?.value || "UNKNOWN");
+  hl7.set("PID.5", {
+    "PID.5.1": p.name?.[0]?.family || "",
+    "PID.5.2": p.name?.[0]?.given?.join(" ") || "",
   });
+  hl7.set("PID.7", (p.birthDate || "").replace(/-/g, ""));
+  hl7.set("PID.8", genderCode(p.gender));
+  const addr = p.address?.[0];
+  hl7.set("PID.11", {
+    "PID.11.1": addr?.line?.join(" ") || "",
+    "PID.11.3": addr?.city || "",
+    "PID.11.4": addr?.state || "",
+    "PID.11.5": addr?.postalCode || "",
+  });
+  hl7.set("PID.13", p.telecom?.find((t) =&gt; t.system === "phone")?.value || "");
 
-  return {
-    success: true,
-    body: JSON.stringify(normalized.length === 1 ? normalized[0] : normalized),
-    contentType: "application/json",
-  };
+  hl7.createSegment("PV1");
+  hl7.set("PV1.2", "O");
+
+  return hl7.build();
 }</code></pre>
             </div>
+
+            <h3>Included Packages</h3>
+            <p>Scaffolded projects include these packages for working with FHIR and HL7 data. Both are optional — swap them for alternatives if needed.</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Package</th>
+                        <th>Type</th>
+                        <th>Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>@types/fhir</code></td>
+                        <td>devDependency</td>
+                        <td>FHIR R4 TypeScript type definitions (Patient, Observation, Bundle, etc.). Import via <code>fhir/r4</code>. Zero runtime cost.</td>
+                    </tr>
+                    <tr>
+                        <td><code>hl7-standard</code></td>
+                        <td>dependency</td>
+                        <td>Lightweight HL7 v2 message builder/parser. Create segments, set fields with dot notation, build valid HL7 strings.</td>
+                    </tr>
+                </tbody>
+            </table>
 
             <div class="docs-footer">
                 <a href="soap.html">&larr; Previous: SOAP Source</a>

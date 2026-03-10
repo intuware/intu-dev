@@ -16,6 +16,7 @@ type MessageRecord struct {
 	Content       []byte
 	Status        string
 	Timestamp     time.Time
+	DurationMs    int64          `json:"DurationMs,omitempty"`
 	Metadata      map[string]any
 }
 

@@ -17,10 +17,11 @@ import (
 )
 
 type FHIRSource struct {
-	cfg      *config.FHIRListener
-	server   *http.Server
-	listener net.Listener
-	logger   *slog.Logger
+	cfg              *config.FHIRListener
+	server           *http.Server
+	listener         net.Listener
+	logger           *slog.Logger
+	allowedResources map[string]bool
 }
 
 func NewFHIRSource(cfg *config.FHIRListener, logger *slog.Logger) *FHIRSource {
@@ -37,6 +38,11 @@ func (f *FHIRSource) Start(ctx context.Context, handler MessageHandler) error {
 	version := f.cfg.Version
 	if version == "" {
 		version = "R4"
+	}
+
+	f.allowedResources = make(map[string]bool)
+	for _, r := range f.cfg.Resources {
+		f.allowedResources[strings.ToLower(r)] = true
 	}
 
 	mux := http.NewServeMux()
@@ -78,11 +84,21 @@ func (f *FHIRSource) Start(ctx context.Context, handler MessageHandler) error {
 		msg.Metadata["resource_path"] = resourcePath
 
 		parts := strings.SplitN(resourcePath, "/", 2)
+		resourceType := ""
 		if len(parts) > 0 {
-			msg.Metadata["resource_type"] = parts[0]
+			resourceType = parts[0]
+			msg.Metadata["resource_type"] = resourceType
 		}
 		if len(parts) > 1 {
 			msg.Metadata["resource_id"] = parts[1]
+		}
+
+		if len(f.allowedResources) > 0 && resourceType != "" && !f.allowedResources[strings.ToLower(resourceType)] {
+			w.Header().Set("Content-Type", "application/fhir+json")
+			w.WriteHeader(http.StatusNotFound)
+			writeOperationOutcome(w, "error", "not-supported",
+				"Resource type '"+resourceType+"' is not supported by this endpoint")
+			return
 		}
 
 		for k, v := range r.Header {
@@ -94,8 +110,9 @@ func (f *FHIRSource) Start(ctx context.Context, handler MessageHandler) error {
 		if err := handler(r.Context(), msg); err != nil {
 			f.logger.Error("FHIR handler error", "error", err)
 			w.Header().Set("Content-Type", "application/fhir+json")
-			w.WriteHeader(http.StatusInternalServerError)
-			writeOperationOutcome(w, "error", "exception", err.Error())
+			status, severity, code, diag := classifyPipelineError(err)
+			w.WriteHeader(status)
+			writeOperationOutcome(w, severity, code, diag)
 			return
 		}
 
@@ -137,10 +154,19 @@ func (f *FHIRSource) Start(ctx context.Context, handler MessageHandler) error {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	lowerBase := strings.ToLower(basePath)
+	pathNormalizer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lower := strings.ToLower(r.URL.Path)
+		if strings.HasPrefix(lower, lowerBase) {
+			r.URL.Path = basePath + r.URL.Path[len(basePath):]
+		}
+		mux.ServeHTTP(w, r)
+	})
+
 	addr := ":" + strconv.Itoa(f.cfg.Port)
 	f.server = &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      pathNormalizer,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
@@ -183,6 +209,19 @@ func (f *FHIRSource) handleFHIRRead(w http.ResponseWriter, r *http.Request, base
 }
 
 func (f *FHIRSource) capabilityStatement(version string) map[string]any {
+	resources := f.cfg.Resources
+	if len(resources) == 0 {
+		resources = []string{"Patient", "Observation", "Bundle"}
+	}
+
+	var resList []map[string]any
+	for _, rt := range resources {
+		resList = append(resList, map[string]any{
+			"type":        rt,
+			"interaction": []map[string]any{{"code": "create"}, {"code": "update"}},
+		})
+	}
+
 	return map[string]any{
 		"resourceType": "CapabilityStatement",
 		"status":       "active",
@@ -191,24 +230,34 @@ func (f *FHIRSource) capabilityStatement(version string) map[string]any {
 		"format":       []string{"json", "xml"},
 		"rest": []map[string]any{
 			{
-				"mode": "server",
-				"resource": []map[string]any{
-					{
-						"type":        "Patient",
-						"interaction": []map[string]any{{"code": "create"}, {"code": "update"}},
-					},
-					{
-						"type":        "Observation",
-						"interaction": []map[string]any{{"code": "create"}, {"code": "update"}},
-					},
-					{
-						"type":        "Bundle",
-						"interaction": []map[string]any{{"code": "create"}},
-					},
-				},
+				"mode":     "server",
+				"resource": resList,
 			},
 		},
 	}
+}
+
+// classifyPipelineError extracts a clean user-facing message from the pipeline
+// error chain and maps it to the appropriate HTTP status and FHIR issue code.
+// Internal details like file paths are stripped.
+func classifyPipelineError(err error) (status int, severity, code, diagnostics string) {
+	raw := err.Error()
+
+	// Strip Go error chain prefixes added by the pipeline/runner:
+	//   "pipeline execute: validator: call validate in dist/.../validator.js: <message>"
+	//   "pipeline execute: transformer: call transform in dist/.../transformer.js: <message>"
+	diag := raw
+	if idx := strings.LastIndex(raw, ".js: "); idx != -1 {
+		diag = raw[idx+5:]
+	} else if idx := strings.LastIndex(raw, ".ts: "); idx != -1 {
+		diag = raw[idx+5:]
+	}
+
+	isValidation := strings.Contains(raw, "validator:")
+	if isValidation {
+		return http.StatusUnprocessableEntity, "error", "processing", diag
+	}
+	return http.StatusInternalServerError, "error", "exception", diag
 }
 
 func writeOperationOutcome(w http.ResponseWriter, severity, code, diagnostics string) {

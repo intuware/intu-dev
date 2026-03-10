@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os/exec"
 
 	"github.com/intuware/intu/internal/bootstrap"
 	"github.com/spf13/cobra"
@@ -30,11 +31,19 @@ func newInitCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Project created: %s (1 channel)\n", projectName)
+			fmt.Fprintf(cmd.OutOrStdout(), "Installing dependencies...\n")
+			npm := exec.Command("npm", "install")
+			npm.Dir = result.Root
+			npm.Stdout = cmd.OutOrStdout()
+			npm.Stderr = cmd.ErrOrStderr()
+			if err := npm.Run(); err != nil {
+				return fmt.Errorf("npm install: %w", err)
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "\nProject created: %s (2 channels)\n", projectName)
 			fmt.Fprintf(cmd.OutOrStdout(), "Next steps:\n")
 			fmt.Fprintf(cmd.OutOrStdout(), "  cd %s\n", result.Root)
-			fmt.Fprintf(cmd.OutOrStdout(), "  npm i\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "  intu serve\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "  npm run dev\n")
 			return nil
 		},
 	}

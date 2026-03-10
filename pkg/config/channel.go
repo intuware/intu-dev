@@ -200,6 +200,7 @@ type FHIRListener struct {
 	Port             int         `yaml:"port"`
 	BasePath         string      `yaml:"base_path,omitempty"`
 	Version          string      `yaml:"version,omitempty"`
+	Resources        []string    `yaml:"resources,omitempty"`
 	SubscriptionType string      `yaml:"subscription_type,omitempty"`
 	TLS              *TLSConfig  `yaml:"tls,omitempty"`
 	Auth             *AuthConfig `yaml:"auth,omitempty"`

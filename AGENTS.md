@@ -12,9 +12,9 @@
 
 | Command | Description |
 |---------|-------------|
-| `intu init <name>` | Scaffold a new project (configs, sample channel, Dockerfile, docker-compose) |
-| `intu serve` | Start the runtime engine (channels, dashboard, hot-reload) |
-| `intu build` | Validate config then compile TypeScript (`npm run build` / `tsc`) |
+| `intu init <name>` | Scaffold a new project and run `npm install` |
+| `intu serve` | Start the runtime engine (auto-compiles TS, dashboard, hot-reload) |
+| `intu build` | Compile TypeScript (optional — `intu serve` auto-compiles) |
 | `intu validate` | Validate project config and channel definitions |
 | `intu c <name>` | Add a new channel (shorthand for `intu channel add`) |
 | `intu channel list\|describe\|clone\|export\|import` | Channel management |
@@ -25,7 +25,7 @@
 | `intu reprocess message\|batch` | Reprocess messages |
 | `intu prune` | Prune old message data |
 | `intu import mirth <file>` | Import a Mirth Connect channel XML |
-| `intu dashboard` | Start the web dashboard standalone |
+| `intu dashboard` | Launch the dashboard standalone (included in `intu serve`) |
 
 ## Common dev commands
 
@@ -40,12 +40,13 @@
 
 ```bash
 go run . init demo-project --dir /tmp
-cd /tmp/demo-project && npm install
+cd /tmp/demo-project
 go run <path-to-intu-repo> c my-channel --dir .
 go run <path-to-intu-repo> validate --dir .
-go run <path-to-intu-repo> build --dir .
 go run <path-to-intu-repo> serve --dir .
 ```
+
+`intu init` runs `npm install` automatically. `intu serve` auto-compiles TypeScript before starting. You can also use `npm run dev` instead of `intu serve`.
 
 ## Project structure
 
@@ -89,9 +90,12 @@ All tests are pure Go with no external service dependencies (memory stores, temp
 ## Notes
 
 - The `--dir` flag on most commands sets the working directory for the project (defaults to `.`).
-- `intu build` runs `npm run build` (which invokes `tsc`) inside the scaffolded project, so Node.js must be available.
+- `intu init` runs `npm install` automatically after scaffolding.
+- `intu serve` auto-compiles TypeScript before starting, so a separate `intu build` step is not required during development.
+- `intu build` is available for CI/CD pipelines or explicit compilation (`npm run build` / `tsc`).
 - `intu serve` starts the engine with hot-reload (fsnotify) — editing channel YAML or TypeScript triggers automatic reload.
-- The dashboard runs on port 3000 by default with basic auth (admin/admin in dev).
+- The dashboard runs on port 3000 by default with basic auth (admin/admin in dev). It is included in `intu serve`; `intu dashboard` launches it standalone.
+- Scaffolded projects include npm scripts: `npm run dev`, `npm run serve`, `npm start`, `npm run build`.
 - Two JS runtimes exist: Node.js (primary, spawns worker processes) and Goja (Go-native fallback). Default is Node.
 - Scaffolded projects include a Dockerfile (multi-stage Node build) and docker-compose.yml.
 - HTTP sources sharing the same port are multiplexed via a shared listener with path-based routing. Duplicate port+path combinations are caught at build/validate time.

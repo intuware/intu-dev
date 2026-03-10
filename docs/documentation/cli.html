@@ -49,7 +49,7 @@
 
             <!-- intu init -->
             <h3><code>intu init &lt;project-name&gt;</code></h3>
-            <p>Bootstrap a new intu project with all scaffolding, including YAML configuration files, TypeScript boilerplate, and a sample channel.</p>
+            <p>Bootstrap a new intu project with all scaffolding, including YAML configuration files, TypeScript boilerplate, and sample channels. Automatically runs <code>npm install</code> after scaffolding.</p>
             <table class="docs-table">
                 <thead>
                     <tr>
@@ -233,7 +233,7 @@
 
             <!-- intu build -->
             <h3><code>intu build</code></h3>
-            <p>Compile TypeScript transformers and validators. Runs <code>npm run build</code> (which invokes <code>tsc</code>) inside the project directory.</p>
+            <p>Compile TypeScript transformers and validators. Runs <code>npm run build</code> (which invokes <code>tsc</code>) inside the project directory. This step is optional during development &mdash; <code>intu serve</code> auto-compiles TypeScript before starting. Use <code>intu build</code> explicitly for CI/CD pipelines or to verify compilation without starting the engine.</p>
             <table class="docs-table">
                 <thead>
                     <tr>
@@ -466,7 +466,7 @@
 
             <!-- intu dashboard -->
             <h3><code>intu dashboard</code></h3>
-            <p>Launch the web-based dashboard for monitoring channels, viewing statistics, and managing configuration.</p>
+            <p>Launch the web-based dashboard standalone, without starting the runtime engine. This is useful for monitoring a running instance from a separate process. Note: <code>intu serve</code> already includes the dashboard &mdash; use this command only when you need the dashboard independently.</p>
             <table class="docs-table">
                 <thead>
                     <tr>

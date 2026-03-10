@@ -241,6 +241,11 @@
             "port": { "type": "integer" },
             "base_path": { "type": "string", "default": "/fhir" },
             "version": { "type": "string", "enum": ["R4", "STU3"] },
+            "resources": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Accepted FHIR resource types. CapabilityStatement is derived from this list. Unlisted types are rejected with 404. When omitted, all types are accepted."
+            },
             "subscription_type": { "type": "string", "enum": ["rest-hook", "websocket"] },
             "tls": { "$ref": "#/definitions/tls" },
             "auth": { "$ref": "#/definitions/auth" }

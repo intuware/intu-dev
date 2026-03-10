@@ -195,7 +195,7 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 		if cr.Metrics != nil {
 			cr.Metrics.IncrErrored(cr.ID, "pipeline")
 		}
-		cr.storeMessage(msg, "error", "ERROR")
+		cr.storeMessage(msg, "error", "ERROR", time.Since(startTime).Milliseconds())
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("pipeline execute: %w", err)
 	}
@@ -204,7 +204,7 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 		if cr.Metrics != nil {
 			cr.Metrics.IncrFiltered(cr.ID)
 		}
-		cr.storeMessage(msg, "filtered", "FILTERED")
+		cr.storeMessage(msg, "filtered", "FILTERED", time.Since(startTime).Milliseconds())
 		span.SetAttributes(attribute.Bool("filtered", true))
 		return nil
 	}
@@ -331,7 +331,7 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 		cr.Metrics.RecordLatency(cr.ID, "total", time.Since(startTime))
 	}
 
-	cr.storeMessage(msg, "sent", "SENT")
+	cr.storeMessageWithContent(msg, "sent", "SENT", result.OutputBytes, time.Since(startTime).Milliseconds())
 
 	cr.Logger.Info("message processed",
 		"channel", cr.ID,
@@ -363,7 +363,7 @@ func (cr *ChannelRuntime) sendToDestination(ctx context.Context, destName string
 	return dest.Send(ctx, msg)
 }
 
-func (cr *ChannelRuntime) storeMessage(msg *message.Message, stage, status string) {
+func (cr *ChannelRuntime) storeMessage(msg *message.Message, stage, status string, durationMs ...int64) {
 	if cr.Store == nil {
 		return
 	}
@@ -382,12 +382,15 @@ func (cr *ChannelRuntime) storeMessage(msg *message.Message, stage, status strin
 		Timestamp:     time.Now(),
 		Metadata:      msg.Metadata,
 	}
+	if len(durationMs) > 0 {
+		record.DurationMs = durationMs[0]
+	}
 	if err := cr.Store.Save(record); err != nil {
 		cr.Logger.Warn("failed to store message", "stage", stage, "error", err)
 	}
 }
 
-func (cr *ChannelRuntime) storeMessageWithContent(msg *message.Message, stage, status string, content []byte) {
+func (cr *ChannelRuntime) storeMessageWithContent(msg *message.Message, stage, status string, content []byte, durationMs ...int64) {
 	if cr.Store == nil {
 		return
 	}
@@ -405,6 +408,9 @@ func (cr *ChannelRuntime) storeMessageWithContent(msg *message.Message, stage, s
 		Status:        status,
 		Timestamp:     time.Now(),
 		Metadata:      msg.Metadata,
+	}
+	if len(durationMs) > 0 {
+		record.DurationMs = durationMs[0]
 	}
 	if err := cr.Store.Save(record); err != nil {
 		cr.Logger.Warn("failed to store message", "stage", stage, "error", err)

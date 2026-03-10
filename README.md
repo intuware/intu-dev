@@ -46,12 +46,12 @@ go build -o intu .
 ## Quick Start
 
 ```bash
-intu init my-project --dir .
+intu init my-project
 cd my-project
-npm install
-intu build --dir .
-intu validate --dir .
+npm run dev
 ```
+
+`intu init` scaffolds the project and runs `npm install` automatically. `npm run dev` starts the engine (which auto-compiles TypeScript).
 
 Add a new channel:
 
@@ -69,9 +69,9 @@ All commands accept the global flag `--log-level (debug|info|warn|error)` (defau
 
 | Command | Description |
 |---------|-------------|
-| `intu init <project-name> [--dir] [--force]` | Bootstrap a new project into the target directory |
+| `intu init <project-name> [--dir] [--force]` | Bootstrap a new project and install dependencies |
 | `intu validate [--dir] [--profile]` | Validate project configuration and channel layout |
-| `intu build [--dir]` | Run `npm run build` to compile TypeScript transformers |
+| `intu build [--dir]` | Compile TypeScript transformers (optional — `intu serve` auto-compiles) |
 | `intu serve [--dir] [--profile]` | Start the runtime engine and process messages for all enabled channels |
 
 ### Channel Management
@@ -105,11 +105,11 @@ All commands accept the global flag `--log-level (debug|info|warn|error)` (defau
 | `intu message get <message-id> [--json]` | Get a specific message by ID |
 | `intu message count [--channel] [--status]` | Count messages in the store |
 
-### Monitoring
+### Advanced
 
 | Command | Description |
 |---------|-------------|
-| `intu dashboard [--dir] [--profile] [--port]` | Start a local read-only dashboard for channels and metrics |
+| `intu dashboard [--dir] [--profile] [--port]` | Launch the dashboard standalone (included in `intu serve` by default) |
 
 ## Bootstrapped Structure
 

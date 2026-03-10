@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -14,15 +15,17 @@ import (
 )
 
 type HotReloader struct {
-	engine     *DefaultEngine
+	engine      *DefaultEngine
 	channelsDir string
-	watcher    *fsnotify.Watcher
-	logger     *slog.Logger
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	debounce   map[string]time.Time
-	debounceMu sync.Mutex
+	watcher     *fsnotify.Watcher
+	logger      *slog.Logger
+	ctx         context.Context
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	debounce    map[string]time.Time
+	debounceMu  sync.Mutex
+	buildMu     sync.Mutex
+	lastBuild   time.Time
 }
 
 func NewHotReloader(engine *DefaultEngine, channelsDir string, logger *slog.Logger) (*HotReloader, error) {
@@ -52,9 +55,7 @@ func (hr *HotReloader) Start(ctx context.Context) error {
 		for _, e := range entries {
 			if e.IsDir() {
 				channelDir := filepath.Join(hr.channelsDir, e.Name())
-				if err := hr.watcher.Add(channelDir); err != nil {
-					hr.logger.Debug("failed to watch channel dir", "dir", channelDir, "error", err)
-				}
+				hr.watchChannelDir(channelDir)
 			}
 		}
 	}
@@ -64,6 +65,30 @@ func (hr *HotReloader) Start(ctx context.Context) error {
 
 	hr.logger.Info("channel hot-reload enabled", "dir", hr.channelsDir)
 	return nil
+}
+
+func (hr *HotReloader) watchChannelDir(channelDir string) {
+	if err := hr.watcher.Add(channelDir); err != nil {
+		hr.logger.Debug("failed to watch channel dir", "dir", channelDir, "error", err)
+		return
+	}
+
+	files, err := os.ReadDir(channelDir)
+	if err != nil {
+		return
+	}
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		name := f.Name()
+		if name == "channel.yaml" || strings.HasSuffix(name, ".ts") {
+			filePath := filepath.Join(channelDir, name)
+			if err := hr.watcher.Add(filePath); err != nil {
+				hr.logger.Debug("failed to watch file", "file", filePath, "error", err)
+			}
+		}
+	}
 }
 
 func (hr *HotReloader) Stop() {
@@ -108,14 +133,33 @@ func (hr *HotReloader) handleEvent(event fsnotify.Event) {
 			return
 		}
 
-		switch {
-		case event.Op&fsnotify.Write != 0 || event.Op&fsnotify.Create != 0:
-			hr.logger.Info("channel config changed, reloading", "channel", channelID)
-			hr.reloadChannel(channelID, dir)
-
-		case event.Op&fsnotify.Remove != 0:
+		if event.Op&fsnotify.Remove != 0 || event.Op&fsnotify.Rename != 0 {
 			hr.logger.Info("channel config removed, stopping", "channel", channelID)
 			hr.stopChannel(channelID)
+			return
+		}
+
+		// Re-add file watch (editors may delete+recreate on save)
+		_ = hr.watcher.Add(event.Name)
+		hr.logger.Info("channel config changed, reloading", "channel", channelID)
+		hr.reloadChannel(channelID, dir)
+		return
+	}
+
+	if strings.HasSuffix(name, ".ts") {
+		channelID := filepath.Base(dir)
+		if _, exists := hr.engine.channels[channelID]; exists {
+			if hr.shouldDebounce(channelID) {
+				return
+			}
+			// Re-add file watch (editors may delete+recreate on save)
+			_ = hr.watcher.Add(event.Name)
+			hr.logger.Info("TypeScript changed, rebuilding and reloading", "file", name, "channel", channelID)
+			if err := hr.rebuildTS(); err != nil {
+				hr.logger.Error("TypeScript rebuild failed", "error", err)
+				return
+			}
+			hr.reloadChannel(channelID, dir)
 		}
 		return
 	}
@@ -132,27 +176,15 @@ func (hr *HotReloader) handleEvent(event fsnotify.Event) {
 			return
 		}
 
-		if info.IsDir() {
+		if info.IsDir() && event.Op&fsnotify.Create != 0 {
 			channelID := filepath.Base(event.Name)
+			hr.watchChannelDir(event.Name)
 
-			if err := hr.watcher.Add(event.Name); err != nil {
-				hr.logger.Debug("failed to watch new channel dir", "dir", event.Name, "error", err)
+			channelYAML := filepath.Join(event.Name, "channel.yaml")
+			if _, err := os.Stat(channelYAML); err == nil {
+				hr.logger.Info("new channel directory detected", "channel", channelID)
+				hr.startChannel(channelID, event.Name)
 			}
-
-			if event.Op&fsnotify.Create != 0 {
-				channelYAML := filepath.Join(event.Name, "channel.yaml")
-				if _, err := os.Stat(channelYAML); err == nil {
-					hr.logger.Info("new channel directory detected", "channel", channelID)
-					hr.startChannel(channelID, event.Name)
-				}
-			}
-		}
-	}
-
-	if strings.HasSuffix(name, ".ts") || strings.HasSuffix(name, ".js") {
-		channelID := filepath.Base(dir)
-		if _, exists := hr.engine.channels[channelID]; exists {
-			hr.logger.Debug("script file changed", "file", name, "channel", channelID)
 		}
 	}
 }
@@ -204,6 +236,26 @@ func (hr *HotReloader) startChannel(channelID, channelDir string) {
 
 	hr.engine.channels[channelID] = cr
 	hr.logger.Info("channel hot-reloaded", "channel", channelID)
+}
+
+func (hr *HotReloader) rebuildTS() error {
+	hr.buildMu.Lock()
+	defer hr.buildMu.Unlock()
+
+	if time.Since(hr.lastBuild) < time.Second {
+		return nil
+	}
+
+	npm := exec.Command("npm", "run", "build")
+	npm.Dir = hr.engine.rootDir
+	out, err := npm.CombinedOutput()
+	if err != nil {
+		hr.logger.Error("tsc compilation output", "output", string(out))
+		return err
+	}
+	hr.lastBuild = time.Now()
+	hr.logger.Info("TypeScript recompiled")
+	return nil
 }
 
 func (hr *HotReloader) stopChannel(channelID string) {

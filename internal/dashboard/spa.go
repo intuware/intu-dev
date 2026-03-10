@@ -630,6 +630,7 @@ function renderMessageGrid(msgs) {
     '<th class="' + thCls + '">Source</th>' +
     '<th class="' + thCls + '">Destinations</th>' +
     '<th class="' + thCls + '">Status</th>' +
+    '<th class="' + thCls + '">Duration</th>' +
     '<th class="' + thCls + '">Stages</th>' +
     '<th class="' + thCls + ' text-right">Actions</th>' +
     '</tr></thead><tbody>';
@@ -658,6 +659,7 @@ function renderMessageGrid(msgs) {
       '<td class="' + tdCls + '">' + srcBadge + '</td>' +
       '<td class="' + tdCls + ' text-xs text-gray-500 dark:text-slate-400 max-w-[200px] truncate" title="' + esc(destNames) + '">' + esc(destNames) + '</td>' +
       '<td class="' + tdCls + '"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase border ' + cls + '">' + esc(m.Status || '') + '</span></td>' +
+      '<td class="' + tdCls + ' text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">' + (m.DurationMs ? m.DurationMs + ' ms' : '-') + '</td>' +
       '<td class="' + tdCls + '">' +
         '<div class="flex items-center gap-1.5">' +
           '<button class="' + stageBtnCls + ' bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'received\')" title="View received payload">' + eyeIcon + 'Received</button>' +

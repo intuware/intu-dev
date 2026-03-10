@@ -49,36 +49,33 @@ go build -o intu .</code></pre>
             </div>
 
             <h2>Quick Start</h2>
-            <p>Scaffold a new project, install dependencies, add a channel, then validate and build:</p>
+            <p>Scaffold a new project and start running in two commands:</p>
 
             <h4>1. Create a new project</h4>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">bash</span></div>
                 <pre><code>intu init my-project</code></pre>
             </div>
+            <p><code>intu init</code> scaffolds the project and runs <code>npm install</code> automatically.</p>
 
-            <h4>2. Install Node dependencies</h4>
+            <h4>2. Start the engine</h4>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">bash</span></div>
-                <pre><code>cd my-project &amp;&amp; npm install</code></pre>
+                <pre><code>cd my-project
+npm run dev</code></pre>
             </div>
+            <p><code>intu serve</code> auto-compiles TypeScript before starting. No separate build step is needed.</p>
 
-            <h4>3. Add a channel</h4>
+            <h4>3. Add a channel (optional)</h4>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">bash</span></div>
                 <pre><code>intu c my-channel</code></pre>
             </div>
 
-            <h4>4. Validate configuration</h4>
+            <h4>4. Validate configuration (optional)</h4>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">bash</span></div>
                 <pre><code>intu validate</code></pre>
-            </div>
-
-            <h4>5. Compile transformers</h4>
-            <div class="code-block">
-                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
-                <pre><code>intu build</code></pre>
             </div>
 
             <h2>Project Structure</h2>

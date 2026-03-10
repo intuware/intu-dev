@@ -33,7 +33,7 @@ for (const { goos, goarch, dir } of targets) {
 
   console.log(`Building ${goos}/${goarch} -> ${dir}/intu${ext} (v${version})`);
   execSync(
-    `go build -ldflags "-X github.com/intuware/intu/cmd.Version=${version}" -o "${output}" .`,
+    `go build -ldflags "-s -w -X github.com/intuware/intu/cmd.Version=${version}" -o "${output}" .`,
     {
       cwd: rootDir,
       env: { ...process.env, GOOS: goos, GOARCH: goarch, CGO_ENABLED: "0" },

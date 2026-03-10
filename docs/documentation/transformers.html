@@ -390,8 +390,12 @@ export function transform(msg: unknown, ctx: { channelId: string; correlationId:
 
             <h2>Compilation</h2>
             <p>
-                Transformers, validators, filters, and all other TypeScript pipeline files must be compiled
-                before the project can be deployed. The <code>intu build</code> command handles this.
+                Transformers, validators, filters, and all other TypeScript pipeline files are compiled
+                automatically when you run <code>intu serve</code> (or <code>npm run dev</code>). No
+                separate build step is needed during development.
+            </p>
+            <p>
+                For CI/CD pipelines or explicit compilation, use <code>intu build</code>:
             </p>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">bash</span></div>

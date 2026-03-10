@@ -1033,6 +1033,133 @@ func TestFHIRSource_TLS(t *testing.T) {
 	}
 }
 
+func TestFHIRSource_ResourceFiltering(t *testing.T) {
+	cfg := &config.FHIRListener{
+		Port:      0,
+		BasePath:  "/fhir",
+		Version:   "R4",
+		Resources: []string{"Patient"},
+	}
+	src := NewFHIRSource(cfg, testLogger())
+
+	ctx := context.Background()
+	var received []*message.Message
+	handler := func(_ context.Context, msg *message.Message) error {
+		received = append(received, msg)
+		return nil
+	}
+
+	if err := src.Start(ctx, handler); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer src.Stop(ctx)
+
+	addr := src.listener.Addr().String()
+
+	resp, err := http.Post("http://"+addr+"/fhir/Patient", "application/fhir+json",
+		strings.NewReader(`{"resourceType":"Patient","id":"1"}`))
+	if err != nil {
+		t.Fatalf("POST Patient: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 for Patient, got %d", resp.StatusCode)
+	}
+	if len(received) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(received))
+	}
+
+	resp, err = http.Post("http://"+addr+"/fhir/Observation", "application/fhir+json",
+		strings.NewReader(`{"resourceType":"Observation","id":"2"}`))
+	if err != nil {
+		t.Fatalf("POST Observation: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 for Observation, got %d", resp.StatusCode)
+	}
+	if len(received) != 1 {
+		t.Fatalf("Observation should not have been received, got %d messages", len(received))
+	}
+}
+
+func TestFHIRSource_DynamicCapabilityStatement(t *testing.T) {
+	cfg := &config.FHIRListener{
+		Port:      0,
+		BasePath:  "/fhir",
+		Version:   "R4",
+		Resources: []string{"Patient"},
+	}
+	src := NewFHIRSource(cfg, testLogger())
+
+	ctx := context.Background()
+	if err := src.Start(ctx, noopHandler); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer src.Stop(ctx)
+
+	addr := src.listener.Addr().String()
+	resp, err := http.Get("http://" + addr + "/fhir/metadata")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var cap map[string]any
+	if err := json.Unmarshal(body, &cap); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	rest := cap["rest"].([]any)
+	server := rest[0].(map[string]any)
+	resources := server["resource"].([]any)
+
+	if len(resources) != 1 {
+		t.Fatalf("expected 1 resource in CapabilityStatement, got %d", len(resources))
+	}
+	res := resources[0].(map[string]any)
+	if res["type"] != "Patient" {
+		t.Fatalf("expected resource type 'Patient', got %v", res["type"])
+	}
+}
+
+func TestFHIRSource_NoResourcesAcceptsAll(t *testing.T) {
+	cfg := &config.FHIRListener{Port: 0, BasePath: "/fhir", Version: "R4"}
+	src := NewFHIRSource(cfg, testLogger())
+
+	ctx := context.Background()
+	var received []*message.Message
+	handler := func(_ context.Context, msg *message.Message) error {
+		received = append(received, msg)
+		return nil
+	}
+
+	if err := src.Start(ctx, handler); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer src.Stop(ctx)
+
+	addr := src.listener.Addr().String()
+
+	resp, err := http.Post("http://"+addr+"/fhir/Observation", "application/fhir+json",
+		strings.NewReader(`{"resourceType":"Observation","id":"1"}`))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 for unrestricted source, got %d", resp.StatusCode)
+	}
+	if len(received) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(received))
+	}
+}
+
 // -------------------------------------------------------------------
 // IHE Source Tests
 // -------------------------------------------------------------------
