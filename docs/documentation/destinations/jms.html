@@ -160,7 +160,7 @@ destinations:
             <h3>Channel Configuration</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
-                <pre><code># channels/encounter-to-billing/channel.yaml
+                <pre><code># src/channels/encounter-to-billing/channel.yaml
 name: encounter-to-billing
 description: Transform FHIR Encounters to billing messages for legacy system
 
@@ -177,8 +177,7 @@ destinations:
             <h3>Destination Transformer</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>// channels/encounter-to-billing/transformer.ts
-import { Message, Context } from "@intu/sdk";
+                <pre><code>// src/channels/encounter-to-billing/transformer.ts
 
 interface BillingMessage {
   messageType: string;
@@ -203,7 +202,7 @@ interface BillingMessage {
   }&gt;;
 }
 
-export default function transform(msg: Message, ctx: Context): Message {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   const encounter = msg.body;
 
   const patientRef = encounter.subject?.reference ?? "";
@@ -235,12 +234,11 @@ export default function transform(msg: Message, ctx: Context): Message {
     })),
   };
 
-  ctx.logger.info(
+  console.info(
     `Publishing billing message for encounter ${billing.encounterNumber}`
   );
 
   return {
-    ...msg,
     body: billing,
   };
 }</code></pre>

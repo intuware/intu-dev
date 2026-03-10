@@ -45,8 +45,8 @@
     },
     "channels_dir": {
       "type": "string",
-      "description": "Directory containing channel subdirectories (default: channels)",
-      "default": "channels"
+      "description": "Directory containing channel subdirectories (default: src/channels)",
+      "default": "src/channels"
     },
     "destinations": {
       "type": "object",

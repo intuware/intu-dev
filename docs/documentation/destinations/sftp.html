@@ -155,7 +155,7 @@ destinations:
             <h3>Channel Configuration</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
-                <pre><code># channels/cda-export/channel.yaml
+                <pre><code># src/channels/cda-export/channel.yaml
 name: cda-export
 description: Export CDA clinical documents to HIE SFTP server
 
@@ -172,17 +172,15 @@ destinations:
             <h3>Destination Transformer</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>// channels/cda-export/transformer.ts
-import { Message, Context } from "@intu/sdk";
-
-export default function transform(msg: Message, ctx: Context): Message {
+                <pre><code>// src/channels/cda-export/transformer.ts
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   const doc = msg.body;
 
   const patientName = doc.recordTarget?.patientRole?.patient?.name;
   const familyName = patientName?.family ?? "Unknown";
   const givenName = patientName?.given ?? "Unknown";
 
-  ctx.logger.info(`Processing CDA for patient: ${givenName} ${familyName}`);
+  console.log(`Processing CDA for patient: ${givenName} ${familyName}`);
 
   const header = `<?xml version="1.0" encoding="UTF-8"?>`;
   const cdaXml = buildCdaDocument({
@@ -194,10 +192,7 @@ export default function transform(msg: Message, ctx: Context): Message {
     sections: doc.component?.structuredBody?.sections ?? [],
   });
 
-  return {
-    ...msg,
-    body: `${header}\n${cdaXml}`,
-  };
+  return { body: `${header}\n${cdaXml}` };
 }
 
 function buildCdaDocument(data: {

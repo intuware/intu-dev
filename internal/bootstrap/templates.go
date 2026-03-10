@@ -3,9 +3,9 @@ package bootstrap
 import "fmt"
 
 var projectDirectories = []string{
-	"channels/http-to-file",
-	"channels/fhir-to-adt",
-	"types",
+	"src/channels/http-to-file",
+	"src/channels/fhir-to-adt",
+	"src/types",
 }
 
 func projectFiles(projectName string) map[string]string {
@@ -14,15 +14,15 @@ func projectFiles(projectName string) map[string]string {
 		"intu.dev.yaml":                        intuDevYAML,
 		"intu.prod.yaml":                       intuProdYAML,
 		".env":                                 dotEnv,
-		"channels/http-to-file/channel.yaml":   httpToFileChannelYAML,
-		"channels/http-to-file/transformer.ts": transformerTSTpl,
-		"channels/http-to-file/validator.ts":   validatorTSTpl,
-		"channels/fhir-to-adt/channel.yaml":    fhirToAdtChannelYAML,
-		"channels/fhir-to-adt/transformer.ts":  fhirToAdtTransformerTS,
-		"channels/fhir-to-adt/validator.ts":    fhirToAdtValidatorTS,
+		"src/channels/http-to-file/channel.yaml":   httpToFileChannelYAML,
+		"src/channels/http-to-file/transformer.ts": transformerTSTpl,
+		"src/channels/http-to-file/validator.ts":   validatorTSTpl,
+		"src/channels/fhir-to-adt/channel.yaml":    fhirToAdtChannelYAML,
+		"src/channels/fhir-to-adt/transformer.ts":  fhirToAdtTransformerTS,
+		"src/channels/fhir-to-adt/validator.ts":    fhirToAdtValidatorTS,
 		"package.json":                         packageJSON,
 		"tsconfig.json":                        tsConfigJSON,
-		"types/hl7-standard.d.ts":              hl7StandardDTS,
+		"src/types/intu.d.ts":                  intuDTS,
 		"README.md":                            projectREADME,
 		"Dockerfile":                           dockerfile,
 		"docker-compose.yml":                   fmt.Sprintf(dockerComposeTpl, projectName, projectName),
@@ -35,13 +35,12 @@ const intuYAML = `runtime:
   profile: dev
   log_level: info
   mode: standalone
-  js_runtime: node
   worker_pool: 4
   storage:
     driver: memory
     postgres_dsn: ${INTU_POSTGRES_DSN}
 
-channels_dir: channels
+channels_dir: src/channels
 
 message_storage:
   driver: memory
@@ -90,7 +89,6 @@ runtime:
   profile: prod
   log_level: info
   mode: standalone           # standalone | cluster
-  js_runtime: node
   worker_pool: 8
   storage:
     driver: postgres
@@ -426,11 +424,9 @@ listener:
     path: /ingest
 
 validator:
-  runtime: node
   entrypoint: validator.ts
 
 transformer:
-  runtime: node
   entrypoint: transformer.ts
 
 destinations:
@@ -450,37 +446,40 @@ listener:
       - Patient
 
 validator:
-  runtime: node
   entrypoint: validator.ts
 
 transformer:
-  runtime: node
   entrypoint: transformer.ts
 
 destinations:
   - hl7-file-output
 `
 
-const transformerTSTpl = `export function transform(msg: unknown, ctx: { channelId: string; correlationId: string }): unknown {
+const transformerTSTpl = `export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   return {
-    ...(msg as object),
-    processedAt: new Date().toISOString(),
-    source: ctx.channelId,
+    body: {
+      ...(msg.body as object),
+      processedAt: new Date().toISOString(),
+      source: ctx.channelId,
+    },
   };
 }
 `
 
-const validatorTSTpl = `export function validate(msg: unknown): void {
+const validatorTSTpl = `export function validate(msg: IntuMessage): void {
+  if (msg.body === null || msg.body === undefined) {
+    throw new Error("Message body is empty");
+  }
 }
 `
 
 const fhirToAdtValidatorTS = `import type { Patient } from "fhir/r4";
 
-export function validate(msg: unknown): void {
-  if (msg === null || msg === undefined || typeof msg !== "object") {
+export function validate(msg: IntuMessage): void {
+  if (msg.body === null || msg.body === undefined || typeof msg.body !== "object") {
     throw new Error("Invalid input: expected a JSON object");
   }
-  const resource = msg as { resourceType?: string };
+  const resource = msg.body as { resourceType?: string };
   if (resource.resourceType !== "Patient") {
     throw new Error("Expected Patient resource, got: " + resource.resourceType);
   }
@@ -488,20 +487,7 @@ export function validate(msg: unknown): void {
 `
 
 var fhirToAdtTransformerTS = `import type { Patient } from "fhir/r4";
-import HL7 from "hl7-standard";
-
-function hl7Timestamp(): string {
-  const d = new Date();
-  const pad = (n: number, len = 2) => String(n).padStart(len, "0");
-  return (
-    d.getFullYear().toString() +
-    pad(d.getMonth() + 1) +
-    pad(d.getDate()) +
-    pad(d.getHours()) +
-    pad(d.getMinutes()) +
-    pad(d.getSeconds())
-  );
-}
+import { Message } from "node-hl7-client";
 
 function genderCode(g?: string): string {
   if (!g) return "U";
@@ -513,57 +499,53 @@ function genderCode(g?: string): string {
   }
 }
 
-export function transform(msg: unknown): string {
-  const p = msg as Patient;
-  const ts = hl7Timestamp();
-  const hl7 = new HL7();
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
+  const p = msg.body as Patient;
 
-  hl7.createSegment("MSH");
-  hl7.set("MSH.2", "^~\\&");
+  const hl7 = new Message({
+    messageHeader: {
+      msh_9_1: "ADT",
+      msh_9_2: "A08",
+      msh_11_1: "P",
+    },
+  });
+
   hl7.set("MSH.3", "INTU");
   hl7.set("MSH.4", "INTU_FAC");
   hl7.set("MSH.5", "DEST");
   hl7.set("MSH.6", "DEST_FAC");
-  hl7.set("MSH.7", ts);
-  hl7.set("MSH.9", { "MSH.9.1": "ADT", "MSH.9.2": "A08" });
-  hl7.set("MSH.10", "MSG" + Date.now());
-  hl7.set("MSH.11", "P");
-  hl7.set("MSH.12", "2.5.1");
 
-  hl7.createSegment("EVN");
+  hl7.addSegment("EVN");
   hl7.set("EVN.1", "A08");
-  hl7.set("EVN.2", ts);
+  hl7.set("EVN.2", hl7.get("MSH.7").toString());
 
-  hl7.createSegment("PID");
+  hl7.addSegment("PID");
   hl7.set("PID.3.1", p.id || p.identifier?.[0]?.value || "UNKNOWN");
-  hl7.set("PID.5", {
-    "PID.5.1": p.name?.[0]?.family || "",
-    "PID.5.2": p.name?.[0]?.given?.join(" ") || "",
-  });
+  hl7.set("PID.5.1", p.name?.[0]?.family || "");
+  hl7.set("PID.5.2", p.name?.[0]?.given?.join(" ") || "");
   hl7.set("PID.7", (p.birthDate || "").replace(/-/g, ""));
   hl7.set("PID.8", genderCode(p.gender));
+
   const addr = p.address?.[0];
-  hl7.set("PID.11", {
-    "PID.11.1": addr?.line?.join(" ") || "",
-    "PID.11.3": addr?.city || "",
-    "PID.11.4": addr?.state || "",
-    "PID.11.5": addr?.postalCode || "",
-  });
+  hl7.set("PID.11.1", addr?.line?.join(" ") || "");
+  hl7.set("PID.11.3", addr?.city || "");
+  hl7.set("PID.11.4", addr?.state || "");
+  hl7.set("PID.11.5", addr?.postalCode || "");
   hl7.set("PID.13", p.telecom?.find((t) => t.system === "phone")?.value || "");
 
-  hl7.createSegment("PV1");
+  hl7.addSegment("PV1");
   hl7.set("PV1.2", "O");
 
-  return hl7.build();
+  return { body: hl7.toString() };
 }
 `
 
 // channelFiles returns the file map for a channel (used by BootstrapChannel).
-func channelFiles(channelName string) map[string]string {
+func channelFiles(channelsDir, channelName string) map[string]string {
 	return map[string]string{
-		"channels/" + channelName + "/channel.yaml":   fmt.Sprintf(addChannelYAMLTpl, channelName),
-		"channels/" + channelName + "/transformer.ts": transformerTSTpl,
-		"channels/" + channelName + "/validator.ts":   validatorTSTpl,
+		channelsDir + "/" + channelName + "/channel.yaml":   fmt.Sprintf(addChannelYAMLTpl, channelName),
+		channelsDir + "/" + channelName + "/transformer.ts": transformerTSTpl,
+		channelsDir + "/" + channelName + "/validator.ts":   validatorTSTpl,
 	}
 }
 
@@ -576,11 +558,9 @@ listener:
     port: 8081
 
 validator:
-  runtime: node
   entrypoint: validator.ts
 
 transformer:
-  runtime: node
   entrypoint: transformer.ts
 
 destinations:
@@ -600,7 +580,7 @@ const packageJSON = `{
     "check": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "hl7-standard": "^1.0.4"
+    "node-hl7-client": "^3.2.0"
   },
   "devDependencies": {
     "@types/fhir": "^0.0.41",
@@ -621,39 +601,88 @@ const tsConfigJSON = `{
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["channels/**/*.ts", "types/**/*.d.ts"]
+  "include": ["src/channels/**/*.ts", "src/types/**/*.d.ts"]
 }
 `
 
-const hl7StandardDTS = `declare module "hl7-standard" {
-  class HL7 {
-    constructor(data?: string, opts?: { subComponents?: string; repeatingFields?: string; lineEndings?: string });
-    raw: string;
-    transformed: Record<string, any>;
-    encoded: string;
+const intuDTS = `type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+type IntuMap = Record<string, JsonValue>;
 
-    transform(cb?: (err: Error | null, data: any) => void, batch?: boolean): void;
-    build(): string;
+interface IntuHTTP {
+  headers: Record<string, string>;
+  queryParams: Record<string, string>;
+  pathParams: Record<string, string>;
+  method?: string;
+  statusCode?: number;
+}
 
-    set(field: string, value: string | any[] | Record<string, any>, index?: number, sectionIndex?: number, subIndex?: number): any;
-    get(field: string, index?: number, sectionIndex?: number, subIndex?: number): any;
+interface IntuFile {
+  filename: string;
+  directory: string;
+}
 
-    getSegment(segment: string): any;
-    getSegments(segment?: string): any[];
+interface IntuFTP {
+  filename: string;
+  directory: string;
+}
 
-    createSegment(segment: string): any;
-    createSegmentAfter(segment: string, afterSegment: any): any;
-    createSegmentBefore(segment: string, beforeSegment: any): any;
+interface IntuKafka {
+  headers: Record<string, string>;
+  topic: string;
+  key: string;
+  partition?: number;
+  offset?: number;
+}
 
-    deleteSegment(segment: any): void;
-    deleteSegments(segments: any[]): void;
+interface IntuTCP {
+  remoteAddr: string;
+}
 
-    getSegmentsAfter(start: any, name: string, consecutive?: boolean, stop?: string | string[]): any[];
+interface IntuSMTP {
+  from: string;
+  to: string[];
+  subject: string;
+  cc?: string[];
+  bcc?: string[];
+}
 
-    moveSegmentAfter(segment: any, afterSegment: any): void;
-    moveSegmentBefore(segment: any, beforeSegment: any): void;
-  }
-  export default HL7;
+interface IntuDICOM {
+  callingAE: string;
+  calledAE: string;
+}
+
+interface IntuDatabase {
+  query: string;
+  params: Record<string, JsonValue>;
+}
+
+interface IntuMessage {
+  body: unknown;
+  transport?: string;
+  contentType?: string;
+
+  http?: IntuHTTP;
+  file?: IntuFile;
+  ftp?: IntuFTP;
+  kafka?: IntuKafka;
+  tcp?: IntuTCP;
+  smtp?: IntuSMTP;
+  dicom?: IntuDICOM;
+  database?: IntuDatabase;
+}
+
+interface IntuContext {
+  channelId: string;
+  correlationId: string;
+  messageId: string;
+  timestamp: string;
+  inboundDataType?: string;
+  outboundDataType?: string;
+  destinationName?: string;
+  globalMap: IntuMap;
+  channelMap: IntuMap;
+  responseMap: IntuMap;
+  connectorMap?: IntuMap;
 }
 `
 
@@ -756,9 +785,12 @@ Test the channels:
     tsconfig.json          TypeScript compiler config
     Dockerfile             Production container image
     docker-compose.yml     One-command local deployment
-    channels/
-      http-to-file/        JSON pass-through channel
-      fhir-to-adt/         FHIR Patient to HL7 ADT channel
+    src/
+      channels/
+        http-to-file/      JSON pass-through channel
+        fhir-to-adt/       FHIR Patient to HL7 ADT channel
+      types/
+        intu.d.ts          IntuMessage & IntuContext type declarations
 
 ## Configuration Schemas
 
@@ -771,7 +803,7 @@ VS Code setup (.vscode/settings.json):
 
     {
       "yaml.schemas": {
-        "https://intu.dev/schema/channel.schema.json": "channels/*/channel.yaml",
+        "https://intu.dev/schema/channel.schema.json": "src/channels/*/channel.yaml",
         "https://intu.dev/schema/profile.schema.json": ["intu.yaml", "intu.*.yaml"]
       }
     }
@@ -788,9 +820,11 @@ https://intu.dev/documentation/index.html
 const dockerfile = `FROM node:22-alpine
 RUN npm install -g intu-dev
 WORKDIR /app
-COPY package.json ./
+COPY package.json tsconfig.json ./
 RUN npm install
-COPY . .
+COPY src/ src/
+RUN npm run build
+COPY intu.yaml intu.*.yaml .env ./
 EXPOSE 8081 8082 3000
 CMD ["intu", "serve", "--dir", ".", "--profile", "prod"]
 `

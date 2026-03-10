@@ -53,7 +53,7 @@ destinations:
                     <span class="prop-required">required</span>
                     <div class="prop-desc">
                         The ID of the target channel to route messages to. This must match the <code>name</code>
-                        field of an existing channel defined in <code>channels/</code>. The target channel
+                        field of an existing channel defined in <code>src/channels/</code>. The target channel
                         receives the message as if it arrived from its own source.
                     </div>
                 </div>
@@ -115,7 +115,7 @@ destinations:
             <h3>Primary Channel (Router)</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
-                <pre><code># channels/adt-router/channel.yaml
+                <pre><code># src/channels/adt-router/channel.yaml
 name: adt-router
 description: Receive and normalize ADT messages, then route to downstream channels
 
@@ -133,7 +133,7 @@ destinations:
             <h3>Downstream Channel (FHIR Updates)</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
-                <pre><code># channels/adt-to-fhir/channel.yaml
+                <pre><code># src/channels/adt-to-fhir/channel.yaml
 name: adt-to-fhir
 description: Transform normalized ADT data to FHIR and push to server
 
@@ -147,7 +147,7 @@ destinations:
             <h3>Downstream Channel (Notifications)</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
-                <pre><code># channels/adt-notifications/channel.yaml
+                <pre><code># src/channels/adt-notifications/channel.yaml
 name: adt-notifications
 description: Send email alerts for specific ADT event types
 
@@ -161,8 +161,7 @@ destinations:
             <h3>Router Transformer</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>// channels/adt-router/transformer.ts
-import { Message, Context } from "@intu/sdk";
+                <pre><code>// src/channels/adt-router/transformer.ts
 
 interface NormalizedAdt {
   eventType: string;
@@ -177,7 +176,7 @@ interface NormalizedAdt {
   attendingPhysician: string;
 }
 
-export default function transform(msg: Message, ctx: Context): Message {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   const hl7 = msg.body;
   const msh = hl7.segments?.find((s: any) => s.name === "MSH");
   const pid = hl7.segments?.find((s: any) => s.name === "PID");
@@ -196,16 +195,10 @@ export default function transform(msg: Message, ctx: Context): Message {
     attendingPhysician: pv1?.fields[7]?.components[1] ?? "",
   };
 
-  ctx.logger.info(`Routing ADT ${normalized.eventType} for patient ${normalized.patientId}`);
+  console.info(`Routing ADT ${normalized.eventType} for patient ${normalized.patientId}`);
 
   return {
-    ...msg,
     body: normalized,
-    headers: {
-      ...msg.headers,
-      eventType: normalized.eventType,
-      patientName: normalized.patientName,
-    },
   };
 }</code></pre>
             </div>

@@ -63,17 +63,25 @@ func (s *Scaffolder) BootstrapProject(dir, projectName string, force bool) (*Res
 	return result, nil
 }
 
+// DefaultChannelsDir is the default channels directory for new projects.
+const DefaultChannelsDir = "src/channels"
+
 // BootstrapChannel creates a new channel in an existing project root.
-func (s *Scaffolder) BootstrapChannel(root, channelName string, force bool) (*Result, error) {
+// channelsDir is the relative path from root (e.g. "src/channels").
+func (s *Scaffolder) BootstrapChannel(root, channelName, channelsDir string, force bool) (*Result, error) {
 	cleanRoot := filepath.Clean(root)
 	result := &Result{Root: cleanRoot}
 
-	channelDir := filepath.Join(cleanRoot, "channels", channelName)
+	if channelsDir == "" {
+		channelsDir = DefaultChannelsDir
+	}
+
+	channelDir := filepath.Join(cleanRoot, channelsDir, channelName)
 	if err := os.MkdirAll(channelDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create channel directory: %w", err)
 	}
 
-	files := channelFiles(channelName)
+	files := channelFiles(channelsDir, channelName)
 	for relPath, content := range files {
 		absPath := filepath.Join(cleanRoot, relPath)
 		status, err := writeFile(absPath, content, force)

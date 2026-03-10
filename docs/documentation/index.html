@@ -80,17 +80,18 @@ npm run dev</code></pre>
 ├── .env                   # Environment variables
 ├── package.json           # npm scripts + dependencies
 ├── tsconfig.json          # TypeScript compiler config
-├── types/
-│   └── hl7-standard.d.ts  # Type declarations
-├── channels/
-│   ├── http-to-file/      # JSON pass-through channel
-│   │   ├── channel.yaml
-│   │   ├── transformer.ts
-│   │   └── validator.ts
-│   └── fhir-to-adt/       # FHIR Patient → HL7 ADT channel
-│       ├── channel.yaml
-│       ├── transformer.ts
-│       └── validator.ts
+├── src/
+│   ├── types/
+│   │   └── intu.d.ts      # IntuMessage &amp; IntuContext type declarations
+│   └── channels/
+│       ├── http-to-file/  # JSON pass-through channel
+│       │   ├── channel.yaml
+│       │   ├── transformer.ts
+│       │   └── validator.ts
+│       └── fhir-to-adt/    # FHIR Patient → HL7 ADT channel
+│           ├── channel.yaml
+│           ├── transformer.ts
+│           └── validator.ts
 ├── Dockerfile
 ├── docker-compose.yml
 └── README.md</code></pre>
@@ -125,11 +126,11 @@ npm run dev</code></pre>
                         <td>TypeScript compiler configuration</td>
                     </tr>
                     <tr>
-                        <td><code>types/</code></td>
-                        <td>TypeScript type declarations (e.g. <code>hl7-standard</code>)</td>
+                        <td><code>src/types/</code></td>
+                        <td>TypeScript type declarations &mdash; <code>intu.d.ts</code> (IntuMessage, IntuContext)</td>
                     </tr>
                     <tr>
-                        <td><code>channels/</code></td>
+                        <td><code>src/channels/</code></td>
                         <td>One subdirectory per channel, each containing its own YAML config and TypeScript files</td>
                     </tr>
                 </tbody>
@@ -143,7 +144,7 @@ npm run dev</code></pre>
                     <div class="prop-desc">
                         A channel is a complete processing pipeline that receives messages from a source,
                         transforms and validates them, then delivers them to one or more destinations.
-                        Each channel lives in its own directory under <code>channels/</code>.
+                        Each channel lives in its own directory under <code>src/channels/</code>.
                     </div>
                 </div>
                 <div class="prop-item">

@@ -25,14 +25,22 @@ type RedisDestinationQueue struct {
 }
 
 type redisQueueItem struct {
-	ID            string            `json:"id"`
-	CorrelationID string            `json:"correlation_id"`
-	ChannelID     string            `json:"channel_id"`
-	Raw           []byte            `json:"raw"`
-	ContentType   string            `json:"content_type"`
-	Headers       map[string]string `json:"headers"`
-	Metadata      map[string]any    `json:"metadata"`
-	Timestamp     int64             `json:"timestamp"`
+	ID            string                 `json:"id"`
+	CorrelationID string                 `json:"correlation_id"`
+	ChannelID     string                 `json:"channel_id"`
+	Raw           []byte                 `json:"raw"`
+	Transport     string                 `json:"transport,omitempty"`
+	ContentType   string                 `json:"content_type"`
+	HTTP          *message.HTTPMeta      `json:"http,omitempty"`
+	File          *message.FileMeta      `json:"file,omitempty"`
+	FTP           *message.FTPMeta       `json:"ftp,omitempty"`
+	Kafka         *message.KafkaMeta     `json:"kafka,omitempty"`
+	TCP           *message.TCPMeta       `json:"tcp,omitempty"`
+	SMTP          *message.SMTPMeta      `json:"smtp,omitempty"`
+	DICOM         *message.DICOMMeta     `json:"dicom,omitempty"`
+	Database      *message.DatabaseMeta  `json:"database,omitempty"`
+	Metadata      map[string]any         `json:"metadata"`
+	Timestamp     int64                  `json:"timestamp"`
 }
 
 func NewRedisDestinationQueue(
@@ -82,8 +90,16 @@ func (q *RedisDestinationQueue) Enqueue(ctx context.Context, msg *message.Messag
 		CorrelationID: msg.CorrelationID,
 		ChannelID:     msg.ChannelID,
 		Raw:           msg.Raw,
+		Transport:     msg.Transport,
 		ContentType:   string(msg.ContentType),
-		Headers:       msg.Headers,
+		HTTP:          msg.HTTP,
+		File:          msg.File,
+		FTP:           msg.FTP,
+		Kafka:         msg.Kafka,
+		TCP:           msg.TCP,
+		SMTP:          msg.SMTP,
+		DICOM:         msg.DICOM,
+		Database:      msg.Database,
 		Metadata:      msg.Metadata,
 		Timestamp:     msg.Timestamp.UnixMilli(),
 	}
@@ -152,8 +168,16 @@ func (q *RedisDestinationQueue) worker(ctx context.Context) {
 			CorrelationID: item.CorrelationID,
 			ChannelID:     item.ChannelID,
 			Raw:           item.Raw,
+			Transport:     item.Transport,
 			ContentType:   message.ContentType(item.ContentType),
-			Headers:       item.Headers,
+			HTTP:          item.HTTP,
+			File:          item.File,
+			FTP:           item.FTP,
+			Kafka:         item.Kafka,
+			TCP:           item.TCP,
+			SMTP:          item.SMTP,
+			DICOM:         item.DICOM,
+			Database:      item.Database,
 			Metadata:      item.Metadata,
 			Timestamp:     time.UnixMilli(item.Timestamp),
 		}

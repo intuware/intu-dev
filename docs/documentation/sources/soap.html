@@ -129,11 +129,9 @@ listener:
       password: ${SOAP_PASS}
 
 validator:
-  runtime: node
   entrypoint: validator.ts
 
 transformer:
-  runtime: node
   entrypoint: transformer.ts
 
 destinations:
@@ -146,9 +144,7 @@ destinations:
 
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>import { Message, TransformResult } from "@intu/sdk";
-
-function extractElement(xml: string, tag: string): string {
+                <pre><code>function extractElement(xml: string, tag: string): string {
   const regex = new RegExp(`&lt;${tag}[^&gt;]*&gt;([^&lt;]*)&lt;/${tag}&gt;`);
   const match = xml.match(regex);
   return match ? match[1].trim() : "";
@@ -160,14 +156,14 @@ function extractAttribute(xml: string, tag: string, attr: string): string {
   return match ? match[1] : "";
 }
 
-export default function transform(msg: Message): TransformResult {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   const soapXml = msg.body as string;
 
   const bodyMatch = soapXml.match(
     /&lt;(?:\w+:)?Body[^&gt;]*&gt;([\s\S]*?)&lt;\/(?:\w+:)?Body&gt;/
   );
   if (!bodyMatch) {
-    return { success: false, error: "Could not extract SOAP Body" };
+    throw new Error("Could not extract SOAP Body");
   }
   const bodyContent = bodyMatch[1];
 
@@ -220,11 +216,7 @@ export default function transform(msg: Message): TransformResult {
     ],
   };
 
-  return {
-    success: true,
-    body: JSON.stringify(documentReference),
-    contentType: "application/fhir+json",
-  };
+  return { body: JSON.stringify(documentReference) };
 }
 
 function mapOidToUri(oid: string): string {

@@ -23,13 +23,18 @@ func (c *ChannelDest) Send(ctx context.Context, msg *message.Message) (*message.
 		CorrelationID: msg.CorrelationID,
 		ChannelID:     c.targetChannelID,
 		Raw:           append([]byte{}, msg.Raw...),
+		Transport:     msg.Transport,
 		ContentType:   msg.ContentType,
-		Headers:       make(map[string]string),
+		HTTP:          msg.HTTP,
+		File:          msg.File,
+		FTP:           msg.FTP,
+		Kafka:         msg.Kafka,
+		TCP:           msg.TCP,
+		SMTP:          msg.SMTP,
+		DICOM:         msg.DICOM,
+		Database:      msg.Database,
 		Metadata:      make(map[string]any),
 		Timestamp:     msg.Timestamp,
-	}
-	for k, v := range msg.Headers {
-		clone.Headers[k] = v
 	}
 	for k, v := range msg.Metadata {
 		clone.Metadata[k] = v

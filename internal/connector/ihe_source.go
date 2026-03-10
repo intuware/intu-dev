@@ -193,17 +193,25 @@ func (i *IHESource) handleIHERequest(w http.ResponseWriter, r *http.Request, han
 	defer r.Body.Close()
 
 	msg := message.New("", body)
+	msg.Transport = "ihe"
 	msg.ContentType = "xml"
 	msg.Metadata["source"] = "ihe"
 	msg.Metadata["ihe_profile"] = profile
 	msg.Metadata["ihe_transaction"] = transaction
 	msg.Metadata["request_path"] = r.URL.Path
 
+	http_ := msg.EnsureHTTP()
 	for k, v := range r.Header {
 		if len(v) > 0 {
-			msg.Headers[k] = v[0]
+			http_.Headers[k] = v[0]
 		}
 	}
+	for k, v := range r.URL.Query() {
+		if len(v) > 0 {
+			http_.QueryParams[k] = v[0]
+		}
+	}
+	http_.Method = r.Method
 
 	if err := handler(r.Context(), msg); err != nil {
 		i.logger.Error("IHE handler error", "profile", profile, "transaction", transaction, "error", err)

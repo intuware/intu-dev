@@ -36,7 +36,6 @@ type RuntimeConfig struct {
 	Storage    StorageConfig     `mapstructure:"storage"`
 	Encryption *EncryptionConfig `mapstructure:"encryption"`
 	Health     *HealthConfig     `mapstructure:"health"`
-	JSRuntime  string            `mapstructure:"js_runtime"`
 	WorkerPool int               `mapstructure:"worker_pool"`
 }
 
@@ -96,12 +95,14 @@ type KafkaDestConfig struct {
 }
 
 type HTTPDestConfig struct {
-	URL       string            `mapstructure:"url"`
-	Method    string            `mapstructure:"method"`
-	Headers   map[string]string `mapstructure:"headers"`
-	TimeoutMs int               `mapstructure:"timeout_ms"`
-	Auth      *HTTPAuthConfig   `mapstructure:"auth"`
-	TLS       *TLSMapConfig     `mapstructure:"tls"`
+	URL         string            `mapstructure:"url"`
+	Method      string            `mapstructure:"method"`
+	Headers     map[string]string `mapstructure:"headers"`
+	QueryParams map[string]string `mapstructure:"query_params"`
+	PathParams  map[string]string `mapstructure:"path_params"`
+	TimeoutMs   int               `mapstructure:"timeout_ms"`
+	Auth        *HTTPAuthConfig   `mapstructure:"auth"`
+	TLS         *TLSMapConfig     `mapstructure:"tls"`
 }
 
 type HTTPAuthConfig struct {

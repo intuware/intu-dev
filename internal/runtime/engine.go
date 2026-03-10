@@ -42,7 +42,7 @@ type DefaultEngine struct {
 	alertMgr      *alerting.AlertManager
 	maps          *MapVariables
 	codeTemplates *CodeTemplateLoader
-	jsRunner      JSRunner
+	jsRunner      *NodeRunner
 
 	coordinator    cluster.ChannelCoordinator
 	dedup          cluster.MessageDeduplicator
@@ -129,8 +129,8 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 		}
 	}
 
-	if err := e.initJSRunner(); err != nil {
-		return fmt.Errorf("init JS runner: %w", err)
+	if err := e.initNodeRunner(); err != nil {
+		return fmt.Errorf("init Node.js runner: %w", err)
 	}
 
 	if e.cfg.Global != nil && e.cfg.Global.Hooks != nil && e.cfg.Global.Hooks.OnStartup != "" {
@@ -245,10 +245,8 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 		e.logger.Info("channel started", "id", ce.cfg.ID)
 	}
 
-	if nr, ok := e.jsRunner.(*NodeRunner); ok {
-		for _, ce := range channelEntries {
-			e.preloadChannelScripts(ce.dir, ce.cfg, nr)
-		}
+	for _, ce := range channelEntries {
+		e.preloadChannelScripts(ce.dir, ce.cfg)
 	}
 
 	if e.clusterMode && e.coordinator != nil && len(e.pendingChannels) > 0 {
@@ -410,30 +408,17 @@ func (e *DefaultEngine) resolveChannelStore(chCfg *config.ChannelConfig) storage
 	return storage.NewCompositeStore(e.store, mode, chStorage.Stages)
 }
 
-func (e *DefaultEngine) initJSRunner() error {
-	jsRuntime := e.cfg.Runtime.JSRuntime
-	if jsRuntime == "" {
-		jsRuntime = "node"
+func (e *DefaultEngine) initNodeRunner() error {
+	poolSize := e.cfg.Runtime.WorkerPool
+	nr, err := NewNodeRunner(poolSize, e.logger)
+	if err != nil {
+		return fmt.Errorf("start Node.js worker pool: %w", err)
 	}
-
-	switch jsRuntime {
-	case "goja":
-		e.jsRunner = NewGojaRunner()
-		e.logger.Info("using Goja JS runtime")
-	default:
-		poolSize := e.cfg.Runtime.WorkerPool
-		nr, err := NewNodeRunner(poolSize, e.logger)
-		if err != nil {
-			e.logger.Warn("failed to start Node.js worker pool, falling back to Goja", "error", err)
-			e.jsRunner = NewGojaRunner()
-			return nil
-		}
-		e.jsRunner = nr
-	}
+	e.jsRunner = nr
 	return nil
 }
 
-func (e *DefaultEngine) preloadChannelScripts(channelDir string, cfg *config.ChannelConfig, nr *NodeRunner) {
+func (e *DefaultEngine) preloadChannelScripts(channelDir string, cfg *config.ChannelConfig) {
 	preload := func(file string) {
 		if file == "" {
 			return
@@ -446,7 +431,7 @@ func (e *DefaultEngine) preloadChannelScripts(channelDir string, cfg *config.Cha
 		} else {
 			entrypoint = filepath.Join(channelDir, file)
 		}
-		if err := nr.PreloadModule(entrypoint); err != nil {
+		if err := e.jsRunner.PreloadModule(entrypoint); err != nil {
 			e.logger.Debug("preload skipped", "path", entrypoint, "error", err)
 		}
 	}
@@ -465,9 +450,13 @@ func (e *DefaultEngine) preloadChannelScripts(channelDir string, cfg *config.Cha
 		preload(cfg.Transformer.Entrypoint)
 	}
 	for _, d := range cfg.Destinations {
-		preload(d.TransformerFile)
+		if d.Transformer != nil {
+			preload(d.Transformer.Entrypoint)
+		}
 		preload(d.Filter)
-		preload(d.ResponseTransformer)
+		if d.ResponseTransformer != nil {
+			preload(d.ResponseTransformer.Entrypoint)
+		}
 	}
 }
 
@@ -480,7 +469,7 @@ func (e *DefaultEngine) InitRuntime(ctx context.Context) error {
 			}
 		}
 	}
-	return e.initJSRunner()
+	return e.initNodeRunner()
 }
 
 func (e *DefaultEngine) CloseRuntime() error {

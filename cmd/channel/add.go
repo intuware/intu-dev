@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/intuware/intu-dev/internal/bootstrap"
+	"github.com/intuware/intu-dev/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -20,14 +21,20 @@ func newAddCmd(logLevel *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add [channel-name]",
 		Short: "Add a new channel to the project",
-		Long:  "Creates a new channel in channels/<channel-name>/ within the project at --dir.",
+		Long:  "Creates a new channel in src/channels/<channel-name>/ within the project at --dir.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			channelName := args[0]
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 			scaffolder := bootstrap.NewScaffolder(logger)
 
-			_, err := scaffolder.BootstrapChannel(opts.dir, channelName, opts.force)
+			channelsDir := bootstrap.DefaultChannelsDir
+			loader := config.NewLoader(opts.dir)
+			if cfg, err := loader.Load("dev"); err == nil && cfg.ChannelsDir != "" {
+				channelsDir = cfg.ChannelsDir
+			}
+
+			_, err := scaffolder.BootstrapChannel(opts.dir, channelName, channelsDir, opts.force)
 			if err != nil {
 				return err
 			}

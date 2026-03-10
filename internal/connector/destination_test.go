@@ -468,7 +468,7 @@ func TestChannelDest_MessageClone(t *testing.T) {
 	sub := bus.Subscribe(targetCh)
 
 	msg := message.New("source-ch", []byte("original"))
-	msg.Headers["key"] = "value"
+	msg.EnsureHTTP().Headers["key"] = "value"
 	msg.Metadata["meta"] = "data"
 
 	dest.Send(context.Background(), msg)
@@ -480,8 +480,8 @@ func TestChannelDest_MessageClone(t *testing.T) {
 		if string(received.Raw) != "original" {
 			t.Fatal("message was not properly cloned")
 		}
-		if received.Headers["key"] != "value" {
-			t.Fatal("headers were not cloned")
+		if received.HTTP == nil || received.HTTP.Headers["key"] != "value" {
+			t.Fatal("HTTP meta was not cloned")
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout")

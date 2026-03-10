@@ -42,7 +42,6 @@
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
                 <pre><code>transformer:
-  runtime: node
   entrypoint: transformer.ts</code></pre>
             </div>
 
@@ -61,32 +60,92 @@
 
             <h2>Function Signature</h2>
             <p>
-                A transformer is a named export called <code>transform</code>. It receives the parsed message
-                and a context object, and must return the transformed message.
+                A transformer is a named export called <code>transform</code>. It receives an <code>IntuMessage</code>
+                envelope containing the parsed message body and transport metadata, plus an <code>IntuContext</code>
+                with channel and pipeline information. It must return an <code>IntuMessage</code>.
+            </p>
+            <p>
+                The <code>IntuMessage</code> and <code>IntuContext</code> types are globally available in all
+                transformers via the project's <code>src/types/intu.d.ts</code> declaration file &mdash; no imports needed.
             </p>
 
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function transform(
-  msg: unknown,
-  ctx: {
-    channelId: string;
-    correlationId: string;
-    messageId: string;
-    timestamp: string;
-    inboundDataType?: string;
-    outboundDataType?: string;
-    sourceType?: string;
-  }
-): unknown {
-  // Return the transformed message
+                <pre><code>export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
+  // msg.body      - the parsed message payload (unknown, cast as needed)
+  // msg.transport - "http", "file", "kafka", "tcp", etc.
+  // msg.http      - HTTP headers, query params, path params (if transport is http)
+  // msg.file      - filename, directory (if transport is file)
+  // msg.kafka     - topic, key, headers (if transport is kafka)
+  // ctx.channelId, ctx.messageId, ctx.globalMap, etc.
+
+  return { body: transformedPayload };
 }</code></pre>
             </div>
 
-            <h2>Context Object</h2>
+            <h2>IntuMessage</h2>
             <p>
-                The second argument passed to every transformer is a context object containing metadata about
-                the current message and channel. Use it for tracing, routing, and conditional logic.
+                The first argument is an <code>IntuMessage</code> envelope. The <code>body</code> field contains
+                the parsed payload (typed as <code>unknown</code>, cast as needed). Protocol-specific metadata
+                is available in optional nested objects like <code>msg.http</code>, <code>msg.file</code>, etc.
+            </p>
+
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>body</code></td>
+                        <td><code>unknown</code></td>
+                        <td>The parsed message payload</td>
+                    </tr>
+                    <tr>
+                        <td><code>transport</code></td>
+                        <td><code>string?</code></td>
+                        <td>Transport protocol: <code>http</code>, <code>file</code>, <code>kafka</code>, <code>tcp</code>, <code>sftp</code>, etc. Preserved from source automatically; only set to override.</td>
+                    </tr>
+                    <tr>
+                        <td><code>contentType</code></td>
+                        <td><code>string?</code></td>
+                        <td>Content type of the message (e.g. <code>json</code>, <code>hl7v2</code>)</td>
+                    </tr>
+                    <tr>
+                        <td><code>http</code></td>
+                        <td><code>IntuHTTP?</code></td>
+                        <td>HTTP metadata: <code>headers</code>, <code>queryParams</code>, <code>pathParams</code>, <code>method</code>, <code>statusCode</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>file</code></td>
+                        <td><code>IntuFile?</code></td>
+                        <td>File metadata: <code>filename</code>, <code>directory</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>ftp</code></td>
+                        <td><code>IntuFTP?</code></td>
+                        <td>FTP/SFTP metadata: <code>filename</code>, <code>directory</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>kafka</code></td>
+                        <td><code>IntuKafka?</code></td>
+                        <td>Kafka metadata: <code>headers</code>, <code>topic</code>, <code>key</code>, <code>partition</code>, <code>offset</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>tcp</code></td>
+                        <td><code>IntuTCP?</code></td>
+                        <td>TCP metadata: <code>remoteAddr</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>IntuContext</h2>
+            <p>
+                The second argument is an <code>IntuContext</code> containing channel metadata, data type info,
+                and map variable snapshots for cross-stage data sharing.
             </p>
 
             <table class="docs-table">
@@ -129,9 +188,29 @@
                         <td>Set when <code>data_types.outbound</code> is configured in the channel YAML</td>
                     </tr>
                     <tr>
-                        <td><code>sourceType</code></td>
+                        <td><code>destinationName</code></td>
                         <td><code>string?</code></td>
-                        <td>The listener type that received the message (e.g. <code>http</code>, <code>tcp</code>, <code>kafka</code>)</td>
+                        <td>Set in destination transformers with the destination's name</td>
+                    </tr>
+                    <tr>
+                        <td><code>globalMap</code></td>
+                        <td><code>IntuMap</code></td>
+                        <td>Shared across all channels and pipeline stages</td>
+                    </tr>
+                    <tr>
+                        <td><code>channelMap</code></td>
+                        <td><code>IntuMap</code></td>
+                        <td>Shared across all stages within the current channel</td>
+                    </tr>
+                    <tr>
+                        <td><code>responseMap</code></td>
+                        <td><code>IntuMap</code></td>
+                        <td>Contains destination response data</td>
+                    </tr>
+                    <tr>
+                        <td><code>connectorMap</code></td>
+                        <td><code>IntuMap?</code></td>
+                        <td>Available in destination transformers for connector-specific data</td>
                     </tr>
                 </tbody>
             </table>
@@ -142,11 +221,13 @@
             <p>Add processing metadata to every message:</p>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function transform(msg: unknown, ctx: { channelId: string; correlationId: string }): unknown {
+                <pre><code>export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   return {
-    ...(msg as object),
-    processedAt: new Date().toISOString(),
-    source: ctx.channelId,
+    body: {
+      ...(msg.body as object),
+      processedAt: new Date().toISOString(),
+      source: ctx.channelId,
+    },
   };
 }</code></pre>
             </div>
@@ -155,28 +236,30 @@
             <p>Convert an HL7v2 ADT message into a FHIR R4 Patient resource:</p>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function transform(msg: unknown): unknown {
-  const hl7 = msg as Record&lt;string, any&gt;;
+                <pre><code>export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
+  const hl7 = msg.body as Record&lt;string, any&gt;;
 
   return {
-    resourceType: "Patient",
-    id: hl7.PID?.["3.1"],
-    identifier: [{
-      system: "urn:oid:2.16.840.1.113883.19.5",
-      value: hl7.PID?.["3.1"]
-    }],
-    name: [{
-      family: hl7.PID?.["5.1"],
-      given: [hl7.PID?.["5.2"]]
-    }],
-    gender: mapGender(hl7.PID?.["8"]),
-    birthDate: formatDate(hl7.PID?.["7.1"]),
-    address: [{
-      line: [hl7.PID?.["11.1"]],
-      city: hl7.PID?.["11.3"],
-      state: hl7.PID?.["11.4"],
-      postalCode: hl7.PID?.["11.5"]
-    }]
+    body: {
+      resourceType: "Patient",
+      id: hl7.PID?.["3.1"],
+      identifier: [{
+        system: "urn:oid:2.16.840.1.113883.19.5",
+        value: hl7.PID?.["3.1"]
+      }],
+      name: [{
+        family: hl7.PID?.["5.1"],
+        given: [hl7.PID?.["5.2"]]
+      }],
+      gender: mapGender(hl7.PID?.["8"]),
+      birthDate: formatDate(hl7.PID?.["7.1"]),
+      address: [{
+        line: [hl7.PID?.["11.1"]],
+        city: hl7.PID?.["11.3"],
+        state: hl7.PID?.["11.4"],
+        postalCode: hl7.PID?.["11.5"]
+      }]
+    },
   };
 }
 
@@ -195,24 +278,26 @@ function formatDate(hl7Date: string): string {
             <p>Map parsed CSV rows into a FHIR Observation bundle:</p>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function transform(msg: unknown): unknown {
-  const rows = msg as Array&lt;Record&lt;string, string&gt;&gt;;
+                <pre><code>export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
+  const rows = msg.body as Array&lt;Record&lt;string, string&gt;&gt;;
 
   return {
-    bundle: rows.map(row =&gt; ({
-      resourceType: "Observation",
-      status: "final",
-      code: {
-        coding: [{ system: "http://loinc.org", code: row.loincCode, display: row.testName }]
-      },
-      subject: { reference: `Patient/${row.patientId}` },
-      valueQuantity: {
-        value: parseFloat(row.value),
-        unit: row.unit,
-        system: "http://unitsofmeasure.org"
-      },
-      effectiveDateTime: row.collectionDate
-    }))
+    body: {
+      bundle: rows.map(row =&gt; ({
+        resourceType: "Observation",
+        status: "final",
+        code: {
+          coding: [{ system: "http://loinc.org", code: row.loincCode, display: row.testName }]
+        },
+        subject: { reference: `Patient/${row.patientId}` },
+        valueQuantity: {
+          value: parseFloat(row.value),
+          unit: row.unit,
+          system: "http://unitsofmeasure.org"
+        },
+        effectiveDateTime: row.collectionDate
+      }))
+    },
   };
 }</code></pre>
             </div>
@@ -224,12 +309,8 @@ function formatDate(hl7Date: string): string {
             </p>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function transform(msg: unknown, ctx: any): unknown {
-  const m = msg as Record&lt;string, any&gt;;
-  const transformed = {
-    ...m,
-    processedAt: new Date().toISOString(),
-  };
+                <pre><code>export function transform(msg: IntuMessage, ctx: IntuContext &amp; { _routeTo?: string[] }): IntuMessage {
+  const m = msg.body as Record&lt;string, any&gt;;
 
   // Route critical results to both the main output and alerting
   if (m.priority === "STAT" || m.abnormalFlag === "H") {
@@ -238,7 +319,9 @@ function formatDate(hl7Date: string): string {
     ctx._routeTo = ["kafka-output"];
   }
 
-  return transformed;
+  return {
+    body: { ...m, processedAt: new Date().toISOString() },
+  };
 }</code></pre>
             </div>
 
@@ -258,12 +341,14 @@ function formatDate(hl7Date: string): string {
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
                 <pre><code>import { formatTimestamp, generateId } from "../../lib/index";
 
-export function transform(msg: unknown, ctx: { channelId: string; correlationId: string }): unknown {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   return {
-    ...(msg as object),
-    processedAt: formatTimestamp(new Date()),
-    internalId: generateId(),
-    source: ctx.channelId,
+    body: {
+      ...(msg.body as object),
+      processedAt: formatTimestamp(new Date()),
+      internalId: generateId(),
+      source: ctx.channelId,
+    },
   };
 }</code></pre>
             </div>
@@ -351,8 +436,8 @@ export function transform(msg: unknown, ctx: { channelId: string; correlationId:
             </p>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function filter(msg: unknown, ctx: { channelId: string }): boolean {
-  const m = msg as Record&lt;string, any&gt;;
+                <pre><code>export function filter(msg: IntuMessage, ctx: IntuContext): boolean {
+  const m = msg.body as Record&lt;string, any&gt;;
   // Return true to keep, false to drop
   return m.messageType === "ADT^A01";
 }</code></pre>
@@ -376,11 +461,13 @@ export function transform(msg: unknown, ctx: { channelId: string; correlationId:
   - name: kafka-output
     ref: kafka-output
     filter: dest-filter.ts
-    transformer: dest-transformer.ts
+    transformer:
+      entrypoint: dest-transformer.ts
 
   - name: alert-http
     ref: alert-endpoint
-    transformer: alert-transformer.ts</code></pre>
+    transformer:
+      entrypoint: alert-transformer.ts</code></pre>
             </div>
             <p>
                 The destination filter receives the output of the main transformer and can drop the message

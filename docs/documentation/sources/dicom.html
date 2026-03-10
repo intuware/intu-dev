@@ -127,11 +127,9 @@ listener:
       - PACS_PRIMARY
 
 validator:
-  runtime: node
   entrypoint: validator.ts
 
 transformer:
-  runtime: node
   entrypoint: transformer.ts
 
 destinations:
@@ -144,9 +142,7 @@ destinations:
 
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>import { Message, TransformResult } from "@intu/sdk";
-
-interface DicomMetadata {
+                <pre><code>interface DicomMetadata {
   studyInstanceUid: string;
   seriesInstanceUid: string;
   sopInstanceUid: string;
@@ -164,12 +160,12 @@ interface DicomMetadata {
   storagePath: string;
 }
 
-export default function transform(msg: Message): TransformResult {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   let dicom: DicomMetadata;
   try {
     dicom = JSON.parse(msg.body as string);
   } catch {
-    return { success: false, error: "Failed to parse DICOM metadata" };
+    throw new Error("Failed to parse DICOM metadata");
   }
 
   const imagingStudy = {
@@ -225,11 +221,7 @@ export default function transform(msg: Message): TransformResult {
     ],
   };
 
-  return {
-    success: true,
-    body: JSON.stringify(imagingStudy),
-    contentType: "application/fhir+json",
-  };
+  return { body: JSON.stringify(imagingStudy) };
 }
 
 function formatDicomDateTime(date: string, time: string): string {

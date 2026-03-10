@@ -185,7 +185,7 @@ destinations:
             <h3>Channel Configuration</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
-                <pre><code># channels/hl7-to-fhir/channel.yaml
+                <pre><code># src/channels/hl7-to-fhir/channel.yaml
 name: hl7-to-fhir
 description: Transform HL7v2 messages to FHIR transaction bundles
 
@@ -202,10 +202,9 @@ destinations:
             <h3>Destination Transformer</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>// channels/hl7-to-fhir/transformer.ts
-import { Message, Context } from "@intu/sdk";
+                <pre><code>// src/channels/hl7-to-fhir/transformer.ts
 
-export default function transform(msg: Message, ctx: Context): Message {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   const hl7 = msg.body;
   const pid = hl7.segments?.find((s: any) => s.name === "PID");
   const pv1 = hl7.segments?.find((s: any) => s.name === "PV1");
@@ -298,17 +297,12 @@ export default function transform(msg: Message, ctx: Context): Message {
     entry: entries,
   };
 
-  ctx.logger.info(
+  console.info(
     `Created FHIR transaction bundle with ${entries.length} entries for patient ${patientId}`
   );
 
   return {
-    ...msg,
     body: bundle,
-    headers: {
-      ...msg.headers,
-      "fhir-operation": "transaction",
-    },
   };
 }
 

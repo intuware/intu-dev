@@ -28,10 +28,66 @@ type Message struct {
 	CorrelationID string
 	ChannelID     string
 	Raw           []byte
+	Transport     string
 	ContentType   ContentType
-	Headers       map[string]string
+	HTTP          *HTTPMeta
+	File          *FileMeta
+	FTP           *FTPMeta
+	Kafka         *KafkaMeta
+	TCP           *TCPMeta
+	SMTP          *SMTPMeta
+	DICOM         *DICOMMeta
+	Database      *DatabaseMeta
 	Metadata      map[string]any
 	Timestamp     time.Time
+}
+
+type HTTPMeta struct {
+	Headers     map[string]string
+	QueryParams map[string]string
+	PathParams  map[string]string
+	Method      string
+	StatusCode  int
+}
+
+type FileMeta struct {
+	Filename  string
+	Directory string
+}
+
+type FTPMeta struct {
+	Filename  string
+	Directory string
+}
+
+type KafkaMeta struct {
+	Headers   map[string]string
+	Topic     string
+	Key       string
+	Partition int
+	Offset    int64
+}
+
+type TCPMeta struct {
+	RemoteAddr string
+}
+
+type SMTPMeta struct {
+	From    string
+	To      []string
+	Subject string
+	CC      []string
+	BCC     []string
+}
+
+type DICOMMeta struct {
+	CallingAE string
+	CalledAE  string
+}
+
+type DatabaseMeta struct {
+	Query  string
+	Params map[string]any
 }
 
 type Response struct {
@@ -49,8 +105,19 @@ func New(channelID string, raw []byte) *Message {
 		ChannelID:     channelID,
 		Raw:           raw,
 		ContentType:   ContentTypeRaw,
-		Headers:       make(map[string]string),
 		Metadata:      make(map[string]any),
 		Timestamp:     time.Now(),
 	}
+}
+
+// EnsureHTTP initializes the HTTP meta if nil and returns it.
+func (m *Message) EnsureHTTP() *HTTPMeta {
+	if m.HTTP == nil {
+		m.HTTP = &HTTPMeta{
+			Headers:     make(map[string]string),
+			QueryParams: make(map[string]string),
+			PathParams:  make(map[string]string),
+		}
+	}
+	return m.HTTP
 }

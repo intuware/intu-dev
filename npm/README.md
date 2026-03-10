@@ -60,12 +60,15 @@ my-project/
 ├── intu.dev.yaml          # Dev profile overrides
 ├── intu.prod.yaml         # Production profile
 ├── .env                   # Environment variables
-├── channels/
-│   ├── http-to-file/      # JSON pass-through channel
-│   │   ├── channel.yaml
-│   │   ├── transformer.ts
-│   │   └── validator.ts
-│   └── fhir-to-adt/       # FHIR Patient → HL7 ADT channel
+├── src/
+│   ├── channels/
+│   │   ├── http-to-file/      # JSON pass-through channel
+│   │   │   ├── channel.yaml
+│   │   │   ├── transformer.ts
+│   │   │   └── validator.ts
+│   │   └── fhir-to-adt/       # FHIR Patient → HL7 ADT channel
+│   └── types/
+│       └── intu.d.ts
 ├── package.json
 ├── tsconfig.json
 ├── Dockerfile
@@ -125,7 +128,7 @@ Scaffolded projects ship with these healthcare data packages:
 | Package | Purpose |
 |---------|---------|
 | `@types/fhir` | FHIR R4 TypeScript types |
-| `hl7-standard` | HL7v2 message builder and parser |
+| `node-hl7-client` | HL7v2 message builder/parser with native TypeScript types |
 
 ## Requirements
 

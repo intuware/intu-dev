@@ -134,7 +134,7 @@ go run /path/to/intu-dev serve</code></pre>
                     </tr>
                     <tr>
                         <td><code>internal/runtime/</code></td>
-                        <td>Engine, channel lifecycle, pipeline, Node.js runner, Goja fallback, hot-reload</td>
+                        <td>Engine, channel lifecycle, pipeline, Node.js runner, hot-reload</td>
                     </tr>
                     <tr>
                         <td><code>internal/dashboard/</code></td>
@@ -265,11 +265,10 @@ go run /path/to/intu-dev serve</code></pre>
             <h2>Architecture Notes</h2>
             <div class="prop-list">
                 <div class="prop-item">
-                    <span class="prop-name">JS Runtimes</span>
+                    <span class="prop-name">JS Runtime</span>
                     <div class="prop-desc">
-                        Two JavaScript runtimes exist: <strong>Node.js</strong> (primary, spawns worker
-                        processes) and <strong>Goja</strong> (Go-native fallback). The default is Node.js,
-                        configured via <code>js_runtime</code> in <code>intu.yaml</code>.
+                        <strong>Node.js</strong> is the JavaScript runtime, spawning a pool of worker
+                        processes for executing transformers, validators, and other scripts.
                     </div>
                 </div>
                 <div class="prop-item">

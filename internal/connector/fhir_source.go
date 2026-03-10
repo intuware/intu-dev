@@ -77,6 +77,7 @@ func (f *FHIRSource) Start(ctx context.Context, handler MessageHandler) error {
 		resourcePath := strings.TrimPrefix(r.URL.Path, basePath+"/")
 
 		msg := message.New("", body)
+		msg.Transport = "fhir"
 		msg.ContentType = "fhir_r4"
 		msg.Metadata["source"] = "fhir"
 		msg.Metadata["fhir_version"] = version
@@ -101,11 +102,18 @@ func (f *FHIRSource) Start(ctx context.Context, handler MessageHandler) error {
 			return
 		}
 
+		http_ := msg.EnsureHTTP()
 		for k, v := range r.Header {
 			if len(v) > 0 {
-				msg.Headers[k] = v[0]
+				http_.Headers[k] = v[0]
 			}
 		}
+		for k, v := range r.URL.Query() {
+			if len(v) > 0 {
+				http_.QueryParams[k] = v[0]
+			}
+		}
+		http_.Method = r.Method
 
 		if err := handler(r.Context(), msg); err != nil {
 			f.logger.Error("FHIR handler error", "error", err)
@@ -139,11 +147,14 @@ func (f *FHIRSource) Start(ctx context.Context, handler MessageHandler) error {
 		defer r.Body.Close()
 
 		msg := message.New("", body)
+		msg.Transport = "fhir"
 		msg.ContentType = "fhir_r4"
 		msg.Metadata["source"] = "fhir"
 		msg.Metadata["fhir_version"] = version
 		msg.Metadata["subscription_type"] = f.cfg.SubscriptionType
 		msg.Metadata["notification"] = true
+		http_ := msg.EnsureHTTP()
+		http_.Method = r.Method
 
 		if err := handler(r.Context(), msg); err != nil {
 			f.logger.Error("FHIR subscription notification handler error", "error", err)

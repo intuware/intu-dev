@@ -84,13 +84,16 @@ intu c my-channel
 ├── intu.dev.yaml          # Dev profile overlay
 ├── intu.prod.yaml         # Prod profile overlay
 ├── .env                   # Environment variables
-├── channels/
-│   └── sample-channel/
-│       ├── channel.yaml   # Channel config (source, destinations, pipeline)
-│       ├── transformer.ts # TypeScript transformer (JSON in, JSON out)
-│       └── validator.ts   # Optional validator
-├── lib/
-│   └── index.ts           # Shared utilities
+├── src/
+│   ├── channels/
+│   │   └── sample-channel/
+│   │       ├── channel.yaml   # Channel config (source, destinations, pipeline)
+│   │       ├── transformer.ts # TypeScript transformer (IntuMessage in, IntuMessage out)
+│   │       └── validator.ts   # Optional validator
+│   ├── types/
+│   │   └── intu.d.ts          # IntuMessage & IntuContext type declarations
+│   └── lib/
+│       └── index.ts           # Shared utilities
 ├── package.json
 ├── tsconfig.json
 └── README.md

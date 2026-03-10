@@ -68,11 +68,19 @@ func (h *HTTPSource) Start(ctx context.Context, handler MessageHandler) error {
 		defer r.Body.Close()
 
 		msg := message.New("", body)
+		msg.Transport = "http"
+		http_ := msg.EnsureHTTP()
 		for k, v := range r.Header {
 			if len(v) > 0 {
-				msg.Headers[k] = v[0]
+				http_.Headers[k] = v[0]
 			}
 		}
+		for k, v := range r.URL.Query() {
+			if len(v) > 0 {
+				http_.QueryParams[k] = v[0]
+			}
+		}
+		http_.Method = r.Method
 		if cid := r.Header.Get("X-Correlation-Id"); cid != "" {
 			msg.CorrelationID = cid
 		}

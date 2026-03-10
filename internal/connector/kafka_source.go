@@ -204,6 +204,10 @@ func (k *KafkaSource) consume(ctx context.Context, handler MessageHandler) error
 			}
 			for _, data := range msgs {
 				msg := message.New("", data)
+				msg.Transport = "kafka"
+				msg.Kafka = &message.KafkaMeta{
+					Topic: k.cfg.Topic,
+				}
 				msg.Metadata["source"] = "kafka"
 				msg.Metadata["topic"] = k.cfg.Topic
 				msg.Metadata["broker"] = broker

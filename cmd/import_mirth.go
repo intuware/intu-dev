@@ -56,7 +56,7 @@ intu channel directory with channel.yaml, transformer.ts, and validator.ts.`,
 			loader := config.NewLoader(dir)
 			cfg, err := loader.Load("dev")
 			if err != nil {
-				cfg = &config.Config{ChannelsDir: "channels"}
+				cfg = &config.Config{ChannelsDir: "src/channels"}
 			}
 
 			channelsDir := filepath.Join(dir, cfg.ChannelsDir)

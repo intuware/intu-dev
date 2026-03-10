@@ -151,7 +151,7 @@ destinations:
             <h3>Channel Configuration</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
-                <pre><code># channels/lab-to-db/channel.yaml
+                <pre><code># src/channels/lab-to-db/channel.yaml
 name: lab-to-db
 description: Persist HL7v2 lab results to PostgreSQL
 
@@ -168,10 +168,8 @@ destinations:
             <h3>Destination Transformer</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>// channels/lab-to-db/transformer.ts
-import { Message, Context } from "@intu/sdk";
-
-export default function transform(msg: Message, ctx: Context): Message[] {
+                <pre><code>// src/channels/lab-to-db/transformer.ts
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   const hl7 = msg.body;
   const pid = hl7.segments?.find((s: any) => s.name === "PID");
   const obr = hl7.segments?.find((s: any) => s.name === "OBR");
@@ -181,9 +179,8 @@ export default function transform(msg: Message, ctx: Context): Message[] {
   const orderId = obr?.fields[2]?.components[0] ?? "";
   const collectionDate = obr?.fields[7]?.components[0] ?? "";
 
-  return obxSegments.map((obx: any) => ({
-    ...msg,
-    body: {
+  return {
+    body: obxSegments.map((obx: any) => ({
       params: [
         patientId,
         orderId,
@@ -195,8 +192,8 @@ export default function transform(msg: Message, ctx: Context): Message[] {
         obx.fields[8]?.components[0] ?? "",
         collectionDate,
       ],
-    },
-  }));
+    })),
+  };
 }</code></pre>
             </div>
 

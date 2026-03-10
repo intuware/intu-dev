@@ -208,6 +208,11 @@ func (s *SFTPSource) poll(ctx context.Context, handler MessageHandler) error {
 		}
 
 		msg := message.New("", data)
+		msg.Transport = "sftp"
+		msg.FTP = &message.FTPMeta{
+			Filename:  entry.Name(),
+			Directory: dir,
+		}
 		msg.Metadata["filename"] = entry.Name()
 		msg.Metadata["filepath"] = remotePath
 		msg.Metadata["sftp_host"] = s.cfg.Host

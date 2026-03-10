@@ -65,7 +65,7 @@ func (dlq *DeadLetterQueue) Send(ctx context.Context, msg *message.Message, dest
 		ChannelID:     msg.ChannelID,
 		Raw:           data,
 		ContentType:   "json",
-		Headers:       map[string]string{"X-DLQ": "true"},
+		HTTP:          &message.HTTPMeta{Headers: map[string]string{"X-DLQ": "true"}},
 		Metadata:      msg.Metadata,
 		Timestamp:     time.Now(),
 	}

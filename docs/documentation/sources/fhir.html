@@ -150,11 +150,9 @@ listener:
       jwks_url: https://auth.hospital.example.com/.well-known/jwks.json
 
 validator:
-  runtime: node
   entrypoint: validator.ts
 
 transformer:
-  runtime: node
   entrypoint: transformer.ts
 
 destinations:
@@ -163,20 +161,12 @@ destinations:
             </div>
 
             <h2>TypeScript Transformer Example</h2>
-            <p>This transformer converts a FHIR Patient to an HL7 v2 ADT message. Types come from the <code>@types/fhir</code> package (<code>fhir/r4</code>) and HL7 messages are built with <code>hl7-standard</code> — both included in scaffolded projects.</p>
+            <p>This transformer converts a FHIR Patient to an HL7 v2 ADT message. Types come from the <code>@types/fhir</code> package (<code>fhir/r4</code>) and HL7 messages are built with <code>node-hl7-client</code> — both included in scaffolded projects.</p>
 
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
                 <pre><code>import type { Patient } from "fhir/r4";
-import HL7 from "hl7-standard";
-
-function hl7Timestamp(): string {
-  const d = new Date();
-  const pad = (n: number, len = 2) =&gt; String(n).padStart(len, "0");
-  return d.getFullYear().toString()
-    + pad(d.getMonth() + 1) + pad(d.getDate())
-    + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
-}
+import { Message } from "node-hl7-client";
 
 function genderCode(g?: string): string {
   switch (g?.toLowerCase()) {
@@ -187,48 +177,44 @@ function genderCode(g?: string): string {
   }
 }
 
-export function transform(msg: unknown): string {
-  const p = msg as Patient;
-  const ts = hl7Timestamp();
-  const hl7 = new HL7();
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
+  const p = msg.body as Patient;
 
-  hl7.createSegment("MSH");
-  hl7.set("MSH.2", "^~\\&amp;");
+  const hl7 = new Message({
+    messageHeader: {
+      msh_9_1: "ADT",
+      msh_9_2: "A08",
+      msh_11_1: "P",
+    },
+  });
+
   hl7.set("MSH.3", "INTU");
   hl7.set("MSH.4", "INTU_FAC");
   hl7.set("MSH.5", "DEST");
   hl7.set("MSH.6", "DEST_FAC");
-  hl7.set("MSH.7", ts);
-  hl7.set("MSH.9", { "MSH.9.1": "ADT", "MSH.9.2": "A08" });
-  hl7.set("MSH.10", "MSG" + Date.now());
-  hl7.set("MSH.11", "P");
-  hl7.set("MSH.12", "2.5.1");
 
-  hl7.createSegment("EVN");
+  hl7.addSegment("EVN");
   hl7.set("EVN.1", "A08");
-  hl7.set("EVN.2", ts);
+  hl7.set("EVN.2", hl7.get("MSH.7").toString());
 
-  hl7.createSegment("PID");
+  hl7.addSegment("PID");
   hl7.set("PID.3.1", p.id || p.identifier?.[0]?.value || "UNKNOWN");
-  hl7.set("PID.5", {
-    "PID.5.1": p.name?.[0]?.family || "",
-    "PID.5.2": p.name?.[0]?.given?.join(" ") || "",
-  });
+  hl7.set("PID.5.1", p.name?.[0]?.family || "");
+  hl7.set("PID.5.2", p.name?.[0]?.given?.join(" ") || "");
   hl7.set("PID.7", (p.birthDate || "").replace(/-/g, ""));
   hl7.set("PID.8", genderCode(p.gender));
+
   const addr = p.address?.[0];
-  hl7.set("PID.11", {
-    "PID.11.1": addr?.line?.join(" ") || "",
-    "PID.11.3": addr?.city || "",
-    "PID.11.4": addr?.state || "",
-    "PID.11.5": addr?.postalCode || "",
-  });
+  hl7.set("PID.11.1", addr?.line?.join(" ") || "");
+  hl7.set("PID.11.3", addr?.city || "");
+  hl7.set("PID.11.4", addr?.state || "");
+  hl7.set("PID.11.5", addr?.postalCode || "");
   hl7.set("PID.13", p.telecom?.find((t) =&gt; t.system === "phone")?.value || "");
 
-  hl7.createSegment("PV1");
+  hl7.addSegment("PV1");
   hl7.set("PV1.2", "O");
 
-  return hl7.build();
+  return { body: hl7.toString() };
 }</code></pre>
             </div>
 
@@ -249,9 +235,9 @@ export function transform(msg: unknown): string {
                         <td>FHIR R4 TypeScript type definitions (Patient, Observation, Bundle, etc.). Import via <code>fhir/r4</code>. Zero runtime cost.</td>
                     </tr>
                     <tr>
-                        <td><code>hl7-standard</code></td>
+                        <td><code>node-hl7-client</code></td>
                         <td>dependency</td>
-                        <td>Lightweight HL7 v2 message builder/parser. Create segments, set fields with dot notation, build valid HL7 strings.</td>
+                        <td>Pure TypeScript HL7 v2 message builder/parser. Zero dependencies, native types, standards-compliant segment construction.</td>
                     </tr>
                 </tbody>
             </table>

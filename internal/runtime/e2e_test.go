@@ -21,6 +21,12 @@ import (
 	"github.com/intuware/intu-dev/pkg/config"
 )
 
+func TestMain(m *testing.M) {
+	code := m.Run()
+	connector.ResetSharedHTTPListeners()
+	os.Exit(code)
+}
+
 func e2eLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
@@ -88,7 +94,11 @@ func buildChannelRuntime(
 ) *ChannelRuntime {
 	t.Helper()
 	logger := e2eLogger()
-	runner := NewGojaRunner()
+	runner, err := NewNodeRunner(2, logger)
+	if err != nil {
+		t.Fatalf("init node runner: %v", err)
+	}
+	t.Cleanup(func() { runner.Close() })
 	pipeline := NewPipeline(channelDir, channelDir, id, chCfg, runner, logger)
 
 	return &ChannelRuntime{
@@ -114,11 +124,11 @@ func TestE2E_HTTPSourceToHTTPDest(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "validator.js", `
 exports.validate = function validate(msg, ctx) {
-	return msg !== null && msg !== undefined;
+	return msg.body !== null && msg.body !== undefined;
 };`)
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { transformed: true, original: msg, channelId: ctx.channelId };
+	return { body: { transformed: true, original: msg.body, channelId: ctx.channelId } };
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -191,11 +201,11 @@ func TestE2E_FileSourceToHTTPDest_SFTPToHTTP(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "validator.js", `
 exports.validate = function validate(msg, ctx) {
-	return typeof msg === "string" && msg.length > 0;
+	return typeof msg.body === "string" && msg.body.length > 0;
 };`)
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { source: "sftp", payload: msg, channelId: ctx.channelId };
+	return { body: { source: "sftp", payload: msg.body, channelId: ctx.channelId } };
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -266,7 +276,7 @@ func TestE2E_HTTPSourceToFileDest_HTTPToSFTP(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { destination: "sftp", data: msg, messageId: ctx.messageId };
+	return { body: { destination: "sftp", data: msg.body, messageId: ctx.messageId } };
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -386,35 +396,38 @@ func TestE2E_HL7viaSFTP_ToFHIR_HTTPS_OAuth2(t *testing.T) {
 
 	writeJS(t, channelDir, "validator.js", `
 exports.validate = function validate(msg, ctx) {
-	if (!msg || !msg.MSH) return false;
-	var msgType = msg.MSH["8"];
+	var b = msg.body;
+	if (!b || !b.MSH) return false;
+	var msgType = b.MSH["8"];
 	if (!msgType) return false;
 	return true;
 };`)
 
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	var pid = msg.PID || {};
+	var pid = msg.body.PID || {};
 	var nameField = pid["5"] || {};
 	var family = nameField["1"] || "Unknown";
 	var given = nameField["2"] || "Unknown";
 	var mrn = pid["3"] || "000";
 
 	return {
-		resourceType: "Bundle",
-		type: "transaction",
-		entry: [{
-			resource: {
-				resourceType: "Patient",
-				identifier: [{ system: "urn:oid:2.16.840.1.113883.2.1", value: mrn }],
-				name: [{ family: family, given: [given] }],
-				active: true
-			},
-			request: {
-				method: "POST",
-				url: "Patient"
-			}
-		}]
+		body: {
+			resourceType: "Bundle",
+			type: "transaction",
+			entry: [{
+				resource: {
+					resourceType: "Patient",
+					identifier: [{ system: "urn:oid:2.16.840.1.113883.2.1", value: mrn }],
+					name: [{ family: family, given: [given] }],
+					active: true
+				},
+				request: {
+					method: "POST",
+					url: "Patient"
+				}
+			}]
+		},
 	};
 };`)
 
@@ -550,12 +563,12 @@ func TestE2E_ValidatorRejects(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "validator.js", `
 exports.validate = function validate(msg, ctx) {
-	if (typeof msg !== "string") return false;
-	return msg.indexOf("GOOD") >= 0;
+	if (typeof msg.body !== "string") return false;
+	return msg.body.indexOf("GOOD") >= 0;
 };`)
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { validated: true, content: msg };
+	return { body: { validated: true, content: msg.body } };
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -628,12 +641,12 @@ func TestE2E_SourceFilter(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "source-filter.js", `
 exports.filter = function filter(msg, ctx) {
-	if (typeof msg !== "string") return true;
-	return msg.indexOf("ACCEPT") >= 0;
+	if (typeof msg.body !== "string") return true;
+	return msg.body.indexOf("ACCEPT") >= 0;
 };`)
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { filtered: false, data: msg };
+	return { body: { filtered: false, data: msg.body } };
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -693,7 +706,7 @@ func TestE2E_MultiDestinationRouting(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { routed: true, data: msg };
+	return { body: { routed: true, data: msg.body } };
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -762,7 +775,7 @@ func TestE2E_DestinationFilter(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { data: msg };
+	return { body: { data: msg.body } };
 };`)
 	writeJS(t, channelDir, "dest-filter-block.js", `
 exports.filter = function filter(msg, ctx) {
@@ -829,13 +842,14 @@ func TestE2E_DestinationTransformer(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { source_transformed: true, data: msg };
+	return { body: { source_transformed: true, data: msg.body } };
 };`)
 	writeJS(t, channelDir, "dest-transform.js", `
 exports.transform = function transform(msg, ctx) {
-	msg.dest_transformed = true;
-	msg.destination = ctx.destinationName;
-	return msg;
+	var result = msg.body;
+	result.dest_transformed = true;
+	result.destination = ctx.destinationName;
+	return { body: result };
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -850,7 +864,7 @@ exports.transform = function transform(msg, ctx) {
 		},
 		Destinations: []config.ChannelDestination{
 			{Name: "raw-dest"},
-			{Name: "xform-dest", TransformerFile: "dest-transform.js"},
+			{Name: "xform-dest", Transformer: &config.ScriptRef{Entrypoint: "dest-transform.js"}},
 		},
 	}
 
@@ -910,19 +924,12 @@ func TestE2E_Preprocessor(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "preprocessor.js", `
 exports.preprocess = function preprocess(raw) {
-	var s = "";
-	if (raw && raw.length) {
-		for (var i = 0; i < raw.length; i++) {
-			s += String.fromCharCode(raw[i]);
-		}
-	} else if (typeof raw === "string") {
-		s = raw;
-	}
+	var s = typeof raw === "string" ? raw : String(raw);
 	return "PREPROCESSED:" + s;
 };`)
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { preprocessed: typeof msg === "string" && msg.indexOf("PREPROCESSED:") === 0, content: msg };
+	return { body: { preprocessed: typeof msg.body === "string" && msg.body.indexOf("PREPROCESSED:") === 0, content: msg.body } };
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -979,36 +986,29 @@ func TestE2E_FullPipelineAllStages(t *testing.T) {
 
 	writeJS(t, channelDir, "preprocessor.js", `
 exports.preprocess = function preprocess(raw) {
-	var s = "";
-	if (raw && raw.length) {
-		for (var i = 0; i < raw.length; i++) {
-			s += String.fromCharCode(raw[i]);
-		}
-	} else if (typeof raw === "string") {
-		s = raw;
-	}
+	var s = typeof raw === "string" ? raw : String(raw);
 	return "PRE:" + s;
 };`)
 	writeJS(t, channelDir, "validator.js", `
 exports.validate = function validate(msg, ctx) {
-	return typeof msg === "string" && msg.indexOf("PRE:") === 0;
+	return typeof msg.body === "string" && msg.body.indexOf("PRE:") === 0;
 };`)
 	writeJS(t, channelDir, "source-filter.js", `
 exports.filter = function filter(msg, ctx) {
-	return typeof msg === "string" && msg.indexOf("KEEP") >= 0;
+	return typeof msg.body === "string" && msg.body.indexOf("KEEP") >= 0;
 };`)
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { stage: "source_transformed", content: msg };
+	return { body: { stage: "source_transformed", content: msg.body } };
 };`)
 	writeJS(t, channelDir, "dest-transform.js", `
 exports.transform = function transform(msg, ctx) {
-	msg.stage = "dest_transformed";
-	return msg;
+	var result = msg.body;
+	result.stage = "dest_transformed";
+	return { body: result };
 };`)
 	writeJS(t, channelDir, "postprocessor.js", `
 exports.postprocess = function postprocess(msg, results, ctx) {
-	// postprocessor runs but doesn't affect output
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -1026,7 +1026,7 @@ exports.postprocess = function postprocess(msg, results, ctx) {
 			HTTP: &config.HTTPListener{Port: 0},
 		},
 		Destinations: []config.ChannelDestination{
-			{Name: "dest", TransformerFile: "dest-transform.js"},
+			{Name: "dest", Transformer: &config.ScriptRef{Entrypoint: "dest-transform.js"}},
 		},
 	}
 
@@ -1049,7 +1049,7 @@ exports.postprocess = function postprocess(msg, results, ctx) {
 	http.Post("http://"+addr+"/", "text/plain", strings.NewReader("KEEP this"))
 	http.Post("http://"+addr+"/", "text/plain", strings.NewReader("DROP too"))
 
-	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+	waitFor(t, 5*time.Second, func() bool { return capture.count() >= 1 })
 	time.Sleep(300 * time.Millisecond)
 
 	if capture.count() != 1 {
@@ -1082,14 +1082,16 @@ func TestE2E_HL7v2DataTypeParsing(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	var msh = msg.MSH || {};
-	var pid = msg.PID || {};
+	var msh = msg.body.MSH || {};
+	var pid = msg.body.PID || {};
 	return {
-		messageType: msh["8"],
-		controlId: msh["9"],
-		patientMRN: pid["3"],
-		patientName: pid["5"],
-		dataType: ctx.inboundDataType
+		body: {
+			messageType: msh["8"],
+			controlId: msh["9"],
+			patientMRN: pid["3"],
+			patientName: pid["5"],
+			dataType: ctx.inboundDataType
+		},
 	};
 };`)
 
@@ -1168,15 +1170,17 @@ func TestE2E_JSONDataTypePipeline(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "validator.js", `
 exports.validate = function validate(msg, ctx) {
-	return msg && msg.patientId !== undefined;
+	return msg.body && msg.body.patientId !== undefined;
 };`)
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
 	return {
-		resourceType: "Patient",
-		id: msg.patientId,
-		name: [{ family: msg.lastName, given: [msg.firstName] }],
-		birthDate: msg.dob
+		body: {
+			resourceType: "Patient",
+			id: msg.body.patientId,
+			name: [{ family: msg.body.lastName, given: [msg.body.firstName] }],
+			birthDate: msg.body.dob
+		},
 	};
 };`)
 
@@ -1244,22 +1248,20 @@ func TestE2E_LegacyValidatorConfig(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "validator.js", `
 exports.validate = function validate(msg, ctx) {
-	return typeof msg === "string" && msg.length > 5;
+	return typeof msg.body === "string" && msg.body.length > 5;
 };`)
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { legacy_validated: true, data: msg };
+	return { body: { legacy_validated: true, data: msg.body } };
 };`)
 
 	chCfg := &config.ChannelConfig{
 		ID:      "e2e-legacy-validator",
 		Enabled: true,
 		Validator: &config.ScriptRef{
-			Runtime:    "node",
 			Entrypoint: "validator.js",
 		},
 		Transformer: &config.ScriptRef{
-			Runtime:    "node",
 			Entrypoint: "transformer.js",
 		},
 		Listener: config.ListenerConfig{
@@ -1323,7 +1325,7 @@ func TestE2E_AuthenticatedHTTPToHTTP(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { secured: true, data: msg };
+	return { body: { secured: true, data: msg.body } };
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -1405,23 +1407,25 @@ func TestE2E_HL7ToMultiDest_FHIRAndArchive(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "validator.js", `
 exports.validate = function validate(msg, ctx) {
-	return msg && msg.MSH && msg.PID;
+	return msg.body && msg.body.MSH && msg.body.PID;
 };`)
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	var pid = msg.PID || {};
+	var pid = msg.body.PID || {};
 	var name = pid["5"] || {};
 	return {
-		resourceType: "Bundle",
-		type: "transaction",
-		entry: [{
-			resource: {
-				resourceType: "Patient",
-				identifier: [{ value: pid["3"] || "unknown" }],
-				name: [{ family: name["1"] || "Unknown", given: [name["2"] || "Unknown"] }]
-			},
-			request: { method: "POST", url: "Patient" }
-		}]
+		body: {
+			resourceType: "Bundle",
+			type: "transaction",
+			entry: [{
+				resource: {
+					resourceType: "Patient",
+					identifier: [{ value: pid["3"] || "unknown" }],
+					name: [{ family: name["1"] || "Unknown", given: [name["2"] || "Unknown"] }]
+				},
+				request: { method: "POST", url: "Patient" }
+			}]
+		},
 	};
 };`)
 
@@ -1509,11 +1513,11 @@ func TestE2E_InterChannelRouting(t *testing.T) {
 
 	writeJS(t, channelDirA, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { from_channel_a: true, original: msg };
+	return { body: { from_channel_a: true, original: msg.body } };
 };`)
 	writeJS(t, channelDirB, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { from_channel_b: true, forwarded: msg };
+	return { body: { from_channel_b: true, forwarded: msg.body } };
 };`)
 
 	busChannelID := fmt.Sprintf("inter-ch-bus-%d", time.Now().UnixNano())
@@ -1596,7 +1600,7 @@ func TestE2E_TCPMLLPSourceToHTTPDest(t *testing.T) {
 	channelDir := t.TempDir()
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { source_type: ctx.sourceType, hl7_data: msg };
+	return { body: { source_type: msg.transport, hl7_data: msg.body } };
 };`)
 
 	chCfg := &config.ChannelConfig{
@@ -1689,14 +1693,14 @@ func TestE2E_EngineIntegration(t *testing.T) {
 	defer destServer.Close()
 
 	projectDir := t.TempDir()
-	channelsDir := filepath.Join(projectDir, "channels")
+	channelsDir := filepath.Join(projectDir, "src", "channels")
 	channelDir := filepath.Join(channelsDir, "test-channel")
 	os.MkdirAll(channelDir, 0o755)
 
 	intuYAML := fmt.Sprintf(`runtime:
   name: e2e-test
   log_level: error
-channels_dir: channels
+channels_dir: src/channels
 destinations:
   test-dest:
     type: http
@@ -1721,7 +1725,7 @@ destinations:
 
 	writeJS(t, channelDir, "transformer.js", `
 exports.transform = function transform(msg, ctx) {
-	return { engine_test: true, data: msg };
+	return { body: { engine_test: true, data: msg.body } };
 };`)
 
 	loader := config.NewLoader(projectDir)

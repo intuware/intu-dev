@@ -7,6 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/intuware/intu-dev/internal/auth"
@@ -49,12 +51,39 @@ func (h *HTTPDest) Send(ctx context.Context, msg *message.Message) (*message.Res
 		method = "POST"
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, h.cfg.URL, bytes.NewReader(msg.Raw))
+	headers := mergeMaps(h.cfg.Headers, nil)
+	queryParams := mergeMaps(h.cfg.QueryParams, nil)
+	pathParams := mergeMaps(h.cfg.PathParams, nil)
+	if msg.HTTP != nil {
+		headers = mergeMaps(headers, msg.HTTP.Headers)
+		queryParams = mergeMaps(queryParams, msg.HTTP.QueryParams)
+		pathParams = mergeMaps(pathParams, msg.HTTP.PathParams)
+	}
+
+	targetURL := h.cfg.URL
+	for k, v := range pathParams {
+		targetURL = strings.ReplaceAll(targetURL, "{"+k+"}", url.PathEscape(v))
+	}
+
+	if len(queryParams) > 0 {
+		u, err := url.Parse(targetURL)
+		if err != nil {
+			return nil, fmt.Errorf("parse URL: %w", err)
+		}
+		q := u.Query()
+		for k, v := range queryParams {
+			q.Set(k, v)
+		}
+		u.RawQuery = q.Encode()
+		targetURL = u.String()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, targetURL, bytes.NewReader(msg.Raw))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	for k, v := range h.cfg.Headers {
+	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	if req.Header.Get("Content-Type") == "" {
@@ -72,18 +101,29 @@ func (h *HTTPDest) Send(ctx context.Context, msg *message.Message) (*message.Res
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	headers := make(map[string]string)
+	respHeaders := make(map[string]string)
 	for k, v := range resp.Header {
 		if len(v) > 0 {
-			headers[k] = v[0]
+			respHeaders[k] = v[0]
 		}
 	}
 
 	return &message.Response{
 		StatusCode: resp.StatusCode,
 		Body:       body,
-		Headers:    headers,
+		Headers:    respHeaders,
 	}, nil
+}
+
+func mergeMaps(base, override map[string]string) map[string]string {
+	merged := make(map[string]string, len(base)+len(override))
+	for k, v := range base {
+		merged[k] = v
+	}
+	for k, v := range override {
+		merged[k] = v
+	}
+	return merged
 }
 
 func (h *HTTPDest) applyAuth(req *http.Request) {

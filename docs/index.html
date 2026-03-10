@@ -192,7 +192,7 @@
                 <div>
                     <div class="glass rounded-2xl overflow-hidden glow">
                         <div class="px-5 py-3 bg-slate-900/60 border-b border-slate-800 flex items-center justify-between">
-                            <span class="mono text-xs text-slate-500">channels/fhir-to-adt/channel.yaml</span>
+                            <span class="mono text-xs text-slate-500">src/channels/fhir-to-adt/channel.yaml</span>
                             <span class="text-[10px] font-bold uppercase tracking-widest text-sky-500/60">config</span>
                         </div>
                         <div class="p-5 mono text-sm leading-relaxed overflow-x-auto">
@@ -222,30 +222,24 @@
                 <div>
                     <div class="glass rounded-2xl overflow-hidden glow">
                         <div class="px-5 py-3 bg-slate-900/60 border-b border-slate-800 flex items-center justify-between">
-                            <span class="mono text-xs text-slate-500">channels/fhir-to-adt/transformer.ts</span>
+                            <span class="mono text-xs text-slate-500">src/channels/fhir-to-adt/transformer.ts</span>
                             <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-400/60">logic</span>
                         </div>
                         <div class="p-5 mono text-sm leading-relaxed overflow-x-auto">
 <pre class="m-0 bg-transparent" style="font:inherit;line-height:inherit;white-space:pre;border:none;padding:0"><span class="text-slate-500">import</span> <span class="text-sky-400">type</span> { <span class="text-amber-300">Patient</span> } <span class="text-slate-500">from</span> <span class="text-emerald-400">"fhir/r4"</span>;
-<span class="text-slate-500">import</span> <span class="text-amber-300">HL7</span> <span class="text-slate-500">from</span> <span class="text-emerald-400">"hl7-standard"</span>;
+<span class="text-slate-500">import</span> { <span class="text-amber-300">Message</span> } <span class="text-slate-500">from</span> <span class="text-emerald-400">"node-hl7-client"</span>;
 
-<span class="text-slate-500">export function</span> <span class="text-sky-400">transform</span>(msg: unknown): <span class="text-amber-300">string</span> {
-  <span class="text-slate-500">const</span> p = msg <span class="text-slate-500">as</span> <span class="text-amber-300">Patient</span>;
-  <span class="text-slate-500">const</span> hl7 = <span class="text-slate-500">new</span> <span class="text-amber-300">HL7</span>();
-
-  hl7.createSegment(<span class="text-emerald-400">"MSH"</span>);
-  hl7.set(<span class="text-emerald-400">"MSH.9"</span>, {
-    <span class="text-emerald-400">"MSH.9.1"</span>: <span class="text-emerald-400">"ADT"</span>,
-    <span class="text-emerald-400">"MSH.9.2"</span>: <span class="text-emerald-400">"A08"</span>
+<span class="text-slate-500">export function</span> <span class="text-sky-400">transform</span>(msg: <span class="text-amber-300">IntuMessage</span>, ctx: <span class="text-amber-300">IntuContext</span>): <span class="text-amber-300">IntuMessage</span> {
+  <span class="text-slate-500">const</span> p = msg.body <span class="text-slate-500">as</span> <span class="text-amber-300">Patient</span>;
+  <span class="text-slate-500">const</span> hl7 = <span class="text-slate-500">new</span> <span class="text-amber-300">Message</span>({
+    messageHeader: { msh_9_1: <span class="text-emerald-400">"ADT"</span>, msh_9_2: <span class="text-emerald-400">"A08"</span>, msh_11_1: <span class="text-emerald-400">"P"</span> },
   });
 
-  hl7.createSegment(<span class="text-emerald-400">"PID"</span>);
-  hl7.set(<span class="text-emerald-400">"PID.5"</span>, {
-    <span class="text-emerald-400">"PID.5.1"</span>: p.name?.[<span class="text-orange-400">0</span>]?.family,
-    <span class="text-emerald-400">"PID.5.2"</span>: p.name?.[<span class="text-orange-400">0</span>]?.given?.join(<span class="text-emerald-400">" "</span>)
-  });
+  hl7.addSegment(<span class="text-emerald-400">"PID"</span>);
+  hl7.set(<span class="text-emerald-400">"PID.5.1"</span>, p.name?.[<span class="text-orange-400">0</span>]?.family);
+  hl7.set(<span class="text-emerald-400">"PID.5.2"</span>, p.name?.[<span class="text-orange-400">0</span>]?.given?.join(<span class="text-emerald-400">" "</span>));
 
-  <span class="text-slate-500">return</span> hl7.build();
+  <span class="text-slate-500">return</span> { body: hl7.toString() };
 }</pre>
                         </div>
                     </div>

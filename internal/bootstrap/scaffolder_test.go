@@ -93,12 +93,12 @@ func TestBootstrapChannelCreatesChannel(t *testing.T) {
 	}
 
 	root := filepath.Join(dir, "test")
-	result, err := scaffolder.BootstrapChannel(root, "my-channel", false)
+	result, err := scaffolder.BootstrapChannel(root, "my-channel", "", false)
 	if err != nil {
 		t.Fatalf("bootstrap channel failed: %v", err)
 	}
 
-	files := channelFiles("my-channel")
+	files := channelFiles(DefaultChannelsDir, "my-channel")
 	if result.Created != len(files) {
 		t.Fatalf("expected %d created files, got %d", len(files), result.Created)
 	}

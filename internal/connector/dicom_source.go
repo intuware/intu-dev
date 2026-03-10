@@ -123,7 +123,11 @@ func (d *DICOMSource) handleConnection(ctx context.Context, conn net.Conn, handl
 		case 0x04:
 			d.logger.Debug("DICOM P-DATA-TF received", "size", len(pduData))
 			msg := message.New("", pduData)
+			msg.Transport = "dicom"
 			msg.ContentType = "dicom"
+			msg.DICOM = &message.DICOMMeta{
+				CalledAE: d.cfg.AETitle,
+			}
 			msg.Metadata["source"] = "dicom"
 			msg.Metadata["ae_title"] = d.cfg.AETitle
 			msg.Metadata["remote_addr"] = conn.RemoteAddr().String()
@@ -145,7 +149,11 @@ func (d *DICOMSource) handleConnection(ctx context.Context, conn net.Conn, handl
 		default:
 			d.logger.Debug("DICOM unknown PDU type", "type", fmt.Sprintf("0x%02X", pduType))
 			msg := message.New("", pduData)
+			msg.Transport = "dicom"
 			msg.ContentType = "dicom"
+			msg.DICOM = &message.DICOMMeta{
+				CalledAE: d.cfg.AETitle,
+			}
 			msg.Metadata["source"] = "dicom"
 			msg.Metadata["pdu_type"] = fmt.Sprintf("0x%02X", pduType)
 

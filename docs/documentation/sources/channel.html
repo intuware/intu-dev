@@ -66,11 +66,9 @@ listener:
     mode: mllp
 
 validator:
-  runtime: node
   entrypoint: validator.ts
 
 transformer:
-  runtime: node
   entrypoint: normalizer.ts
 
 destinations:
@@ -89,11 +87,9 @@ listener:
     source_channel_id: adt-inbound
 
 validator:
-  runtime: node
   entrypoint: validator.ts
 
 transformer:
-  runtime: node
   entrypoint: transformer.ts
 
 destinations:
@@ -105,9 +101,7 @@ destinations:
 
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>import { Message, TransformResult } from "@intu/sdk";
-
-interface NormalizedPatient {
+                <pre><code>interface NormalizedPatient {
   mrn: string;
   familyName: string;
   givenName: string;
@@ -129,12 +123,12 @@ interface NormalizedPatient {
   maritalStatus?: string;
 }
 
-export default function transform(msg: Message): TransformResult {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   let patient: NormalizedPatient;
   try {
     patient = JSON.parse(msg.body as string);
   } catch {
-    return { success: false, error: "Invalid JSON from upstream channel" };
+    throw new Error("Invalid JSON from upstream channel");
   }
 
   const fhirPatient = {
@@ -183,11 +177,7 @@ export default function transform(msg: Message): TransformResult {
       : undefined,
   };
 
-  return {
-    success: true,
-    body: JSON.stringify(fhirPatient),
-    contentType: "application/fhir+json",
-  };
+  return { body: JSON.stringify(fhirPatient) };
 }
 
 function mapGender(code: string): string {

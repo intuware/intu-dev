@@ -125,6 +125,10 @@ func (t *TCPSource) handleConn(ctx context.Context, conn net.Conn, handler Messa
 		}
 
 		msg := message.New("", data)
+		msg.Transport = "tcp"
+		msg.TCP = &message.TCPMeta{
+			RemoteAddr: conn.RemoteAddr().String(),
+		}
 		handlerErr := handler(ctx, msg)
 		if handlerErr != nil {
 			t.logger.Error("handler error", "error", handlerErr)

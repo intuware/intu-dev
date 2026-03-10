@@ -198,6 +198,7 @@ func (e *EmailSource) pollIMAP(ctx context.Context, handler MessageHandler) erro
 		}
 
 		msg := message.New("", []byte(body.String()))
+		msg.Transport = "email"
 		msg.Metadata["source"] = "email"
 		msg.Metadata["protocol"] = "imap"
 		msg.Metadata["folder"] = folder
@@ -310,6 +311,7 @@ func (e *EmailSource) pollPOP3(ctx context.Context, handler MessageHandler) erro
 		}
 
 		msg := message.New("", []byte(body.String()))
+		msg.Transport = "email"
 		msg.Metadata["source"] = "email"
 		msg.Metadata["protocol"] = "pop3"
 		msg.Metadata["message_num"] = num

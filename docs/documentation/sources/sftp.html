@@ -157,11 +157,9 @@ listener:
     sort_by: date
 
 validator:
-  runtime: node
   entrypoint: validator.ts
 
 transformer:
-  runtime: node
   entrypoint: transformer.ts
 
 destinations:
@@ -173,9 +171,7 @@ destinations:
 
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>import { Message, TransformResult } from "@intu/sdk";
-
-interface LabResult {
+                <pre><code>interface LabResult {
   patientMrn: string;
   testCode: string;
   testName: string;
@@ -208,12 +204,12 @@ function parseCsv(content: string): LabResult[] {
   return results;
 }
 
-export default function transform(msg: Message): TransformResult {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   const csvContent = msg.body as string;
   const results = parseCsv(csvContent);
 
   if (results.length === 0) {
-    return { success: false, error: "No lab results found in CSV" };
+    throw new Error("No lab results found in CSV");
   }
 
   const bundle = {
@@ -249,9 +245,7 @@ export default function transform(msg: Message): TransformResult {
   };
 
   return {
-    success: true,
     body: JSON.stringify(bundle),
-    contentType: "application/fhir+json",
   };
 }</code></pre>
             </div>

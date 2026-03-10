@@ -170,7 +170,7 @@ destinations:
             <h3>Channel Configuration</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
-                <pre><code># channels/critical-alerts/channel.yaml
+                <pre><code># src/channels/critical-alerts/channel.yaml
 name: critical-alerts
 description: Email alerts for critical lab results
 
@@ -187,10 +187,9 @@ destinations:
             <h3>Destination Transformer</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>// channels/critical-alerts/transformer.ts
-import { Message, Context } from "@intu/sdk";
+                <pre><code>// src/channels/critical-alerts/transformer.ts
 
-export default function transform(msg: Message, ctx: Context): Message | null {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   const hl7 = msg.body;
   const pid = hl7.segments?.find((s: any) => s.name === "PID");
   const obxSegments = hl7.segments?.filter((s: any) => s.name === "OBX") ?? [];
@@ -200,8 +199,7 @@ export default function transform(msg: Message, ctx: Context): Message | null {
   );
 
   if (criticalResults.length === 0) {
-    ctx.logger.info("No critical results found, skipping alert");
-    return null;
+    throw new Error("No critical results found, skipping alert");
   }
 
   const patientId = pid?.fields[3]?.components[0] ?? "UNKNOWN";
@@ -240,12 +238,7 @@ export default function transform(msg: Message, ctx: Context): Message | null {
     </p>`;
 
   return {
-    ...msg,
     body: emailBody,
-    headers: {
-      ...msg.headers,
-      patientId,
-    },
   };
 }</code></pre>
             </div>

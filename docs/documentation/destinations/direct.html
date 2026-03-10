@@ -140,7 +140,7 @@ destinations:
             <h3>Channel Configuration</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
-                <pre><code># channels/referral-direct/channel.yaml
+                <pre><code># src/channels/referral-direct/channel.yaml
 name: referral-direct
 description: Send referral C-CDA documents via Direct messaging
 
@@ -157,10 +157,9 @@ destinations:
             <h3>Destination Transformer</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>// channels/referral-direct/transformer.ts
-import { Message, Context } from "@intu/sdk";
+                <pre><code>// src/channels/referral-direct/transformer.ts
 
-export default function transform(msg: Message, ctx: Context): Message {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   const referral = msg.body;
 
   const patientName = `${referral.patient?.given ?? ""} ${referral.patient?.family ?? ""}`.trim();
@@ -240,10 +239,9 @@ export default function transform(msg: Message, ctx: Context): Message {
   </component>
 </ClinicalDocument>`;
 
-  ctx.logger.info(`Sending referral C-CDA for patient ${patientId} via Direct`);
+  console.info(`Sending referral C-CDA for patient ${patientId} via Direct`);
 
   return {
-    ...msg,
     body: ccda,
   };
 }</code></pre>

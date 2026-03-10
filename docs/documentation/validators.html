@@ -42,7 +42,6 @@
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">yaml</span></div>
                 <pre><code>validator:
-  runtime: node
   entrypoint: validator.ts</code></pre>
             </div>
 
@@ -61,15 +60,20 @@
 
             <h2>Writing a Validator</h2>
             <p>
-                A validator is a named export called <code>validate</code>. It receives the parsed message and
-                an optional context object. If the function returns normally, the message is accepted. If the
-                function throws an <code>Error</code>, the message is rejected.
+                A validator is a named export called <code>validate</code>. It receives an <code>IntuMessage</code>
+                envelope containing the parsed message body. If the function returns normally, the message is accepted.
+                If the function throws an <code>Error</code>, the message is rejected.
+            </p>
+            <p>
+                The <code>IntuMessage</code> type is globally available via the project's <code>src/types/intu.d.ts</code>
+                declaration file &mdash; no imports needed.
             </p>
 
             <h3>Function signature</h3>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function validate(msg: unknown, ctx?: { channelId: string; correlationId: string }): void {
+                <pre><code>export function validate(msg: IntuMessage): void {
+  // Access the parsed payload via msg.body
   // Throw an error to reject the message
   // Return void to accept
 }</code></pre>
@@ -86,18 +90,18 @@
                 <tbody>
                     <tr>
                         <td><code>msg</code></td>
+                        <td><code>IntuMessage</code></td>
+                        <td>The message envelope with <code>body</code>, <code>transport</code>, and protocol metadata</td>
+                    </tr>
+                    <tr>
+                        <td><code>msg.body</code></td>
                         <td><code>unknown</code></td>
-                        <td>The incoming message, automatically parsed according to <code>data_types.inbound</code></td>
+                        <td>The incoming payload, automatically parsed according to <code>data_types.inbound</code></td>
                     </tr>
                     <tr>
-                        <td><code>ctx.channelId</code></td>
+                        <td><code>msg.transport</code></td>
                         <td><code>string</code></td>
-                        <td>The name of the channel processing this message</td>
-                    </tr>
-                    <tr>
-                        <td><code>ctx.correlationId</code></td>
-                        <td><code>string</code></td>
-                        <td>Unique correlation ID for distributed tracing</td>
+                        <td>The source transport type (<code>http</code>, <code>file</code>, <code>kafka</code>, etc.)</td>
                     </tr>
                 </tbody>
             </table>
@@ -108,9 +112,9 @@
             <p>Reject anything that is not a non-null object:</p>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function validate(msg: unknown): void {
-  if (!msg || typeof msg !== "object") {
-    throw new Error("Message must be a non-null object");
+                <pre><code>export function validate(msg: IntuMessage): void {
+  if (!msg.body || typeof msg.body !== "object") {
+    throw new Error("Message body must be a non-null object");
   }
 }</code></pre>
             </div>
@@ -119,8 +123,8 @@
             <p>Ensure required segments and fields are present on an HL7v2 ADT message:</p>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function validate(msg: unknown): void {
-  const m = msg as Record&lt;string, any&gt;;
+                <pre><code>export function validate(msg: IntuMessage): void {
+  const m = msg.body as Record&lt;string, any&gt;;
 
   if (!m.MSH) throw new Error("Missing MSH segment");
   if (!m.PID) throw new Error("Missing PID segment");
@@ -133,8 +137,8 @@
             <p>Validate that a FHIR resource has the required type and mandatory fields:</p>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function validate(msg: unknown): void {
-  const resource = msg as Record&lt;string, any&gt;;
+                <pre><code>export function validate(msg: IntuMessage): void {
+  const resource = msg.body as Record&lt;string, any&gt;;
 
   if (!resource.resourceType) {
     throw new Error("Missing resourceType");
@@ -155,8 +159,8 @@
             <p>Check that a lab result message has all the required fields and a well-formed results array:</p>
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>export function validate(msg: unknown): void {
-  const lab = msg as Record&lt;string, any&gt;;
+                <pre><code>export function validate(msg: IntuMessage): void {
+  const lab = msg.body as Record&lt;string, any&gt;;
 
   if (!lab.orderId) throw new Error("Missing orderId");
   if (!lab.patientId) throw new Error("Missing patientId");

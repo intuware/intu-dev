@@ -125,7 +125,11 @@ func (d *DatabaseSource) poll(ctx context.Context, handler MessageHandler) error
 		}
 
 		msg := message.New("", data)
+		msg.Transport = "database"
 		msg.ContentType = "json"
+		msg.Database = &message.DatabaseMeta{
+			Query: strings.TrimSpace(d.cfg.Query),
+		}
 		msg.Metadata["source"] = "database"
 		msg.Metadata["driver"] = d.cfg.Driver
 

@@ -260,7 +260,6 @@ type PipelineConfig struct {
 }
 
 type ScriptRef struct {
-	Runtime    string `yaml:"runtime,omitempty"`
 	Entrypoint string `yaml:"entrypoint,omitempty"`
 }
 
@@ -279,9 +278,9 @@ type ChannelDestination struct {
 	JMS                 *JMSDestConfig    `yaml:"jms,omitempty"`
 	FHIR                *FHIRDestConfig   `yaml:"fhir,omitempty"`
 	Direct              *DirectDestConfig `yaml:"direct,omitempty"`
-	Filter              string            `yaml:"filter,omitempty"`
-	TransformerFile     string            `yaml:"transformer,omitempty"`
-	ResponseTransformer string            `yaml:"response_transformer,omitempty"`
+	Filter              string     `yaml:"filter,omitempty"`
+	Transformer         *ScriptRef `yaml:"transformer,omitempty"`
+	ResponseTransformer *ScriptRef `yaml:"response_transformer,omitempty"`
 	Queue               *QueueConfig      `yaml:"queue,omitempty"`
 	Retry               *RetryConfig      `yaml:"retry,omitempty"`
 }

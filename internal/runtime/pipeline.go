@@ -24,7 +24,7 @@ type Pipeline struct {
 	projectDir   string
 	channelID    string
 	config       *config.ChannelConfig
-	runner       JSRunner
+	runner       *NodeRunner
 	logger       *slog.Logger
 	parser       datatype.Parser
 	store        storage.MessageStore
@@ -33,7 +33,7 @@ type Pipeline struct {
 	splitter     datatype.BatchSplitter
 }
 
-func NewPipeline(channelDir, projectDir, channelID string, cfg *config.ChannelConfig, runner JSRunner, logger *slog.Logger) *Pipeline {
+func NewPipeline(channelDir, projectDir, channelID string, cfg *config.ChannelConfig, runner *NodeRunner, logger *slog.Logger) *Pipeline {
 	inboundType := ""
 	if cfg.DataTypes != nil {
 		inboundType = cfg.DataTypes.Inbound
@@ -86,6 +86,7 @@ type PipelineResult struct {
 	Filtered    bool
 	Output      any
 	OutputBytes []byte
+	OutputMsg   *message.Message
 	RouteTo     []string
 	DestResults []DestinationResult
 	BatchItems  []BatchItem
@@ -107,7 +108,7 @@ func (p *Pipeline) Execute(ctx context.Context, msg *message.Message) (*Pipeline
 	)
 	defer span.End()
 
-	var current any = msg.Raw
+	var current any = string(msg.Raw)
 
 	if p.config.Pipeline != nil && p.config.Pipeline.Preprocessor != "" {
 		_, preprocessSpan := tracer.Start(ctx, "pipeline.preprocess",
@@ -195,12 +196,13 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 		parsed = string(raw)
 	}
 	current := parsed
+	intuMsg := p.buildIntuMessage(msg, current)
 
 	if validatorFile := p.resolveValidator(); validatorFile != "" {
 		_, validatorSpan := tracer.Start(ctx, "pipeline.validate",
 			trace.WithAttributes(attribute.String("script", validatorFile)),
 		)
-		out, err := p.callScript("validate", validatorFile, current, p.buildPipelineCtx(msg))
+		out, err := p.callScript("validate", validatorFile, intuMsg, p.buildPipelineCtx(msg))
 		if err != nil {
 			validatorSpan.SetStatus(codes.Error, err.Error())
 			validatorSpan.End()
@@ -217,7 +219,7 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 		_, filterSpan := tracer.Start(ctx, "pipeline.source_filter",
 			trace.WithAttributes(attribute.String("script", p.config.Pipeline.SourceFilter)),
 		)
-		out, err := p.callScript("filter", p.config.Pipeline.SourceFilter, current, p.buildPipelineCtx(msg))
+		out, err := p.callScript("filter", p.config.Pipeline.SourceFilter, intuMsg, p.buildPipelineCtx(msg))
 		if err != nil {
 			filterSpan.SetStatus(codes.Error, err.Error())
 			filterSpan.End()
@@ -237,18 +239,28 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 			trace.WithAttributes(attribute.String("script", transformerFile)),
 		)
 		tctx := p.buildTransformCtx(msg)
-		out, err := p.callScript("transform", transformerFile, current, tctx)
+		out, err := p.callScript("transform", transformerFile, intuMsg, tctx)
 		if err != nil {
 			transformSpan.SetStatus(codes.Error, err.Error())
 			transformSpan.End()
 			return nil, fmt.Errorf("transformer: %w", err)
 		}
 		transformSpan.End()
-		current = out
+
+		outMsg := p.parseIntuResult(out, msg)
+		current = outMsg.Output
 
 		if routes, ok := tctx["_routeTo"].([]string); ok && len(routes) > 0 {
 			routeTo = routes
 		}
+
+		outputBytes := p.toBytes(outMsg.Output)
+		return &PipelineResult{
+			Output:      outMsg.Output,
+			OutputBytes: outputBytes,
+			OutputMsg:   outMsg.Msg,
+			RouteTo:     routeTo,
+		}, nil
 	}
 
 	outputBytes := p.toBytes(current)
@@ -275,12 +287,13 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 	defer span.End()
 
 	current := transformed
+	intuMsg := p.buildIntuMessage(msg, current)
 
 	if dest.Filter != "" {
 		_, filterSpan := tracer.Start(ctx, "pipeline.destination.filter",
 			trace.WithAttributes(attribute.String("script", dest.Filter)),
 		)
-		out, err := p.callScript("filter", dest.Filter, current, p.buildDestCtx(msg, dest.Name))
+		out, err := p.callScript("filter", dest.Filter, intuMsg, p.buildDestCtx(msg, dest.Name))
 		if err != nil {
 			filterSpan.SetStatus(codes.Error, err.Error())
 			filterSpan.End()
@@ -294,18 +307,24 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 		}
 	}
 
-	if dest.TransformerFile != "" {
+	destTransformer := resolveDestTransformer(dest)
+	if destTransformer != "" {
 		_, transformSpan := tracer.Start(ctx, "pipeline.destination.transform",
-			trace.WithAttributes(attribute.String("script", dest.TransformerFile)),
+			trace.WithAttributes(attribute.String("script", destTransformer)),
 		)
-		out, err := p.callScript("transform", dest.TransformerFile, current, p.buildDestCtx(msg, dest.Name))
+		out, err := p.callScript("transform", destTransformer, intuMsg, p.buildDestCtx(msg, dest.Name))
 		if err != nil {
 			transformSpan.SetStatus(codes.Error, err.Error())
 			transformSpan.End()
 			return nil, false, fmt.Errorf("destination transformer %s: %w", dest.Name, err)
 		}
 		transformSpan.End()
-		current = out
+
+		outResult := p.parseIntuResult(out, msg)
+		current = outResult.Output
+		outMsg := outResult.Msg
+		outMsg.Raw = p.toBytes(current)
+		return outMsg, false, nil
 	}
 
 	outBytes := p.toBytes(current)
@@ -314,8 +333,16 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 		CorrelationID: msg.CorrelationID,
 		ChannelID:     msg.ChannelID,
 		Raw:           outBytes,
+		Transport:     msg.Transport,
 		ContentType:   msg.ContentType,
-		Headers:       msg.Headers,
+		HTTP:          msg.HTTP,
+		File:          msg.File,
+		FTP:           msg.FTP,
+		Kafka:         msg.Kafka,
+		TCP:           msg.TCP,
+		SMTP:          msg.SMTP,
+		DICOM:         msg.DICOM,
+		Database:      msg.Database,
 		Metadata:      msg.Metadata,
 		Timestamp:     msg.Timestamp,
 	}
@@ -324,7 +351,8 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 }
 
 func (p *Pipeline) ExecuteResponseTransformer(ctx context.Context, msg *message.Message, dest config.ChannelDestination, resp *message.Response) error {
-	if dest.ResponseTransformer == "" {
+	respTransformer := resolveDestResponseTransformer(dest)
+	if respTransformer == "" {
 		return nil
 	}
 
@@ -339,7 +367,7 @@ func (p *Pipeline) ExecuteResponseTransformer(ctx context.Context, msg *message.
 		respData["error"] = resp.Error.Error()
 	}
 
-	_, err := p.callScript("transformResponse", dest.ResponseTransformer, respData, p.buildDestCtx(msg, dest.Name))
+	_, err := p.callScript("transformResponse", respTransformer, respData, p.buildDestCtx(msg, dest.Name))
 	return err
 }
 
@@ -362,6 +390,20 @@ func (p *Pipeline) ExecutePostprocessor(ctx context.Context, msg *message.Messag
 
 	_, err := p.callScript("postprocess", p.config.Pipeline.Postprocessor, transformed, resultsData, p.buildPipelineCtx(msg))
 	return err
+}
+
+func resolveDestTransformer(dest config.ChannelDestination) string {
+	if dest.Transformer != nil && dest.Transformer.Entrypoint != "" {
+		return dest.Transformer.Entrypoint
+	}
+	return ""
+}
+
+func resolveDestResponseTransformer(dest config.ChannelDestination) string {
+	if dest.ResponseTransformer != nil && dest.ResponseTransformer.Entrypoint != "" {
+		return dest.ResponseTransformer.Entrypoint
+	}
+	return ""
 }
 
 func (p *Pipeline) resolveValidator() string {
@@ -434,7 +476,6 @@ func (p *Pipeline) buildTransformCtx(msg *message.Message) map[string]any {
 		ctx["inboundDataType"] = p.config.DataTypes.Inbound
 		ctx["outboundDataType"] = p.config.DataTypes.Outbound
 	}
-	ctx["sourceType"] = p.config.Listener.Type
 	return ctx
 }
 
@@ -442,6 +483,297 @@ func (p *Pipeline) buildDestCtx(msg *message.Message, destName string) map[strin
 	ctx := p.buildPipelineCtx(msg)
 	ctx["destinationName"] = destName
 	return ctx
+}
+
+// buildIntuMessage constructs the IntuMessage map passed to transformers.
+func (p *Pipeline) buildIntuMessage(msg *message.Message, parsed any) map[string]any {
+	im := map[string]any{
+		"body":        parsed,
+		"transport":   msg.Transport,
+		"contentType": string(msg.ContentType),
+	}
+
+	if msg.HTTP != nil {
+		im["http"] = map[string]any{
+			"headers":     nonNilMap(msg.HTTP.Headers),
+			"queryParams": nonNilMap(msg.HTTP.QueryParams),
+			"pathParams":  nonNilMap(msg.HTTP.PathParams),
+			"method":      msg.HTTP.Method,
+			"statusCode":  msg.HTTP.StatusCode,
+		}
+	}
+	if msg.File != nil {
+		im["file"] = map[string]any{
+			"filename":  msg.File.Filename,
+			"directory": msg.File.Directory,
+		}
+	}
+	if msg.FTP != nil {
+		im["ftp"] = map[string]any{
+			"filename":  msg.FTP.Filename,
+			"directory": msg.FTP.Directory,
+		}
+	}
+	if msg.Kafka != nil {
+		im["kafka"] = map[string]any{
+			"headers":   nonNilMap(msg.Kafka.Headers),
+			"topic":     msg.Kafka.Topic,
+			"key":       msg.Kafka.Key,
+			"partition": msg.Kafka.Partition,
+			"offset":    msg.Kafka.Offset,
+		}
+	}
+	if msg.TCP != nil {
+		im["tcp"] = map[string]any{
+			"remoteAddr": msg.TCP.RemoteAddr,
+		}
+	}
+	if msg.SMTP != nil {
+		im["smtp"] = map[string]any{
+			"from":    msg.SMTP.From,
+			"to":      msg.SMTP.To,
+			"subject": msg.SMTP.Subject,
+			"cc":      msg.SMTP.CC,
+			"bcc":     msg.SMTP.BCC,
+		}
+	}
+	if msg.DICOM != nil {
+		im["dicom"] = map[string]any{
+			"callingAE": msg.DICOM.CallingAE,
+			"calledAE":  msg.DICOM.CalledAE,
+		}
+	}
+	if msg.Database != nil {
+		im["database"] = map[string]any{
+			"query":  msg.Database.Query,
+			"params": msg.Database.Params,
+		}
+	}
+
+	return im
+}
+
+type intuResult struct {
+	Output any
+	Msg    *message.Message
+}
+
+// parseIntuResult extracts body and protocol metadata from a transformer return value.
+func (p *Pipeline) parseIntuResult(result any, original *message.Message) *intuResult {
+	m, ok := result.(map[string]any)
+	if !ok {
+		return &intuResult{
+			Output: result,
+			Msg:    cloneMessageShell(original),
+		}
+	}
+
+	body, hasBody := m["body"]
+	if !hasBody {
+		return &intuResult{
+			Output: result,
+			Msg:    cloneMessageShell(original),
+		}
+	}
+
+	out := cloneMessageShell(original)
+
+	if ct, ok := m["contentType"].(string); ok && ct != "" {
+		out.ContentType = message.ContentType(ct)
+	}
+	if t, ok := m["transport"].(string); ok && t != "" {
+		out.Transport = t
+	}
+
+	if httpData, ok := m["http"].(map[string]any); ok {
+		out.HTTP = parseHTTPMeta(httpData)
+	}
+	if fileData, ok := m["file"].(map[string]any); ok {
+		out.File = parseFileMeta(fileData)
+	}
+	if ftpData, ok := m["ftp"].(map[string]any); ok {
+		out.FTP = parseFTPMeta(ftpData)
+	}
+	if kafkaData, ok := m["kafka"].(map[string]any); ok {
+		out.Kafka = parseKafkaMeta(kafkaData)
+	}
+	if tcpData, ok := m["tcp"].(map[string]any); ok {
+		out.TCP = parseTCPMeta(tcpData)
+	}
+	if smtpData, ok := m["smtp"].(map[string]any); ok {
+		out.SMTP = parseSMTPMeta(smtpData)
+	}
+	if dicomData, ok := m["dicom"].(map[string]any); ok {
+		out.DICOM = parseDICOMMeta(dicomData)
+	}
+	if dbData, ok := m["database"].(map[string]any); ok {
+		out.Database = parseDatabaseMeta(dbData)
+	}
+
+	return &intuResult{Output: body, Msg: out}
+}
+
+func cloneMessageShell(m *message.Message) *message.Message {
+	return &message.Message{
+		ID:            m.ID,
+		CorrelationID: m.CorrelationID,
+		ChannelID:     m.ChannelID,
+		Transport:     m.Transport,
+		ContentType:   m.ContentType,
+		HTTP:          m.HTTP,
+		File:          m.File,
+		FTP:           m.FTP,
+		Kafka:         m.Kafka,
+		TCP:           m.TCP,
+		SMTP:          m.SMTP,
+		DICOM:         m.DICOM,
+		Database:      m.Database,
+		Metadata:      m.Metadata,
+		Timestamp:     m.Timestamp,
+	}
+}
+
+func parseHTTPMeta(data map[string]any) *message.HTTPMeta {
+	meta := &message.HTTPMeta{
+		Headers:     toStringMap(data["headers"]),
+		QueryParams: toStringMap(data["queryParams"]),
+		PathParams:  toStringMap(data["pathParams"]),
+	}
+	if v, ok := data["method"].(string); ok {
+		meta.Method = v
+	}
+	if v, ok := data["statusCode"].(float64); ok {
+		meta.StatusCode = int(v)
+	}
+	return meta
+}
+
+func parseFileMeta(data map[string]any) *message.FileMeta {
+	meta := &message.FileMeta{}
+	if v, ok := data["filename"].(string); ok {
+		meta.Filename = v
+	}
+	if v, ok := data["directory"].(string); ok {
+		meta.Directory = v
+	}
+	return meta
+}
+
+func parseFTPMeta(data map[string]any) *message.FTPMeta {
+	meta := &message.FTPMeta{}
+	if v, ok := data["filename"].(string); ok {
+		meta.Filename = v
+	}
+	if v, ok := data["directory"].(string); ok {
+		meta.Directory = v
+	}
+	return meta
+}
+
+func parseKafkaMeta(data map[string]any) *message.KafkaMeta {
+	meta := &message.KafkaMeta{
+		Headers: toStringMap(data["headers"]),
+	}
+	if v, ok := data["topic"].(string); ok {
+		meta.Topic = v
+	}
+	if v, ok := data["key"].(string); ok {
+		meta.Key = v
+	}
+	if v, ok := data["partition"].(float64); ok {
+		meta.Partition = int(v)
+	}
+	if v, ok := data["offset"].(float64); ok {
+		meta.Offset = int64(v)
+	}
+	return meta
+}
+
+func parseTCPMeta(data map[string]any) *message.TCPMeta {
+	meta := &message.TCPMeta{}
+	if v, ok := data["remoteAddr"].(string); ok {
+		meta.RemoteAddr = v
+	}
+	return meta
+}
+
+func parseSMTPMeta(data map[string]any) *message.SMTPMeta {
+	meta := &message.SMTPMeta{}
+	if v, ok := data["from"].(string); ok {
+		meta.From = v
+	}
+	if v, ok := data["to"]; ok {
+		meta.To = toStringSlice(v)
+	}
+	if v, ok := data["subject"].(string); ok {
+		meta.Subject = v
+	}
+	if v, ok := data["cc"]; ok {
+		meta.CC = toStringSlice(v)
+	}
+	if v, ok := data["bcc"]; ok {
+		meta.BCC = toStringSlice(v)
+	}
+	return meta
+}
+
+func parseDICOMMeta(data map[string]any) *message.DICOMMeta {
+	meta := &message.DICOMMeta{}
+	if v, ok := data["callingAE"].(string); ok {
+		meta.CallingAE = v
+	}
+	if v, ok := data["calledAE"].(string); ok {
+		meta.CalledAE = v
+	}
+	return meta
+}
+
+func parseDatabaseMeta(data map[string]any) *message.DatabaseMeta {
+	meta := &message.DatabaseMeta{}
+	if v, ok := data["query"].(string); ok {
+		meta.Query = v
+	}
+	if v, ok := data["params"].(map[string]any); ok {
+		meta.Params = v
+	}
+	return meta
+}
+
+func toStringMap(v any) map[string]string {
+	result := make(map[string]string)
+	m, ok := v.(map[string]any)
+	if !ok {
+		return result
+	}
+	for k, val := range m {
+		if s, ok := val.(string); ok {
+			result[k] = s
+		} else {
+			result[k] = fmt.Sprintf("%v", val)
+		}
+	}
+	return result
+}
+
+func toStringSlice(v any) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+func nonNilMap(m map[string]string) map[string]string {
+	if m == nil {
+		return make(map[string]string)
+	}
+	return m
 }
 
 func (p *Pipeline) toBytes(data any) []byte {

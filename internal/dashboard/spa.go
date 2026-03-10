@@ -5,7 +5,7 @@ const dashboardSPA = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>intu Dashboard</title>
+  <title>intu.dev | Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg width='32' height='32' viewBox='0 0 100 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='100' height='100' rx='24' fill='%230ea5e9'/%3E%3Cpath d='M50 15C50 15 52 30 65 32C52 34 50 49 50 49C50 49 48 34 35 32C48 30 50 15 50 15Z' fill='white'/%3E%3Crect x='42' y='55' width='16' height='30' rx='5' fill='white'/%3E%3C/svg%3E">
   <script>
     (function(){var t=localStorage.getItem('intu-theme');if(t==='light')document.documentElement.classList.remove('dark');})();

@@ -142,11 +142,9 @@ listener:
     delete_after_read: false
 
 validator:
-  runtime: node
   entrypoint: validator.ts
 
 transformer:
-  runtime: node
   entrypoint: transformer.ts
 
 destinations:
@@ -159,9 +157,7 @@ destinations:
 
             <div class="code-block">
                 <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
-                <pre><code>import { Message, TransformResult } from "@intu/sdk";
-
-interface Observation {
+                <pre><code>interface Observation {
   resourceType: string;
   status: string;
   code: {
@@ -179,13 +175,13 @@ interface Observation {
   referenceRange?: { text: string }[];
 }
 
-export default function transform(msg: Message): TransformResult {
+export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
   const content = msg.body as string;
   const segments = content.split("\r").filter(Boolean);
 
   const pid = segments.find((s) =&gt; s.startsWith("PID|"));
   if (!pid) {
-    return { success: false, error: "No PID segment found in attachment" };
+    throw new Error("No PID segment found in attachment");
   }
 
   const pidFields = pid.split("|");
@@ -244,11 +240,7 @@ export default function transform(msg: Message): TransformResult {
     })),
   };
 
-  return {
-    success: true,
-    body: JSON.stringify(bundle),
-    contentType: "application/fhir+json",
-  };
+  return { body: JSON.stringify(bundle) };
 }
 
 function formatTimestamp(ts: string): string {

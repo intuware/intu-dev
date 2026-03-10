@@ -65,6 +65,7 @@ func (c *ChannelSource) Start(ctx context.Context, handler MessageHandler) error
 			case <-ctx.Done():
 				return
 			case msg := <-c.ch:
+				msg.Transport = "channel"
 				if err := handler(ctx, msg); err != nil {
 					c.logger.Error("channel source handler error", "error", err)
 				}

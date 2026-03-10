@@ -118,6 +118,11 @@ func (f *FileSource) poll(ctx context.Context, handler MessageHandler) {
 		}
 
 		msg := message.New("", data)
+		msg.Transport = "file"
+		msg.File = &message.FileMeta{
+			Filename:  e.Name(),
+			Directory: dir,
+		}
 		msg.Metadata["filename"] = e.Name()
 		msg.Metadata["filepath"] = path
 

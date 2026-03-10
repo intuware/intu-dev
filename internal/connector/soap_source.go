@@ -78,15 +78,23 @@ func (s *SOAPSource) Start(ctx context.Context, handler MessageHandler) error {
 		}
 
 		msg := message.New("", body)
+		msg.Transport = "soap"
 		msg.ContentType = "xml"
 		msg.Metadata["source"] = "soap"
 		msg.Metadata["service_name"] = serviceName
 		msg.Metadata["soap_action"] = strings.Trim(soapAction, "\"")
+		http_ := msg.EnsureHTTP()
 		for k, v := range r.Header {
 			if len(v) > 0 {
-				msg.Headers[k] = v[0]
+				http_.Headers[k] = v[0]
 			}
 		}
+		for k, v := range r.URL.Query() {
+			if len(v) > 0 {
+				http_.QueryParams[k] = v[0]
+			}
+		}
+		http_.Method = r.Method
 
 		if err := handler(r.Context(), msg); err != nil {
 			s.logger.Error("SOAP handler error", "error", err)
