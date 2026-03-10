@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intuware/intu/internal/alerting"
-	"github.com/intuware/intu/internal/cluster"
-	"github.com/intuware/intu/internal/connector"
-	"github.com/intuware/intu/internal/message"
-	"github.com/intuware/intu/internal/observability"
-	"github.com/intuware/intu/internal/storage"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/internal/alerting"
+	"github.com/intuware/intu-dev/internal/cluster"
+	"github.com/intuware/intu-dev/internal/connector"
+	"github.com/intuware/intu-dev/internal/message"
+	"github.com/intuware/intu-dev/internal/observability"
+	"github.com/intuware/intu-dev/internal/storage"
+	"github.com/intuware/intu-dev/pkg/config"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -57,8 +57,8 @@ type DefaultEngine struct {
 }
 
 type pendingChannel struct {
-	dir  string
-	cfg  *config.ChannelConfig
+	dir string
+	cfg *config.ChannelConfig
 }
 
 func NewDefaultEngine(rootDir string, cfg *config.Config, factory ConnectorFactory, logger *slog.Logger) *DefaultEngine {

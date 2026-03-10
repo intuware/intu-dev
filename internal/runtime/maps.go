@@ -109,8 +109,8 @@ func NewConnectorMap() *SyncMap {
 // Export returns all map data as a plain map structure for JS context injection.
 func (mv *MapVariables) ExportForChannel(channelID string) map[string]any {
 	return map[string]any{
-		"globalMap":    mv.globalMap.Snapshot(),
-		"channelMap":   mv.ChannelMap(channelID).Snapshot(),
-		"responseMap":  mv.ResponseMap(channelID).Snapshot(),
+		"globalMap":   mv.globalMap.Snapshot(),
+		"channelMap":  mv.ChannelMap(channelID).Snapshot(),
+		"responseMap": mv.ResponseMap(channelID).Snapshot(),
 	}
 }

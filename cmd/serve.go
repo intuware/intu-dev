@@ -12,17 +12,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/intuware/intu/internal/alerting"
-	"github.com/intuware/intu/internal/auth"
-	"github.com/intuware/intu/internal/cluster"
-	"github.com/intuware/intu/internal/connector"
-	"github.com/intuware/intu/internal/dashboard"
-	"github.com/intuware/intu/internal/message"
-	"github.com/intuware/intu/internal/observability"
-	"github.com/intuware/intu/internal/runtime"
-	"github.com/intuware/intu/internal/storage"
-	"github.com/intuware/intu/pkg/config"
-	"github.com/intuware/intu/pkg/logging"
+	"github.com/intuware/intu-dev/internal/alerting"
+	"github.com/intuware/intu-dev/internal/auth"
+	"github.com/intuware/intu-dev/internal/cluster"
+	"github.com/intuware/intu-dev/internal/connector"
+	"github.com/intuware/intu-dev/internal/dashboard"
+	"github.com/intuware/intu-dev/internal/message"
+	"github.com/intuware/intu-dev/internal/observability"
+	"github.com/intuware/intu-dev/internal/runtime"
+	"github.com/intuware/intu-dev/internal/storage"
+	"github.com/intuware/intu-dev/pkg/config"
+	"github.com/intuware/intu-dev/pkg/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -267,31 +267,31 @@ func newServeCmd() *cobra.Command {
 					rbac = auth.NewRBACManager(cfg.Roles)
 				}
 
-			deployFn := func(ctx context.Context, channelID string) error {
-				return engine.DeployChannel(ctx, channelID)
-			}
-			undeployFn := func(ctx context.Context, channelID string) error {
-				return engine.UndeployChannel(ctx, channelID)
-			}
-			restartFn := func(ctx context.Context, channelID string) error {
-				return engine.RestartChannel(ctx, channelID)
-			}
+				deployFn := func(ctx context.Context, channelID string) error {
+					return engine.DeployChannel(ctx, channelID)
+				}
+				undeployFn := func(ctx context.Context, channelID string) error {
+					return engine.UndeployChannel(ctx, channelID)
+				}
+				restartFn := func(ctx context.Context, channelID string) error {
+					return engine.RestartChannel(ctx, channelID)
+				}
 
-			dashSrv = dashboard.NewServer(&dashboard.ServerConfig{
-				Config:         cfg,
-				ChannelsDir:    channelsDir,
-				Store:          store,
-				Metrics:        observability.Global(),
-				Logger:         logger,
-				RBAC:           rbac,
-				AuditLogger:    auditLogger,
-				AuthMiddleware: authMw,
-				ReprocessFunc:  reprocessFn,
-				DeployFunc:     deployFn,
-				UndeployFunc:   undeployFn,
-				RestartFunc:    restartFn,
-				Port:           port,
-			})
+				dashSrv = dashboard.NewServer(&dashboard.ServerConfig{
+					Config:         cfg,
+					ChannelsDir:    channelsDir,
+					Store:          store,
+					Metrics:        observability.Global(),
+					Logger:         logger,
+					RBAC:           rbac,
+					AuditLogger:    auditLogger,
+					AuthMiddleware: authMw,
+					ReprocessFunc:  reprocessFn,
+					DeployFunc:     deployFn,
+					UndeployFunc:   undeployFn,
+					RestartFunc:    restartFn,
+					Port:           port,
+				})
 
 				dashErrCh := make(chan error, 1)
 				go func() {

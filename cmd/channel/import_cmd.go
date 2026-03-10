@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 	"github.com/spf13/cobra"
 )
 

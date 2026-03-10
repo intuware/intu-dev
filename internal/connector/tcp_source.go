@@ -12,14 +12,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intuware/intu/internal/auth"
-	"github.com/intuware/intu/internal/message"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/internal/auth"
+	"github.com/intuware/intu-dev/internal/message"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 const (
-	mllpStartBlock = 0x0B
-	mllpEndBlock   = 0x1C
+	mllpStartBlock     = 0x0B
+	mllpEndBlock       = 0x1C
 	mllpCarriageReturn = 0x0D
 )
 

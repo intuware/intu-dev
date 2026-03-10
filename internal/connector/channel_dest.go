@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/intuware/intu/internal/message"
+	"github.com/intuware/intu-dev/internal/message"
 )
 
 type ChannelDest struct {

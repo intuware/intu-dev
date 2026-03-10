@@ -8,7 +8,7 @@ import (
 	"time"
 
 	vault "github.com/hashicorp/vault/api"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 type VaultSecretsProviderReal struct {

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 func authenticateHTTP(r *http.Request, cfg *config.AuthConfig) bool {

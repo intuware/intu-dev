@@ -6,13 +6,13 @@ import (
 )
 
 type CDADocument struct {
-	XMLName        xml.Name        `xml:"ClinicalDocument"`
-	ID             *CDAID          `xml:"id"`
-	Code           *CDACode        `xml:"code"`
-	Title          string          `xml:"title"`
-	EffectiveTime  *CDATime        `xml:"effectiveTime"`
-	RecordTarget   *CDARecordTarget `xml:"recordTarget"`
-	Components     []CDAComponent  `xml:"component"`
+	XMLName       xml.Name         `xml:"ClinicalDocument"`
+	ID            *CDAID           `xml:"id"`
+	Code          *CDACode         `xml:"code"`
+	Title         string           `xml:"title"`
+	EffectiveTime *CDATime         `xml:"effectiveTime"`
+	RecordTarget  *CDARecordTarget `xml:"recordTarget"`
+	Components    []CDAComponent   `xml:"component"`
 }
 
 type CDAID struct {

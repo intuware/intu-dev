@@ -13,7 +13,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 type S3Store struct {

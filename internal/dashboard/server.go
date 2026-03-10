@@ -15,30 +15,30 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intuware/intu/internal/auth"
-	"github.com/intuware/intu/internal/observability"
-	"github.com/intuware/intu/internal/storage"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/internal/auth"
+	"github.com/intuware/intu-dev/internal/observability"
+	"github.com/intuware/intu-dev/internal/storage"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 type ReprocessFunc func(ctx context.Context, channelID string, rawContent []byte) error
 type ChannelActionFunc func(ctx context.Context, channelID string) error
 
 type Server struct {
-	cfg          *config.Config
-	channelsDir  string
-	store        storage.MessageStore
-	metrics      *observability.Metrics
-	logger       *slog.Logger
-	rbac         *auth.RBACManager
-	auditLogger  *auth.AuditLogger
-	authMw       func(http.Handler) http.Handler
-	reprocessFn  ReprocessFunc
-	deployFn     ChannelActionFunc
-	undeployFn   ChannelActionFunc
-	restartFn    ChannelActionFunc
-	server       *http.Server
-	mu           sync.RWMutex
+	cfg         *config.Config
+	channelsDir string
+	store       storage.MessageStore
+	metrics     *observability.Metrics
+	logger      *slog.Logger
+	rbac        *auth.RBACManager
+	auditLogger *auth.AuditLogger
+	authMw      func(http.Handler) http.Handler
+	reprocessFn ReprocessFunc
+	deployFn    ChannelActionFunc
+	undeployFn  ChannelActionFunc
+	restartFn   ChannelActionFunc
+	server      *http.Server
+	mu          sync.RWMutex
 }
 
 type ServerConfig struct {

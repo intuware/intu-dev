@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 	"github.com/redis/go-redis/v9"
 )
 

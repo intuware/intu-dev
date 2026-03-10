@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/intuware/intu/internal/connector"
-	"github.com/intuware/intu/internal/message"
-	"github.com/intuware/intu/internal/runtime"
-	"github.com/intuware/intu/internal/storage"
-	"github.com/intuware/intu/pkg/config"
-	"github.com/intuware/intu/pkg/logging"
+	"github.com/intuware/intu-dev/internal/connector"
+	"github.com/intuware/intu-dev/internal/message"
+	"github.com/intuware/intu-dev/internal/runtime"
+	"github.com/intuware/intu-dev/internal/storage"
+	"github.com/intuware/intu-dev/pkg/config"
+	"github.com/intuware/intu-dev/pkg/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -192,10 +192,10 @@ func newReprocessBatchCmd() *cobra.Command {
 
 			data, _ := json.MarshalIndent(map[string]any{
 				"reprocessed_count": reprocessed,
-				"total_matched":    len(records),
-				"channel":          channelID,
-				"status_filter":    status,
-				"timestamp":        time.Now().Format(time.RFC3339),
+				"total_matched":     len(records),
+				"channel":           channelID,
+				"status_filter":     status,
+				"timestamp":         time.Now().Format(time.RFC3339),
 			}, "", "  ")
 			fmt.Fprintln(cmd.OutOrStdout(), string(data))
 

@@ -16,7 +16,7 @@
   <a href="https://www.npmjs.com/package/intu-dev"><img src="https://img.shields.io/npm/v/intu-dev?color=cb3837&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/intu-dev"><img src="https://img.shields.io/npm/dm/intu-dev?color=38bdf8" alt="npm downloads"></a>
   <a href="https://github.com/intuware/intu-dev/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MPL--2.0-blue" alt="License"></a>
-  <a href="https://goreportcard.com/report/github.com/intuware/intu"><img src="https://goreportcard.com/badge/github.com/intuware/intu" alt="Go Report Card"></a>
+  <a href="https://goreportcard.com/report/github.com/intuware/intu-dev"><img src="https://goreportcard.com/badge/github.com/intuware/intu-dev" alt="Go Report Card"></a>
 </p>
 
 <p align="center">

@@ -1,24 +1,24 @@
 package config
 
 type Config struct {
-	Runtime        RuntimeConfig            `mapstructure:"runtime"`
-	ChannelsDir    string                   `mapstructure:"channels_dir"`
-	Destinations   map[string]Destination   `mapstructure:"destinations"`
-	Kafka          KafkaConfig              `mapstructure:"kafka"`
-	Secrets        *SecretsConfig           `mapstructure:"secrets"`
-	DeadLetter     *DeadLetterConfig        `mapstructure:"dead_letter"`
-	MessageStorage *MessageStorageConfig    `mapstructure:"message_storage"`
-	Pruning        *PruningConfig           `mapstructure:"pruning"`
-	Observability  *ObservabilityConfig     `mapstructure:"observability"`
-	Logging        *LoggingConfig           `mapstructure:"logging"`
-	Alerts         []AlertConfig            `mapstructure:"alerts"`
-	AccessControl  *AccessControlConfig     `mapstructure:"access_control"`
-	Roles          []RoleConfig             `mapstructure:"roles"`
-	Audit          *AuditConfig             `mapstructure:"audit"`
-	Cluster        *ClusterConfig           `mapstructure:"cluster"`
-	Global         *GlobalConfig            `mapstructure:"global"`
-	Tenancy        *TenancyConfig           `mapstructure:"tenancy"`
-	Dashboard      *DashboardConfig         `mapstructure:"dashboard"`
+	Runtime        RuntimeConfig               `mapstructure:"runtime"`
+	ChannelsDir    string                      `mapstructure:"channels_dir"`
+	Destinations   map[string]Destination      `mapstructure:"destinations"`
+	Kafka          KafkaConfig                 `mapstructure:"kafka"`
+	Secrets        *SecretsConfig              `mapstructure:"secrets"`
+	DeadLetter     *DeadLetterConfig           `mapstructure:"dead_letter"`
+	MessageStorage *MessageStorageConfig       `mapstructure:"message_storage"`
+	Pruning        *PruningConfig              `mapstructure:"pruning"`
+	Observability  *ObservabilityConfig        `mapstructure:"observability"`
+	Logging        *LoggingConfig              `mapstructure:"logging"`
+	Alerts         []AlertConfig               `mapstructure:"alerts"`
+	AccessControl  *AccessControlConfig        `mapstructure:"access_control"`
+	Roles          []RoleConfig                `mapstructure:"roles"`
+	Audit          *AuditConfig                `mapstructure:"audit"`
+	Cluster        *ClusterConfig              `mapstructure:"cluster"`
+	Global         *GlobalConfig               `mapstructure:"global"`
+	Tenancy        *TenancyConfig              `mapstructure:"tenancy"`
+	Dashboard      *DashboardConfig            `mapstructure:"dashboard"`
 	CodeTemplates  []CodeTemplateLibraryConfig `mapstructure:"code_templates"`
 }
 
@@ -88,11 +88,11 @@ type SFTPDestMapConfig struct {
 }
 
 type KafkaDestConfig struct {
-	Brokers  []string       `mapstructure:"brokers"`
-	Topic    string         `mapstructure:"topic"`
-	ClientID string         `mapstructure:"client_id"`
+	Brokers  []string        `mapstructure:"brokers"`
+	Topic    string          `mapstructure:"topic"`
+	ClientID string          `mapstructure:"client_id"`
 	Auth     *HTTPAuthConfig `mapstructure:"auth"`
-	TLS      *TLSMapConfig  `mapstructure:"tls"`
+	TLS      *TLSMapConfig   `mapstructure:"tls"`
 }
 
 type HTTPDestConfig struct {
@@ -154,13 +154,13 @@ type DBDestMapConfig struct {
 }
 
 type SMTPDestMapConfig struct {
-	Host    string         `mapstructure:"host"`
-	Port    int            `mapstructure:"port"`
-	From    string         `mapstructure:"from"`
-	To      []string       `mapstructure:"to"`
-	Subject string         `mapstructure:"subject"`
+	Host    string          `mapstructure:"host"`
+	Port    int             `mapstructure:"port"`
+	From    string          `mapstructure:"from"`
+	To      []string        `mapstructure:"to"`
+	Subject string          `mapstructure:"subject"`
 	Auth    *HTTPAuthConfig `mapstructure:"auth"`
-	TLS     *TLSMapConfig  `mapstructure:"tls"`
+	TLS     *TLSMapConfig   `mapstructure:"tls"`
 }
 
 type ChannelDestMapConfig struct {
@@ -177,20 +177,20 @@ type DICOMDestMapConfig struct {
 }
 
 type JMSDestMapConfig struct {
-	Provider  string         `mapstructure:"provider"`
-	URL       string         `mapstructure:"url"`
-	Queue     string         `mapstructure:"queue"`
+	Provider  string          `mapstructure:"provider"`
+	URL       string          `mapstructure:"url"`
+	Queue     string          `mapstructure:"queue"`
 	Auth      *HTTPAuthConfig `mapstructure:"auth"`
-	TimeoutMs int            `mapstructure:"timeout_ms"`
+	TimeoutMs int             `mapstructure:"timeout_ms"`
 }
 
 type FHIRDestMapConfig struct {
-	BaseURL    string         `mapstructure:"base_url"`
-	Version    string         `mapstructure:"version"`
-	Operations []string       `mapstructure:"operations"`
+	BaseURL    string          `mapstructure:"base_url"`
+	Version    string          `mapstructure:"version"`
+	Operations []string        `mapstructure:"operations"`
 	Auth       *HTTPAuthConfig `mapstructure:"auth"`
-	TLS        *TLSMapConfig  `mapstructure:"tls"`
-	TimeoutMs  int            `mapstructure:"timeout_ms"`
+	TLS        *TLSMapConfig   `mapstructure:"tls"`
+	TimeoutMs  int             `mapstructure:"timeout_ms"`
 }
 
 type DirectDestMapConfig struct {
@@ -213,8 +213,8 @@ type RetryMapConfig struct {
 }
 
 type SecretsConfig struct {
-	Provider string                  `mapstructure:"provider"`
-	Vault    *VaultConfig            `mapstructure:"vault"`
+	Provider string                   `mapstructure:"provider"`
+	Vault    *VaultConfig             `mapstructure:"vault"`
 	AWS      *AWSSecretsManagerConfig `mapstructure:"aws"`
 	GCP      *GCPSecretManagerConfig  `mapstructure:"gcp"`
 }
@@ -227,9 +227,9 @@ type AWSSecretsManagerConfig struct {
 }
 
 type GCPSecretManagerConfig struct {
-	ProjectID          string `mapstructure:"project_id"`
-	CredentialsFile    string `mapstructure:"credentials_file"`
-	CacheTTL           string `mapstructure:"cache_ttl"`
+	ProjectID       string `mapstructure:"project_id"`
+	CredentialsFile string `mapstructure:"credentials_file"`
+	CacheTTL        string `mapstructure:"cache_ttl"`
 }
 
 type VaultConfig struct {
@@ -252,12 +252,12 @@ type DeadLetterConfig struct {
 }
 
 type MessageStorageConfig struct {
-	Driver    string                   `mapstructure:"driver"`
-	Mode      string                   `mapstructure:"mode"`
-	Stages    []string                 `mapstructure:"stages"`
-	Postgres  *StoragePostgresConfig   `mapstructure:"postgres"`
-	S3        *StorageS3Config         `mapstructure:"s3"`
-	Retention *StorageRetentionConfig  `mapstructure:"retention"`
+	Driver    string                  `mapstructure:"driver"`
+	Mode      string                  `mapstructure:"mode"`
+	Stages    []string                `mapstructure:"stages"`
+	Postgres  *StoragePostgresConfig  `mapstructure:"postgres"`
+	S3        *StorageS3Config        `mapstructure:"s3"`
+	Retention *StorageRetentionConfig `mapstructure:"retention"`
 }
 
 type StoragePostgresConfig struct {
@@ -311,9 +311,9 @@ type PrometheusConfig struct {
 }
 
 type AlertConfig struct {
-	Name         string          `mapstructure:"name"`
-	Trigger      AlertTrigger    `mapstructure:"trigger"`
-	Destinations []string        `mapstructure:"destinations"`
+	Name         string       `mapstructure:"name"`
+	Trigger      AlertTrigger `mapstructure:"trigger"`
+	Destinations []string     `mapstructure:"destinations"`
 }
 
 type AlertTrigger struct {
@@ -326,8 +326,8 @@ type AlertTrigger struct {
 }
 
 type AccessControlConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	Provider string `mapstructure:"provider"`
+	Enabled  bool        `mapstructure:"enabled"`
+	Provider string      `mapstructure:"provider"`
 	LDAP     *LDAPConfig `mapstructure:"ldap"`
 	OIDC     *OIDCConfig `mapstructure:"oidc"`
 }
@@ -357,28 +357,28 @@ type AuditConfig struct {
 }
 
 type ClusterConfig struct {
-	Enabled           bool                  `mapstructure:"enabled"`
-	Mode              string                `mapstructure:"mode"`
-	Coordination      *CoordinationConfig   `mapstructure:"coordination"`
-	InstanceID        string                `mapstructure:"instance_id"`
-	HeartbeatInterval string                `mapstructure:"heartbeat_interval"`
-	ChannelAssignment *ChannelAssignConfig  `mapstructure:"channel_assignment"`
-	Deduplication     *DeduplicationConfig  `mapstructure:"deduplication"`
+	Enabled           bool                 `mapstructure:"enabled"`
+	Mode              string               `mapstructure:"mode"`
+	Coordination      *CoordinationConfig  `mapstructure:"coordination"`
+	InstanceID        string               `mapstructure:"instance_id"`
+	HeartbeatInterval string               `mapstructure:"heartbeat_interval"`
+	ChannelAssignment *ChannelAssignConfig `mapstructure:"channel_assignment"`
+	Deduplication     *DeduplicationConfig `mapstructure:"deduplication"`
 }
 
 type CoordinationConfig struct {
-	Type  string      `mapstructure:"type"`
+	Type  string       `mapstructure:"type"`
 	Redis *RedisConfig `mapstructure:"redis"`
 }
 
 type RedisConfig struct {
-	Address      string `mapstructure:"address"`
-	Password     string `mapstructure:"password"`
-	DB           int    `mapstructure:"db"`
-	PoolSize     int    `mapstructure:"pool_size"`
-	MinIdleConns int    `mapstructure:"min_idle_conns"`
+	Address      string        `mapstructure:"address"`
+	Password     string        `mapstructure:"password"`
+	DB           int           `mapstructure:"db"`
+	PoolSize     int           `mapstructure:"pool_size"`
+	MinIdleConns int           `mapstructure:"min_idle_conns"`
 	TLS          *TLSMapConfig `mapstructure:"tls"`
-	KeyPrefix    string `mapstructure:"key_prefix"`
+	KeyPrefix    string        `mapstructure:"key_prefix"`
 }
 
 type ChannelAssignConfig struct {

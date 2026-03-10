@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 type MessageRecord struct {
@@ -16,7 +16,7 @@ type MessageRecord struct {
 	Content       []byte
 	Status        string
 	Timestamp     time.Time
-	DurationMs    int64          `json:"DurationMs,omitempty"`
+	DurationMs    int64 `json:"DurationMs,omitempty"`
 	Metadata      map[string]any
 }
 

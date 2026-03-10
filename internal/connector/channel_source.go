@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/intuware/intu/internal/message"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/internal/message"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 var channelBus = &ChannelBus{

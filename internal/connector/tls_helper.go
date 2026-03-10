@@ -6,8 +6,8 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/intuware/intu/internal/auth"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/internal/auth"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 func applyTLSToListener(ln net.Listener, server *http.Server, cfg *config.TLSConfig) (net.Listener, error) {

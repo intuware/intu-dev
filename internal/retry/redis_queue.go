@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intuware/intu/internal/message"
+	"github.com/intuware/intu-dev/internal/message"
 	"github.com/redis/go-redis/v9"
 )
 

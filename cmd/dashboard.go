@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/intuware/intu/internal/auth"
-	"github.com/intuware/intu/internal/dashboard"
-	"github.com/intuware/intu/internal/observability"
-	"github.com/intuware/intu/internal/storage"
-	"github.com/intuware/intu/pkg/config"
-	"github.com/intuware/intu/pkg/logging"
+	"github.com/intuware/intu-dev/internal/auth"
+	"github.com/intuware/intu-dev/internal/dashboard"
+	"github.com/intuware/intu-dev/internal/observability"
+	"github.com/intuware/intu-dev/internal/storage"
+	"github.com/intuware/intu-dev/pkg/config"
+	"github.com/intuware/intu-dev/pkg/logging"
 	"github.com/spf13/cobra"
 )
 

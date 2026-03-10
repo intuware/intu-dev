@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intuware/intu/internal/message"
+	"github.com/intuware/intu-dev/internal/message"
 )
 
 func TestDestinationQueueEnqueueAndProcess(t *testing.T) {

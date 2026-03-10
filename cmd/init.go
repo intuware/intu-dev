@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"os/exec"
 
-	"github.com/intuware/intu/internal/bootstrap"
+	"github.com/intuware/intu-dev/internal/bootstrap"
 	"github.com/spf13/cobra"
 )
 

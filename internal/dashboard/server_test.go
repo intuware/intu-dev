@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intuware/intu/internal/observability"
-	"github.com/intuware/intu/internal/storage"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/internal/observability"
+	"github.com/intuware/intu-dev/internal/storage"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 func newTestServer(store storage.MessageStore) *Server {

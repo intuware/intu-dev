@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/intuware/intu/cmd"
+	"github.com/intuware/intu-dev/cmd"
 )
 
 func main() {

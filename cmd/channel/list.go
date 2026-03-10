@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/intuware/intu/pkg/config"
-	"github.com/intuware/intu/pkg/logging"
+	"github.com/intuware/intu-dev/pkg/config"
+	"github.com/intuware/intu-dev/pkg/logging"
 	"github.com/spf13/cobra"
 )
 

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 type RedisCoordinator struct {
@@ -18,12 +18,12 @@ type RedisCoordinator struct {
 	logger     *slog.Logger
 	instanceID string
 
-	mu             sync.RWMutex
-	ownedChannels  map[string]bool
-	cancel         context.CancelFunc
-	wg             sync.WaitGroup
-	leaseDuration  time.Duration
-	renewInterval  time.Duration
+	mu            sync.RWMutex
+	ownedChannels map[string]bool
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	leaseDuration time.Duration
+	renewInterval time.Duration
 }
 
 type redisInstanceInfo struct {

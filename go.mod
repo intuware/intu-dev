@@ -1,4 +1,4 @@
-module github.com/intuware/intu
+module github.com/intuware/intu-dev
 
 go 1.25.0
 

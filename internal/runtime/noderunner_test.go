@@ -15,7 +15,6 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-
 func TestNodeRunner_BasicCall(t *testing.T) {
 	dir := t.TempDir()
 	writeTestJS(t, dir, "math.js", `

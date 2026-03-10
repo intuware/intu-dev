@@ -10,8 +10,8 @@ import (
 
 	"log/slog"
 
-	"github.com/intuware/intu/pkg/config"
-	"github.com/intuware/intu/pkg/logging"
+	"github.com/intuware/intu-dev/pkg/config"
+	"github.com/intuware/intu-dev/pkg/logging"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -130,12 +130,12 @@ type mirthImportDest struct {
 }
 
 type mirthXMLChannel struct {
-	XMLName           xml.Name              `xml:"channel"`
-	ID                string                `xml:"id"`
-	Name              string                `xml:"name"`
-	Description       string                `xml:"description"`
-	Enabled           string                `xml:"enabled"`
-	SourceConnector   mirthXMLConnector     `xml:"sourceConnector"`
+	XMLName               xml.Name          `xml:"channel"`
+	ID                    string            `xml:"id"`
+	Name                  string            `xml:"name"`
+	Description           string            `xml:"description"`
+	Enabled               string            `xml:"enabled"`
+	SourceConnector       mirthXMLConnector `xml:"sourceConnector"`
 	DestinationConnectors mirthXMLDestList  `xml:"destinationConnectors"`
 }
 
@@ -144,39 +144,39 @@ type mirthXMLDestList struct {
 }
 
 type mirthXMLConnector struct {
-	Name        string                  `xml:"name"`
-	Mode        string                  `xml:"mode"`
-	Enabled     string                  `xml:"enabled"`
-	TransportName string                `xml:"transportName"`
-	Properties  mirthXMLProperties      `xml:"properties"`
-	Transformer mirthXMLTransformer     `xml:"transformer"`
-	Filter      mirthXMLFilter          `xml:"filter"`
+	Name          string              `xml:"name"`
+	Mode          string              `xml:"mode"`
+	Enabled       string              `xml:"enabled"`
+	TransportName string              `xml:"transportName"`
+	Properties    mirthXMLProperties  `xml:"properties"`
+	Transformer   mirthXMLTransformer `xml:"transformer"`
+	Filter        mirthXMLFilter      `xml:"filter"`
 }
 
 type mirthXMLProperties struct {
-	XMLName    xml.Name `xml:"properties"`
-	ClassName  string   `xml:"class,attr"`
-	ListenerAddress string `xml:"listenerAddress"`
-	ListenerPort    string `xml:"listenerPort"`
-	Host            string `xml:"host"`
-	Port            string `xml:"port"`
-	RemoteAddress   string `xml:"remoteAddress"`
-	RemotePort      string `xml:"remotePort"`
-	Directory       string `xml:"directory"`
-	FilePattern     string `xml:"fileFilter"`
-	MoveToDir       string `xml:"moveToDirectory"`
-	PollInterval    string `xml:"pollingFrequency"`
-	Method          string `xml:"method"`
-	URL             string `xml:"url"`
-	CharsetEncoding string `xml:"charsetEncoding"`
-	ResponseContentType string `xml:"responseContentType"`
-	Mode            string `xml:"mode"`
-	DatabaseDriver  string `xml:"driver"`
-	DatabaseURL     string `xml:"URL"`
-	Query           string `xml:"query"`
-	Topic           string `xml:"topic"`
-	Brokers         string `xml:"bootstrap.servers"`
-	GroupID         string `xml:"group.id"`
+	XMLName             xml.Name `xml:"properties"`
+	ClassName           string   `xml:"class,attr"`
+	ListenerAddress     string   `xml:"listenerAddress"`
+	ListenerPort        string   `xml:"listenerPort"`
+	Host                string   `xml:"host"`
+	Port                string   `xml:"port"`
+	RemoteAddress       string   `xml:"remoteAddress"`
+	RemotePort          string   `xml:"remotePort"`
+	Directory           string   `xml:"directory"`
+	FilePattern         string   `xml:"fileFilter"`
+	MoveToDir           string   `xml:"moveToDirectory"`
+	PollInterval        string   `xml:"pollingFrequency"`
+	Method              string   `xml:"method"`
+	URL                 string   `xml:"url"`
+	CharsetEncoding     string   `xml:"charsetEncoding"`
+	ResponseContentType string   `xml:"responseContentType"`
+	Mode                string   `xml:"mode"`
+	DatabaseDriver      string   `xml:"driver"`
+	DatabaseURL         string   `xml:"URL"`
+	Query               string   `xml:"query"`
+	Topic               string   `xml:"topic"`
+	Brokers             string   `xml:"bootstrap.servers"`
+	GroupID             string   `xml:"group.id"`
 }
 
 type mirthXMLTransformer struct {

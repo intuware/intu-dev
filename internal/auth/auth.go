@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 type Authenticator interface {

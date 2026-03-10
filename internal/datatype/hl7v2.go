@@ -18,8 +18,8 @@ type HL7v2Segment struct {
 }
 
 type HL7Field struct {
-	Value      string     `json:"value"`
-	Components []string   `json:"components,omitempty"`
+	Value      string   `json:"value"`
+	Components []string `json:"components,omitempty"`
 }
 
 func (h *HL7v2Parser) Parse(raw []byte) (any, error) {

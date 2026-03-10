@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 func New(level string, cfg *config.LoggingConfig) *slog.Logger {

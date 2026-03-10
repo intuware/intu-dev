@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 type Coordinator struct {

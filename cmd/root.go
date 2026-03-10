@@ -3,12 +3,12 @@ package cmd
 import (
 	"os"
 
-	"github.com/intuware/intu/cmd/channel"
+	"github.com/intuware/intu-dev/cmd/channel"
 	"github.com/spf13/cobra"
 )
 
 var (
-	// Set via -ldflags at build time: go build -ldflags "-X github.com/intuware/intu/cmd.Version=1.0.0"
+	// Set via -ldflags at build time: go build -ldflags "-X github.com/intuware/intu-dev/cmd.Version=1.0.0"
 	Version = "dev"
 
 	rootOpts struct {
@@ -16,9 +16,9 @@ var (
 	}
 
 	rootCmd = &cobra.Command{
-		Use:     "intu",
-		Short:   "intu is a Git-native healthcare interoperability framework",
-		Long:    "A Git-native, AI-friendly healthcare interoperability framework that lets teams " +
+		Use:   "intu",
+		Short: "intu is a Git-native healthcare interoperability framework",
+		Long: "A Git-native, AI-friendly healthcare interoperability framework that lets teams " +
 			"build, version, and deploy integration pipelines using YAML configuration and TypeScript transformers.",
 		Version:       Version,
 		SilenceUsage:  true,

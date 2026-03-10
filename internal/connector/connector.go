@@ -3,7 +3,7 @@ package connector
 import (
 	"context"
 
-	"github.com/intuware/intu/internal/message"
+	"github.com/intuware/intu-dev/internal/message"
 )
 
 type MessageHandler func(ctx context.Context, msg *message.Message) error

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 const (
@@ -19,12 +19,12 @@ const (
 )
 
 type ElasticsearchTransport struct {
-	urls      []string
-	index     string
+	urls       []string
+	index      string
 	authHeader string
-	client    *http.Client
-	batch     *batchBuffer
-	urlIdx    int
+	client     *http.Client
+	batch      *batchBuffer
+	urlIdx     int
 }
 
 func NewElasticsearchTransport(cfg *config.ElasticsearchLogConfig) (*ElasticsearchTransport, error) {

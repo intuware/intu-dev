@@ -11,19 +11,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 const defaultMaxSizeMB = 100
 
 type FileTransport struct {
-	mu         sync.Mutex
-	path       string
-	maxBytes   int64
-	maxFiles   int
-	compress   bool
-	file       *os.File
-	written    int64
+	mu       sync.Mutex
+	path     string
+	maxBytes int64
+	maxFiles int
+	compress bool
+	file     *os.File
+	written  int64
 }
 
 func NewFileTransport(cfg *config.FileLogConfig) (*FileTransport, error) {

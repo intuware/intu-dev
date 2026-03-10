@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/intuware/intu/internal/message"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/internal/message"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 type DeadLetterQueue struct {

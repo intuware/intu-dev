@@ -7,7 +7,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 func DialTLS(dialer *net.Dialer, network, addr string, cfg *tls.Config) (net.Conn, error) {

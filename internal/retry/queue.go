@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/intuware/intu/internal/message"
+	"github.com/intuware/intu-dev/internal/message"
 )
 
 type DestinationQueue struct {

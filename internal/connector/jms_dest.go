@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/intuware/intu/internal/message"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/internal/message"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 // JMSDest sends messages to a JMS provider via its HTTP/REST bridge API.

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intuware/intu/internal/auth"
-	"github.com/intuware/intu/internal/message"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/internal/auth"
+	"github.com/intuware/intu-dev/internal/message"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 // DirectDest implements the Direct messaging protocol for healthcare

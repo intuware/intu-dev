@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-ldap/ldap/v3"
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 type LDAPProvider struct {

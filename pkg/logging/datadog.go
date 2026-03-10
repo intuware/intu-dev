@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intuware/intu/pkg/config"
+	"github.com/intuware/intu-dev/pkg/config"
 )
 
 const (
