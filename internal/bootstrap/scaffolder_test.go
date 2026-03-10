@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -107,6 +108,26 @@ func TestBootstrapChannelCreatesChannel(t *testing.T) {
 		absPath := filepath.Join(root, relPath)
 		if _, err := os.Stat(absPath); err != nil {
 			t.Fatalf("expected file %s to exist: %v", absPath, err)
+		}
+	}
+}
+
+func TestScaffoldedChannelsContainDescription(t *testing.T) {
+	dir := t.TempDir()
+	scaffolder := NewScaffolder(slog.Default())
+
+	if _, err := scaffolder.BootstrapProject(dir, "test", false); err != nil {
+		t.Fatalf("bootstrap project failed: %v", err)
+	}
+
+	root := filepath.Join(dir, "test")
+	for _, ch := range []string{"http-to-file", "fhir-to-adt"} {
+		data, err := os.ReadFile(filepath.Join(root, "src", "channels", ch, "channel.yaml"))
+		if err != nil {
+			t.Fatalf("read %s channel.yaml: %v", ch, err)
+		}
+		if !strings.Contains(string(data), "description:") {
+			t.Fatalf("channel %s should contain description field", ch)
 		}
 	}
 }

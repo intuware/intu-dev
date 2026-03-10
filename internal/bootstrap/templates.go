@@ -27,6 +27,7 @@ func projectFiles(projectName string) map[string]string {
 		"Dockerfile":                           dockerfile,
 		"docker-compose.yml":                   fmt.Sprintf(dockerComposeTpl, projectName, projectName),
 		".dockerignore":                        dockerignore,
+		".gitignore":                           gitignore,
 	}
 }
 
@@ -416,6 +417,8 @@ INTU_DASHBOARD_PASS=admin
 
 const httpToFileChannelYAML = `id: http-to-file
 enabled: true
+description: "Receives HTTP messages, validates, transforms, and writes to file"
+profiles: [dev]
 
 listener:
   type: http
@@ -435,6 +438,8 @@ destinations:
 
 const fhirToAdtChannelYAML = `id: fhir-to-adt
 enabled: true
+description: "Converts FHIR Patient resources to HL7v2 ADT messages"
+profiles: [dev]
 
 listener:
   type: fhir
@@ -551,6 +556,7 @@ func channelFiles(channelsDir, channelName string) map[string]string {
 
 const addChannelYAMLTpl = `id: %s
 enabled: true
+description: ""
 
 listener:
   type: http
@@ -848,4 +854,13 @@ dist
 output
 .git
 *.log
+`
+
+const gitignore = `node_modules/
+dist/
+output/
+*.log
+.env
+.env.*
+!.env.example
 `

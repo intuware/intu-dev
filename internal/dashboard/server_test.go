@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -279,5 +281,53 @@ func TestHandleMessagesDedupe(t *testing.T) {
 	}
 	if statusByID["m2"] != "ERROR" {
 		t.Fatalf("expected m2 status=ERROR (higher than RECEIVED), got %s", statusByID["m2"])
+	}
+}
+
+func TestListChannelsReturnsDescriptionAndProfiles(t *testing.T) {
+	dir := t.TempDir()
+	chDir := filepath.Join(dir, "test-ch")
+	if err := os.MkdirAll(chDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yaml := "id: test-ch\nenabled: true\ndescription: \"My test channel\"\nprofiles:\n  - dev\n  - staging\nlistener:\n  type: http\n  http:\n    port: 9090\n"
+	if err := os.WriteFile(filepath.Join(chDir, "channel.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{}
+	cfg.Runtime.Profile = "dev"
+	s := NewServer(&ServerConfig{
+		Config:      cfg,
+		ChannelsDir: dir,
+		Store:       storage.NewMemoryStore(),
+		Metrics:     observability.Global(),
+		Logger:      slog.Default(),
+	})
+	handler := s.BuildHandler()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/channels", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var channels []map[string]any
+	json.NewDecoder(w.Body).Decode(&channels)
+	if len(channels) != 1 {
+		t.Fatalf("expected 1 channel, got %d", len(channels))
+	}
+	ch := channels[0]
+	if ch["description"] != "My test channel" {
+		t.Fatalf("expected description 'My test channel', got %v", ch["description"])
+	}
+	profiles, ok := ch["profiles"].([]any)
+	if !ok || len(profiles) != 2 {
+		t.Fatalf("expected 2 profiles, got %v", ch["profiles"])
+	}
+	if profiles[0] != "dev" || profiles[1] != "staging" {
+		t.Fatalf("unexpected profiles: %v", profiles)
 	}
 }

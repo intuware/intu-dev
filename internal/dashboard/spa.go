@@ -385,6 +385,7 @@ function renderChannelList(channels) {
         '</div>' +
         badge +
       '</div>' +
+      (c.description ? '<p class="text-xs text-gray-500 dark:text-slate-400 mt-1 mb-2 line-clamp-2">' + esc(c.description) + '</p>' : '') +
       '<div class="text-xs text-gray-500 dark:text-slate-500 mb-1"><span class="text-gray-600 dark:text-slate-400">Destinations:</span> ' + esc(dests) + '</div>' +
       (c.group ? '<div class="text-xs text-gray-500 dark:text-slate-500"><span class="text-gray-600 dark:text-slate-400">Group:</span> ' + esc(c.group) + '</div>' : '') +
       (tags ? '<div class="flex flex-wrap gap-1 mt-2">' + tags + '</div>' : '') +
@@ -415,6 +416,7 @@ function renderChannelDetail(d) {
 
   var html = '<div class="flex items-center justify-between mb-6">' +
     '<div><h2 class="text-xl font-bold text-gray-900 dark:text-white">' + esc(d.id) + '</h2>' +
+    (d.description ? '<p class="text-sm text-gray-500 dark:text-slate-400 mt-1">' + esc(d.description) + '</p>' : '') +
     '<div class="flex items-center gap-2 mt-2">' + statusBadge + '</div></div>' +
     '<button onclick="closeSlideOver()" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-400 dark:text-slate-400 hover:text-gray-600 dark:hover:text-white transition-all"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>' +
   '</div>';
@@ -475,13 +477,18 @@ function renderChannelDetail(d) {
     html += '</div></div>';
   }
 
-  if (d.tags || d.group || d.priority || d.data_types) {
+  if (d.tags || d.group || d.priority || d.profiles || d.data_types) {
     html += '<div class="' + sectionCls + '">' +
       '<h3 class="' + labelCls + '">Metadata</h3>' +
       '<div class="space-y-2">';
     if (d.tags && d.tags.length) {
       html += '<div class="flex items-center gap-2"><span class="text-xs ' + kvLabelCls + ' w-16">Tags</span><div class="flex flex-wrap gap-1">';
       d.tags.forEach(function(t) { html += '<span class="px-2 py-0.5 rounded-full text-[10px] bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400">' + esc(t) + '</span>'; });
+      html += '</div></div>';
+    }
+    if (d.profiles && d.profiles.length) {
+      html += '<div class="flex items-center gap-2"><span class="text-xs ' + kvLabelCls + ' w-16">Profiles</span><div class="flex flex-wrap gap-1">';
+      d.profiles.forEach(function(p) { html += '<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-50 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400">' + esc(p) + '</span>'; });
       html += '</div></div>';
     }
     if (d.group) html += '<div class="flex items-center gap-2 text-xs"><span class="' + kvLabelCls + ' w-16">Group</span><span class="text-gray-800 dark:text-slate-200">' + esc(d.group) + '</span></div>';

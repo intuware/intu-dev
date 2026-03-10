@@ -177,6 +177,12 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 			continue
 		}
 
+		if !chCfg.MatchesProfile(e.cfg.Runtime.Profile) {
+			e.logger.Info("channel not in active profile, skipping",
+				"id", chCfg.ID, "profiles", chCfg.Profiles, "active", e.cfg.Runtime.Profile)
+			continue
+		}
+
 		channelEntries = append(channelEntries, channelEntry{
 			dir:   channelDir,
 			cfg:   chCfg,

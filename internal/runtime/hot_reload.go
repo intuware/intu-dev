@@ -223,6 +223,12 @@ func (hr *HotReloader) startChannel(channelID, channelDir string) {
 		return
 	}
 
+	if !chCfg.MatchesProfile(hr.engine.cfg.Runtime.Profile) {
+		hr.logger.Info("channel not in active profile, not starting",
+			"channel", channelID, "profiles", chCfg.Profiles, "active", hr.engine.cfg.Runtime.Profile)
+		return
+	}
+
 	cr, err := hr.engine.buildChannelRuntime(channelDir, chCfg)
 	if err != nil {
 		hr.logger.Error("failed to build channel runtime for hot-reload", "channel", channelID, "error", err)

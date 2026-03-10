@@ -14,6 +14,15 @@
       "type": "boolean",
       "description": "Whether this channel is active"
     },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of what this channel does"
+    },
+    "profiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "If specified, channel is only loaded when the active profile matches one of these values"
+    },
     "tags": {
       "type": "array",
       "items": { "type": "string" },

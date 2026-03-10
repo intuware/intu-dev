@@ -122,3 +122,39 @@ func TestListenerEndpoint_EmptyPathDefaultsToSlash(t *testing.T) {
 		t.Fatalf("expected 8080 /, got %d %s", port, path)
 	}
 }
+
+func TestMatchesProfile_EmptyProfilesMatchesAll(t *testing.T) {
+	ch := &ChannelConfig{ID: "ch-1", Profiles: nil}
+	if !ch.MatchesProfile("dev") {
+		t.Fatal("nil profiles should match any profile")
+	}
+	if !ch.MatchesProfile("") {
+		t.Fatal("nil profiles should match empty profile")
+	}
+}
+
+func TestMatchesProfile_ExactMatch(t *testing.T) {
+	ch := &ChannelConfig{ID: "ch-1", Profiles: []string{"dev", "staging"}}
+	if !ch.MatchesProfile("dev") {
+		t.Fatal("should match dev")
+	}
+	if !ch.MatchesProfile("staging") {
+		t.Fatal("should match staging")
+	}
+	if ch.MatchesProfile("prod") {
+		t.Fatal("should not match prod")
+	}
+	if ch.MatchesProfile("") {
+		t.Fatal("should not match empty profile")
+	}
+}
+
+func TestMatchesProfile_SingleProfile(t *testing.T) {
+	ch := &ChannelConfig{ID: "ch-1", Profiles: []string{"prod"}}
+	if !ch.MatchesProfile("prod") {
+		t.Fatal("should match prod")
+	}
+	if ch.MatchesProfile("dev") {
+		t.Fatal("should not match dev")
+	}
+}

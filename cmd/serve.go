@@ -53,6 +53,9 @@ func newServeCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
+			if cfg.Runtime.Profile == "" {
+				cfg.Runtime.Profile = profile
+			}
 
 			logger := logging.New(rootOpts.logLevel, cfg.Logging)
 			logger.Info("config loaded", "name", cfg.Runtime.Name, "profile", profile)

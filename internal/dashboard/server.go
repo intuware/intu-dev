@@ -635,6 +635,10 @@ func (s *Server) handleChannelDetail(w http.ResponseWriter, r *http.Request, cha
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "channel not found"})
 		return
 	}
+	if !chCfg.MatchesProfile(s.cfg.Runtime.Profile) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "channel not found"})
+		return
+	}
 
 	result := map[string]any{
 		"id":      chCfg.ID,
@@ -661,6 +665,12 @@ func (s *Server) handleChannelDetail(w http.ResponseWriter, r *http.Request, cha
 	}
 	result["destinations"] = dests
 
+	if chCfg.Description != "" {
+		result["description"] = chCfg.Description
+	}
+	if len(chCfg.Profiles) > 0 {
+		result["profiles"] = chCfg.Profiles
+	}
 	if len(chCfg.Tags) > 0 {
 		result["tags"] = chCfg.Tags
 	}
@@ -963,6 +973,9 @@ func (s *Server) listChannels() []map[string]any {
 		if err != nil {
 			continue
 		}
+		if !chCfg.MatchesProfile(s.cfg.Runtime.Profile) {
+			continue
+		}
 		ch := map[string]any{
 			"id":            chCfg.ID,
 			"enabled":       chCfg.Enabled,
@@ -974,6 +987,12 @@ func (s *Server) listChannels() []map[string]any {
 		}
 		if chCfg.Group != "" {
 			ch["group"] = chCfg.Group
+		}
+		if chCfg.Description != "" {
+			ch["description"] = chCfg.Description
+		}
+		if len(chCfg.Profiles) > 0 {
+			ch["profiles"] = chCfg.Profiles
 		}
 		destNames := []string{}
 		destTypes := []string{}

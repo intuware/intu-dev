@@ -305,6 +305,9 @@ INTU_POSTGRES_DSN=postgres://user:pass@localhost:5432/intu</code></pre>
 name: ADT Inbound
 description: Receives ADT messages via MLLP and routes to Kafka
 enabled: true
+profiles:
+  - dev
+  - staging
 tags:
   - hl7
   - adt
@@ -322,6 +325,12 @@ validator: validator.ts
 destinations:
   - kafka-output</code></pre>
             </div>
+
+            <h3>Channel Fields</h3>
+            <ul>
+                <li><code>description</code> &mdash; A human-readable summary of the channel&rsquo;s purpose. Displayed in the dashboard channel tiles and detail view.</li>
+                <li><code>profiles</code> &mdash; An optional list of profile names (e.g. <code>dev</code>, <code>staging</code>, <code>prod</code>). When specified, the channel is only loaded if the active runtime profile matches one of the listed values. If omitted, the channel loads on all profiles.</li>
+            </ul>
 
             <div class="docs-footer">
                 <a href="cli.html">&larr; CLI Reference</a>

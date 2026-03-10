@@ -45,6 +45,9 @@ func validateProject(cmd *cobra.Command, dir, profile string) ([]string, error) 
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
+	if cfg.Runtime.Profile == "" {
+		cfg.Runtime.Profile = profile
+	}
 
 	channelsDir := filepath.Join(dir, cfg.ChannelsDir)
 	entries, err := os.ReadDir(channelsDir)
@@ -76,6 +79,9 @@ func validateProject(cmd *cobra.Command, dir, profile string) ([]string, error) 
 		chCfg, loadErr := config.LoadChannelConfig(channelDir)
 		if loadErr != nil {
 			errs = append(errs, fmt.Sprintf("channel %s: %v", e.Name(), loadErr))
+			continue
+		}
+		if !chCfg.MatchesProfile(cfg.Runtime.Profile) {
 			continue
 		}
 		channels = append(channels, chCfg)

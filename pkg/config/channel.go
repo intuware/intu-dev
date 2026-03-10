@@ -9,8 +9,10 @@ import (
 )
 
 type ChannelConfig struct {
-	ID      string `yaml:"id"`
-	Enabled bool   `yaml:"enabled"`
+	ID          string   `yaml:"id"`
+	Enabled     bool     `yaml:"enabled"`
+	Description string   `yaml:"description,omitempty"`
+	Profiles    []string `yaml:"profiles,omitempty"`
 
 	Tags     []string `yaml:"tags,omitempty"`
 	Group    string   `yaml:"group,omitempty"`
@@ -518,6 +520,20 @@ func ValidateListenerEndpoints(channels []*ChannelConfig) []string {
 		}
 	}
 	return errs
+}
+
+// MatchesProfile reports whether the channel should be loaded for the given
+// active profile. Channels with an empty Profiles list match every profile.
+func (c *ChannelConfig) MatchesProfile(active string) bool {
+	if len(c.Profiles) == 0 {
+		return true
+	}
+	for _, p := range c.Profiles {
+		if p == active {
+			return true
+		}
+	}
+	return false
 }
 
 func LoadChannelConfig(channelDir string) (*ChannelConfig, error) {
