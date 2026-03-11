@@ -110,7 +110,7 @@ runtime:
 # Modes: none (disabled) | status (metadata only, no payloads) | full (full payloads)
 message_storage:
   driver: postgres
-  mode: status               # none | status (metadata only) | full (payloads + metadata)
+  mode: full               # none | status (metadata only) | full (payloads + metadata)
   postgres:
     dsn: ${INTU_POSTGRES_DSN}
     table_prefix: intu_
@@ -434,7 +434,6 @@ INTU_DASHBOARD_PASS=admin
 const httpToFileChannelYAML = `id: http-to-file
 enabled: true
 description: "Receives HTTP messages, validates, transforms, and writes to file"
-profiles: [dev]
 
 listener:
   type: http
@@ -455,7 +454,6 @@ destinations:
 const fhirToAdtChannelYAML = `id: fhir-to-adt
 enabled: true
 description: "Converts FHIR Patient resources to HL7v2 ADT messages"
-profiles: [dev]
 
 listener:
   type: fhir
@@ -854,7 +852,7 @@ RUN apk add --no-cache tini && npm install -g intu-dev
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/package.json ./
+COPY --from=build /app/package.json /app/tsconfig.json ./
 COPY src/ src/
 COPY intu.yaml intu.*.yaml ./
 COPY .env* ./
