@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/intuware/intu-dev/internal/observability"
@@ -29,19 +28,20 @@ func newStatsCmd() *cobra.Command {
 			channelsDir := filepath.Join(dir, cfg.ChannelsDir)
 
 			if len(args) == 1 {
-				return printChannelStats(cmd, channelsDir, args[0], jsonOutput)
-			}
-
-			entries, err := os.ReadDir(channelsDir)
-			if err != nil {
-				return fmt.Errorf("read channels dir: %w", err)
-			}
-
-			for _, e := range entries {
-				if !e.IsDir() {
-					continue
+				channelDir, err := config.FindChannelDir(channelsDir, args[0])
+				if err != nil {
+					return err
 				}
-				printChannelStats(cmd, channelsDir, e.Name(), jsonOutput)
+				return printChannelStatsFromDir(cmd, channelDir, jsonOutput)
+			}
+
+			channelDirs, err := config.DiscoverChannelDirs(channelsDir)
+			if err != nil {
+				return fmt.Errorf("discover channels: %w", err)
+			}
+
+			for _, channelDir := range channelDirs {
+				printChannelStatsFromDir(cmd, channelDir, jsonOutput)
 			}
 			return nil
 		},
@@ -53,11 +53,10 @@ func newStatsCmd() *cobra.Command {
 	return cmd
 }
 
-func printChannelStats(cmd *cobra.Command, channelsDir, channelID string, jsonOutput bool) error {
-	channelDir := filepath.Join(channelsDir, channelID)
+func printChannelStatsFromDir(cmd *cobra.Command, channelDir string, jsonOutput bool) error {
 	chCfg, err := config.LoadChannelConfig(channelDir)
 	if err != nil {
-		return fmt.Errorf("load channel %s: %w", channelID, err)
+		return fmt.Errorf("load channel %s: %w", channelDir, err)
 	}
 
 	stats := map[string]any{

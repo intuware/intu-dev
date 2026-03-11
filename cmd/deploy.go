@@ -30,28 +30,29 @@ func newDeployCmd() *cobra.Command {
 			channelsDir := filepath.Join(dir, cfg.ChannelsDir)
 
 			if len(args) == 1 {
-				return setChannelEnabled(channelsDir, args[0], true)
+				channelDir, err := config.FindChannelDir(channelsDir, args[0])
+				if err != nil {
+					return err
+				}
+				return setChannelEnabled(channelDir, args[0], true)
 			}
 
 			if !all && tag == "" {
 				return fmt.Errorf("specify a channel ID, --all, or --tag")
 			}
 
-			entries, err := os.ReadDir(channelsDir)
+			channelDirs, err := config.DiscoverChannelDirs(channelsDir)
 			if err != nil {
-				return fmt.Errorf("read channels dir: %w", err)
+				return fmt.Errorf("discover channels: %w", err)
 			}
 
-			for _, e := range entries {
-				if !e.IsDir() {
+			for _, channelDir := range channelDirs {
+				chCfg, err := config.LoadChannelConfig(channelDir)
+				if err != nil {
+					logger.Warn("skip channel", "dir", channelDir, "error", err)
 					continue
 				}
 				if tag != "" {
-					chCfg, err := config.LoadChannelConfig(filepath.Join(channelsDir, e.Name()))
-					if err != nil {
-						logger.Warn("skip channel", "name", e.Name(), "error", err)
-						continue
-					}
 					found := false
 					for _, t := range chCfg.Tags {
 						if t == tag {
@@ -63,10 +64,10 @@ func newDeployCmd() *cobra.Command {
 						continue
 					}
 				}
-				if err := setChannelEnabled(channelsDir, e.Name(), true); err != nil {
-					logger.Error("deploy failed", "channel", e.Name(), "error", err)
+				if err := setChannelEnabled(channelDir, chCfg.ID, true); err != nil {
+					logger.Error("deploy failed", "channel", chCfg.ID, "error", err)
 				} else {
-					fmt.Fprintf(cmd.OutOrStdout(), "Deployed: %s\n", e.Name())
+					fmt.Fprintf(cmd.OutOrStdout(), "Deployed: %s\n", chCfg.ID)
 				}
 			}
 			return nil
@@ -95,7 +96,11 @@ func newUndeployCmd() *cobra.Command {
 			}
 
 			channelsDir := filepath.Join(dir, cfg.ChannelsDir)
-			if err := setChannelEnabled(channelsDir, args[0], false); err != nil {
+			channelDir, err := config.FindChannelDir(channelsDir, args[0])
+			if err != nil {
+				return err
+			}
+			if err := setChannelEnabled(channelDir, args[0], false); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Undeployed: %s\n", args[0])
@@ -123,7 +128,11 @@ func newEnableCmd() *cobra.Command {
 			}
 
 			channelsDir := filepath.Join(dir, cfg.ChannelsDir)
-			if err := setChannelEnabled(channelsDir, args[0], true); err != nil {
+			channelDir, err := config.FindChannelDir(channelsDir, args[0])
+			if err != nil {
+				return err
+			}
+			if err := setChannelEnabled(channelDir, args[0], true); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Enabled: %s\n", args[0])
@@ -151,7 +160,11 @@ func newDisableCmd() *cobra.Command {
 			}
 
 			channelsDir := filepath.Join(dir, cfg.ChannelsDir)
-			if err := setChannelEnabled(channelsDir, args[0], false); err != nil {
+			channelDir, err := config.FindChannelDir(channelsDir, args[0])
+			if err != nil {
+				return err
+			}
+			if err := setChannelEnabled(channelDir, args[0], false); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Disabled: %s\n", args[0])
@@ -164,8 +177,8 @@ func newDisableCmd() *cobra.Command {
 	return cmd
 }
 
-func setChannelEnabled(channelsDir, channelID string, enabled bool) error {
-	path := filepath.Join(channelsDir, channelID, "channel.yaml")
+func setChannelEnabled(channelDir, channelID string, enabled bool) error {
+	path := filepath.Join(channelDir, "channel.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read channel %s: %w", channelID, err)

@@ -131,7 +131,7 @@ npm run dev</code></pre>
                     </tr>
                     <tr>
                         <td><code>src/channels/</code></td>
-                        <td>One subdirectory per channel, each containing its own YAML config and TypeScript files</td>
+                        <td>Channel directories (any nesting depth), each containing its own YAML config and TypeScript files</td>
                     </tr>
                 </tbody>
             </table>
@@ -144,7 +144,7 @@ npm run dev</code></pre>
                     <div class="prop-desc">
                         A channel is a complete processing pipeline that receives messages from a source,
                         transforms and validates them, then delivers them to one or more destinations.
-                        Each channel lives in its own directory under <code>src/channels/</code>.
+                        Each channel lives in its own directory under <code>src/channels/</code>, and channels can be organized in subdirectories at any depth (e.g. <code>src/channels/vendor/fhir-to-adt/</code>).
                     </div>
                 </div>
                 <div class="prop-item">

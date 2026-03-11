@@ -1,11 +1,15 @@
 package bootstrap
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 var projectDirectories = []string{
 	"src/channels/http-to-file",
 	"src/channels/fhir-to-adt",
 	"src/types",
+	".vscode",
 }
 
 func projectFiles(projectName string) map[string]string {
@@ -28,6 +32,8 @@ func projectFiles(projectName string) map[string]string {
 		"docker-compose.yml":                   fmt.Sprintf(dockerComposeTpl, projectName, projectName),
 		".dockerignore":                        dockerignore,
 		".gitignore":                           gitignore,
+		".vscode/settings.json":                vscodeSettings,
+		".vscode/extensions.json":              vscodeExtensions,
 	}
 }
 
@@ -546,11 +552,11 @@ export function transform(msg: IntuMessage, ctx: IntuContext): IntuMessage {
 `
 
 // channelFiles returns the file map for a channel (used by BootstrapChannel).
+// channelName may contain slashes for subdirectory nesting (e.g. "vendor/fhir-to-adt").
 func channelFiles(channelsDir, channelName string) map[string]string {
+	channelID := filepath.Base(channelName)
 	return map[string]string{
-		channelsDir + "/" + channelName + "/channel.yaml":   fmt.Sprintf(addChannelYAMLTpl, channelName),
-		channelsDir + "/" + channelName + "/transformer.ts": transformerTSTpl,
-		channelsDir + "/" + channelName + "/validator.ts":   validatorTSTpl,
+		channelsDir + "/" + channelName + "/channel.yaml": fmt.Sprintf(addChannelYAMLTpl, channelID),
 	}
 }
 
@@ -563,11 +569,11 @@ listener:
   http:
     port: 8081
 
-validator:
-  entrypoint: validator.ts
+# validator:
+#   entrypoint: validator.ts
 
-transformer:
-  entrypoint: transformer.ts
+# transformer:
+#   entrypoint: transformer.ts
 
 destinations:
   - file-output
@@ -809,7 +815,7 @@ VS Code setup (.vscode/settings.json):
 
     {
       "yaml.schemas": {
-        "https://intu.dev/schema/channel.schema.json": "src/channels/*/channel.yaml",
+        "https://intu.dev/schema/channel.schema.json": "src/channels/**/channel.yaml",
         "https://intu.dev/schema/profile.schema.json": ["intu.yaml", "intu.*.yaml"]
       }
     }
@@ -863,4 +869,28 @@ output/
 .env
 .env.*
 !.env.example
+`
+
+const vscodeSettings = `{
+  "yaml.schemas": {
+    "https://intu.dev/schema/channel.schema.json": "src/channels/**/channel.yaml",
+    "https://intu.dev/schema/profile.schema.json": ["intu.yaml", "intu.*.yaml"]
+  },
+  "json.schemas": [
+    {
+      "fileMatch": ["src/channels/**/channel.yaml"],
+      "url": "https://intu.dev/schema/channel.schema.json"
+    }
+  ],
+  "files.associations": {
+    "*.yaml": "yaml"
+  }
+}
+`
+
+const vscodeExtensions = `{
+  "recommendations": [
+    "redhat.vscode-yaml"
+  ]
+}
 `

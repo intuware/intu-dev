@@ -28,12 +28,11 @@ func newCloneCmd(logLevel *string) *cobra.Command {
 			}
 
 			channelsDir := filepath.Join(dir, cfg.ChannelsDir)
-			sourceDir := filepath.Join(channelsDir, sourceID)
-			destDir := filepath.Join(channelsDir, newID)
-
-			if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
-				return fmt.Errorf("source channel %q not found at %s", sourceID, sourceDir)
+			sourceDir, err := config.FindChannelDir(channelsDir, sourceID)
+			if err != nil {
+				return fmt.Errorf("source channel %q not found", sourceID)
 			}
+			destDir := filepath.Join(channelsDir, newID)
 
 			if _, err := os.Stat(destDir); err == nil {
 				return fmt.Errorf("target channel %q already exists at %s", newID, destDir)

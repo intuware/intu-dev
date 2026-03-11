@@ -50,35 +50,27 @@ func validateProject(cmd *cobra.Command, dir, profile string) ([]string, error) 
 	}
 
 	channelsDir := filepath.Join(dir, cfg.ChannelsDir)
-	entries, err := os.ReadDir(channelsDir)
+	channelDirs, err := config.DiscoverChannelDirs(channelsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Fprintln(cmd.OutOrStdout(), "Validation passed (no channels directory).")
 			return nil, nil
 		}
-		return nil, fmt.Errorf("read channels dir: %w", err)
+		return nil, fmt.Errorf("discover channels: %w", err)
+	}
+	if len(channelDirs) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "Validation passed (no channels directory).")
+		return nil, nil
 	}
 
 	var errs []string
 	var channels []*config.ChannelConfig
 
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		channelDir := filepath.Join(channelsDir, e.Name())
-		channelPath := filepath.Join(channelDir, "channel.yaml")
-		if _, statErr := os.Stat(channelPath); statErr != nil {
-			if os.IsNotExist(statErr) {
-				continue
-			}
-			errs = append(errs, fmt.Sprintf("channel %s: %v", e.Name(), statErr))
-			continue
-		}
-
+	for _, channelDir := range channelDirs {
 		chCfg, loadErr := config.LoadChannelConfig(channelDir)
 		if loadErr != nil {
-			errs = append(errs, fmt.Sprintf("channel %s: %v", e.Name(), loadErr))
+			relDir, _ := filepath.Rel(channelsDir, channelDir)
+			errs = append(errs, fmt.Sprintf("channel %s: %v", relDir, loadErr))
 			continue
 		}
 		if !chCfg.MatchesProfile(cfg.Runtime.Profile) {

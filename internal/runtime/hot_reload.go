@@ -50,12 +50,13 @@ func (hr *HotReloader) Start(ctx context.Context) error {
 		return err
 	}
 
-	entries, err := os.ReadDir(hr.channelsDir)
+	channelDirs, err := config.DiscoverChannelDirs(hr.channelsDir)
 	if err == nil {
-		for _, e := range entries {
-			if e.IsDir() {
-				channelDir := filepath.Join(hr.channelsDir, e.Name())
-				hr.watchChannelDir(channelDir)
+		for _, channelDir := range channelDirs {
+			hr.watchChannelDir(channelDir)
+			// Also watch intermediate directories so we detect new nested channels
+			for cur := filepath.Dir(channelDir); cur != hr.channelsDir && strings.HasPrefix(cur, hr.channelsDir); cur = filepath.Dir(cur) {
+				_ = hr.watcher.Add(cur)
 			}
 		}
 	}
@@ -128,7 +129,10 @@ func (hr *HotReloader) handleEvent(event fsnotify.Event) {
 	dir := filepath.Dir(event.Name)
 
 	if name == "channel.yaml" {
-		channelID := filepath.Base(dir)
+		channelID := hr.channelIDFromDir(dir)
+		if channelID == "" {
+			return
+		}
 		if hr.shouldDebounce(channelID) {
 			return
 		}
@@ -139,7 +143,6 @@ func (hr *HotReloader) handleEvent(event fsnotify.Event) {
 			return
 		}
 
-		// Re-add file watch (editors may delete+recreate on save)
 		_ = hr.watcher.Add(event.Name)
 		hr.logger.Info("channel config changed, reloading", "channel", channelID)
 		hr.reloadChannel(channelID, dir)
@@ -147,12 +150,14 @@ func (hr *HotReloader) handleEvent(event fsnotify.Event) {
 	}
 
 	if strings.HasSuffix(name, ".ts") {
-		channelID := filepath.Base(dir)
+		channelID := hr.channelIDFromDir(dir)
+		if channelID == "" {
+			return
+		}
 		if _, exists := hr.engine.channels[channelID]; exists {
 			if hr.shouldDebounce(channelID) {
 				return
 			}
-			// Re-add file watch (editors may delete+recreate on save)
 			_ = hr.watcher.Add(event.Name)
 			hr.logger.Info("TypeScript changed, rebuilding and reloading", "file", name, "channel", channelID)
 			if err := hr.rebuildTS(); err != nil {
@@ -164,29 +169,45 @@ func (hr *HotReloader) handleEvent(event fsnotify.Event) {
 		return
 	}
 
-	parentDir := filepath.Dir(event.Name)
-	if parentDir == hr.channelsDir {
+	// A new directory was created somewhere under channelsDir — watch it and
+	// check whether it already contains a channel.yaml.
+	if strings.HasPrefix(event.Name, hr.channelsDir) {
 		info, err := os.Stat(event.Name)
 		if err != nil {
 			if event.Op&fsnotify.Remove != 0 {
-				channelID := filepath.Base(event.Name)
-				hr.logger.Info("channel directory removed", "channel", channelID)
-				hr.stopChannel(channelID)
+				channelID := hr.channelIDFromDir(event.Name)
+				if channelID != "" {
+					hr.logger.Info("channel directory removed", "channel", channelID)
+					hr.stopChannel(channelID)
+				}
 			}
 			return
 		}
 
 		if info.IsDir() && event.Op&fsnotify.Create != 0 {
-			channelID := filepath.Base(event.Name)
+			_ = hr.watcher.Add(event.Name)
 			hr.watchChannelDir(event.Name)
 
 			channelYAML := filepath.Join(event.Name, "channel.yaml")
 			if _, err := os.Stat(channelYAML); err == nil {
-				hr.logger.Info("new channel directory detected", "channel", channelID)
-				hr.startChannel(channelID, event.Name)
+				cfg, loadErr := config.LoadChannelConfig(event.Name)
+				if loadErr == nil {
+					hr.logger.Info("new channel directory detected", "channel", cfg.ID)
+					hr.startChannel(cfg.ID, event.Name)
+				}
 			}
 		}
 	}
+}
+
+// channelIDFromDir loads the channel.yaml in dir and returns the channel ID.
+// Returns "" if the file doesn't exist or can't be parsed.
+func (hr *HotReloader) channelIDFromDir(dir string) string {
+	cfg, err := config.LoadChannelConfig(dir)
+	if err != nil {
+		return ""
+	}
+	return cfg.ID
 }
 
 func (hr *HotReloader) shouldDebounce(channelID string) bool {

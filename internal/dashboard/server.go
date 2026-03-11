@@ -629,7 +629,11 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request, channelID
 }
 
 func (s *Server) handleChannelDetail(w http.ResponseWriter, r *http.Request, channelID string) {
-	channelDir := filepath.Join(s.channelsDir, channelID)
+	channelDir, err := config.FindChannelDir(s.channelsDir, channelID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "channel not found"})
+		return
+	}
 	chCfg, err := config.LoadChannelConfig(channelDir)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "channel not found"})
@@ -961,26 +965,25 @@ func destinationConfigMap(d config.ChannelDestination) map[string]any {
 
 func (s *Server) listChannels() []map[string]any {
 	var channels []map[string]any
-	entries, err := os.ReadDir(s.channelsDir)
+	channelDirs, err := config.DiscoverChannelDirs(s.channelsDir)
 	if err != nil {
 		return channels
 	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		chCfg, err := config.LoadChannelConfig(filepath.Join(s.channelsDir, e.Name()))
+	for _, channelDir := range channelDirs {
+		chCfg, err := config.LoadChannelConfig(channelDir)
 		if err != nil {
 			continue
 		}
 		if !chCfg.MatchesProfile(s.cfg.Runtime.Profile) {
 			continue
 		}
+		relPath, _ := filepath.Rel(s.channelsDir, channelDir)
 		ch := map[string]any{
 			"id":            chCfg.ID,
 			"enabled":       chCfg.Enabled,
 			"listener":      chCfg.Listener.Type,
 			"listener_type": chCfg.Listener.Type,
+			"path":          relPath,
 		}
 		if len(chCfg.Tags) > 0 {
 			ch["tags"] = chCfg.Tags
@@ -1016,7 +1019,11 @@ func (s *Server) listChannels() []map[string]any {
 }
 
 func setChannelEnabledDashboard(channelsDir, channelID string, enabled bool) error {
-	path := filepath.Join(channelsDir, channelID, "channel.yaml")
+	channelDir, err := config.FindChannelDir(channelsDir, channelID)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(channelDir, "channel.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read channel %s: %w", channelID, err)

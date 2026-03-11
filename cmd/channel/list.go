@@ -2,7 +2,6 @@ package channel
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/intuware/intu-dev/pkg/config"
@@ -26,23 +25,16 @@ func newListCmd(logLevel *string) *cobra.Command {
 			}
 
 			channelsDir := filepath.Join(dir, cfg.ChannelsDir)
-			entries, err := os.ReadDir(channelsDir)
-			if err != nil {
-				if os.IsNotExist(err) {
-					fmt.Fprintln(cmd.OutOrStdout(), "No channels found.")
-					return nil
-				}
-				return fmt.Errorf("read channels dir: %w", err)
+			channelDirs, err := config.DiscoverChannelDirs(channelsDir)
+			if err != nil || len(channelDirs) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "No channels found.")
+				return nil
 			}
 
-			for _, e := range entries {
-				if !e.IsDir() {
-					continue
-				}
-				channelDir := filepath.Join(channelsDir, e.Name())
+			for _, channelDir := range channelDirs {
 				chCfg, err := config.LoadChannelConfig(channelDir)
 				if err != nil {
-					logger.Warn("skip channel", "dir", e.Name(), "error", err)
+					logger.Warn("skip channel", "dir", channelDir, "error", err)
 					continue
 				}
 
@@ -58,7 +50,8 @@ func newListCmd(logLevel *string) *cobra.Command {
 					status = "disabled"
 				}
 
-				line := fmt.Sprintf("%-30s %-10s", chCfg.ID, status)
+				relPath, _ := filepath.Rel(channelsDir, channelDir)
+				line := fmt.Sprintf("%-30s %-10s  path=%s", chCfg.ID, status, relPath)
 				if len(chCfg.Tags) > 0 {
 					line += fmt.Sprintf("  tags=%v", chCfg.Tags)
 				}

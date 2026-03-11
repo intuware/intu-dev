@@ -30,10 +30,9 @@ func newExportCmd(logLevel *string) *cobra.Command {
 			}
 
 			channelsDir := filepath.Join(dir, cfg.ChannelsDir)
-			channelDir := filepath.Join(channelsDir, channelID)
-
-			if _, err := os.Stat(channelDir); os.IsNotExist(err) {
-				return fmt.Errorf("channel %q not found at %s", channelID, channelDir)
+			channelDir, err := config.FindChannelDir(channelsDir, channelID)
+			if err != nil {
+				return fmt.Errorf("channel %q not found", channelID)
 			}
 
 			if output == "" {

@@ -25,12 +25,15 @@ func newDescribeCmd(logLevel *string) *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			channelPath := filepath.Join(dir, cfg.ChannelsDir, channelID, "channel.yaml")
+			channelsDir := filepath.Join(dir, cfg.ChannelsDir)
+			channelDir, err := config.FindChannelDir(channelsDir, channelID)
+			if err != nil {
+				return fmt.Errorf("channel %s not found", channelID)
+			}
+
+			channelPath := filepath.Join(channelDir, "channel.yaml")
 			data, err := os.ReadFile(channelPath)
 			if err != nil {
-				if os.IsNotExist(err) {
-					return fmt.Errorf("channel %s not found", channelID)
-				}
 				return fmt.Errorf("read channel config: %w", err)
 			}
 

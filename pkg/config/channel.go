@@ -552,3 +552,42 @@ func LoadChannelConfig(channelDir string) (*ChannelConfig, error) {
 
 	return &cfg, nil
 }
+
+// DiscoverChannelDirs recursively walks channelsDir and returns absolute paths
+// to every directory that contains a channel.yaml file.
+func DiscoverChannelDirs(channelsDir string) ([]string, error) {
+	var dirs []string
+	err := filepath.WalkDir(channelsDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() && d.Name() == "channel.yaml" {
+			dirs = append(dirs, filepath.Dir(path))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walk channels dir %s: %w", channelsDir, err)
+	}
+	return dirs, nil
+}
+
+// FindChannelDir recursively searches channelsDir for a channel whose
+// channel.yaml has the given id. Returns the absolute path to that directory
+// or an error if not found.
+func FindChannelDir(channelsDir, channelID string) (string, error) {
+	dirs, err := DiscoverChannelDirs(channelsDir)
+	if err != nil {
+		return "", err
+	}
+	for _, dir := range dirs {
+		cfg, err := LoadChannelConfig(dir)
+		if err != nil {
+			continue
+		}
+		if cfg.ID == channelID {
+			return dir, nil
+		}
+	}
+	return "", fmt.Errorf("channel %q not found under %s", channelID, channelsDir)
+}

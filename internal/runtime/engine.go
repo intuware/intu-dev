@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -148,9 +147,9 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 	}
 
 	channelsDir := filepath.Join(e.rootDir, e.cfg.ChannelsDir)
-	entries, err := os.ReadDir(channelsDir)
+	channelDirs, err := config.DiscoverChannelDirs(channelsDir)
 	if err != nil {
-		return fmt.Errorf("read channels dir: %w", err)
+		return fmt.Errorf("discover channels: %w", err)
 	}
 
 	type channelEntry struct {
@@ -160,15 +159,10 @@ func (e *DefaultEngine) Start(ctx context.Context) error {
 	}
 	var channelEntries []channelEntry
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		channelDir := filepath.Join(channelsDir, entry.Name())
+	for _, channelDir := range channelDirs {
 		chCfg, err := config.LoadChannelConfig(channelDir)
 		if err != nil {
-			e.logger.Warn("skipping channel", "name", entry.Name(), "error", err)
+			e.logger.Warn("skipping channel", "dir", channelDir, "error", err)
 			continue
 		}
 
@@ -510,24 +504,11 @@ func (e *DefaultEngine) ReprocessMessage(ctx context.Context, channelID string, 
 
 func (e *DefaultEngine) findChannelDir(channelID string) string {
 	channelsDir := filepath.Join(e.rootDir, e.cfg.ChannelsDir)
-	entries, err := os.ReadDir(channelsDir)
+	dir, err := config.FindChannelDir(channelsDir, channelID)
 	if err != nil {
 		return ""
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dir := filepath.Join(channelsDir, entry.Name())
-		chCfg, err := config.LoadChannelConfig(dir)
-		if err != nil {
-			continue
-		}
-		if chCfg.ID == channelID {
-			return dir
-		}
-	}
-	return ""
+	return dir
 }
 
 func (e *DefaultEngine) WatchChannels(ctx context.Context) error {

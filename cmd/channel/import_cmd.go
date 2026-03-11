@@ -69,13 +69,6 @@ func newImportCmd(logLevel *string) *cobra.Command {
 
 				destPath := filepath.Join(channelsDir, cleanName)
 
-				if channelID == "" {
-					parts := strings.SplitN(cleanName, string(filepath.Separator), 2)
-					if len(parts) > 0 {
-						channelID = parts[0]
-					}
-				}
-
 				if !force {
 					if _, err := os.Stat(destPath); err == nil {
 						return fmt.Errorf("file already exists: %s (use --force to overwrite)", destPath)
@@ -97,6 +90,12 @@ func newImportCmd(logLevel *string) *cobra.Command {
 				}
 				outFile.Close()
 				fileCount++
+
+				if channelID == "" && filepath.Base(cleanName) == "channel.yaml" {
+					if chCfg, loadErr := config.LoadChannelConfig(filepath.Dir(destPath)); loadErr == nil {
+						channelID = chCfg.ID
+					}
+				}
 			}
 
 			if channelID == "" {
