@@ -154,7 +154,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"active_channels": activeChannels,
 	}
 
-	msgCounts := map[string]int{}
+	msgCounts := map[string]int64{}
 	if s.store != nil {
 		now := time.Now()
 		windows := []struct {
@@ -167,15 +167,28 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 			{"last_24h", 24 * time.Hour},
 		}
 		for _, w := range windows {
-			records, err := s.store.Query(storage.QueryOpts{
-				Since:          now.Add(-w.dur),
-				Stage:          "received",
-				ExcludeContent: true,
-				Limit:          100000,
+			count, err := s.store.Count(storage.QueryOpts{
+				Since: now.Add(-w.dur),
+				Stage: "received",
 			})
 			if err == nil {
-				msgCounts[w.key] = len(records)
+				msgCounts[w.key] = count
 			}
+		}
+
+		errorCount, err := s.store.Count(storage.QueryOpts{
+			Since:  now.Add(-24 * time.Hour),
+			Status: "ERROR",
+		})
+		if err == nil {
+			msgCounts["errors_24h"] = errorCount
+		}
+
+		totalCount, err := s.store.Count(storage.QueryOpts{
+			Stage: "received",
+		})
+		if err == nil {
+			msgCounts["total"] = totalCount
 		}
 	}
 	result["message_counts"] = msgCounts
@@ -254,16 +267,38 @@ func (s *Server) handleStorageInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mode := "none"
+	info := map[string]any{
+		"mode":   "none",
+		"driver": "none",
+	}
+
 	if s.store != nil {
+		info["mode"] = "full"
+		info["driver"] = "memory"
+
 		if cs, ok := s.store.(*storage.CompositeStore); ok {
-			mode = cs.Mode()
-		} else {
-			mode = "full"
+			info["mode"] = cs.Mode()
+		}
+
+		if ms, ok := s.store.(*storage.MemoryStore); ok {
+			info["driver"] = "memory"
+			info["records"] = ms.Len()
+			info["bytes_used"] = ms.BytesUsed()
+		}
+
+		if s.cfg != nil && s.cfg.MessageStorage != nil {
+			if s.cfg.MessageStorage.Driver != "" {
+				info["driver"] = s.cfg.MessageStorage.Driver
+			}
+		}
+
+		count, err := s.store.Count(storage.QueryOpts{Stage: "received"})
+		if err == nil {
+			info["message_count"] = count
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"mode": mode})
+	writeJSON(w, http.StatusOK, info)
 }
 
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {

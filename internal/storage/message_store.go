@@ -14,6 +14,7 @@ type MessageRecord struct {
 	ChannelID     string
 	Stage         string
 	Content       []byte
+	ContentSize   int    `json:"ContentSize,omitempty"`
 	Status        string
 	Timestamp     time.Time
 	DurationMs    int64 `json:"DurationMs,omitempty"`
@@ -25,6 +26,7 @@ type MessageStore interface {
 	Get(id string) (*MessageRecord, error)
 	GetStage(id, stage string) (*MessageRecord, error)
 	Query(opts QueryOpts) ([]*MessageRecord, error)
+	Count(opts QueryOpts) (int64, error)
 	Delete(id string) error
 	Prune(before time.Time, channel string) (int, error)
 }
@@ -40,9 +42,14 @@ type QueryOpts struct {
 	ExcludeContent bool
 }
 
+const (
+	defaultMaxRecords = 100000
+	defaultMaxBytes   = 512 * 1024 * 1024 // 512 MB
+)
+
 func NewMessageStore(cfg *config.MessageStorageConfig) (MessageStore, error) {
 	if cfg == nil {
-		return NewMemoryStore(), nil
+		return NewMemoryStore(0, 0), nil
 	}
 
 	var inner MessageStore
@@ -50,7 +57,12 @@ func NewMessageStore(cfg *config.MessageStorageConfig) (MessageStore, error) {
 
 	switch cfg.Driver {
 	case "", "memory":
-		inner = NewMemoryStore()
+		var maxRec, maxBytes int
+		if cfg.Memory != nil {
+			maxRec = cfg.Memory.MaxRecords
+			maxBytes = cfg.Memory.MaxBytes
+		}
+		inner = NewMemoryStore(maxRec, maxBytes)
 	case "postgres":
 		if cfg.Postgres == nil {
 			return nil, fmt.Errorf("postgres config is required when driver is postgres")
@@ -83,25 +95,76 @@ func NewMessageStore(cfg *config.MessageStorageConfig) (MessageStore, error) {
 }
 
 type MemoryStore struct {
-	mu      sync.RWMutex
-	records map[string]*MessageRecord
-	order   []string
+	mu         sync.RWMutex
+	records    map[string]*MessageRecord
+	order      []string
+	totalBytes int
+	maxRecords int
+	maxBytes   int
 }
 
-func NewMemoryStore() *MemoryStore {
+func NewMemoryStore(maxRecords, maxBytes int) *MemoryStore {
+	if maxRecords <= 0 {
+		maxRecords = defaultMaxRecords
+	}
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxBytes
+	}
 	return &MemoryStore{
-		records: make(map[string]*MessageRecord),
+		records:    make(map[string]*MessageRecord),
+		maxRecords: maxRecords,
+		maxBytes:   maxBytes,
+	}
+}
+
+func recordSize(rec *MessageRecord) int {
+	n := len(rec.ID) + len(rec.CorrelationID) + len(rec.ChannelID) +
+		len(rec.Stage) + len(rec.Content) + len(rec.Status) + 64
+	return n
+}
+
+func (m *MemoryStore) evictOldest() {
+	if len(m.order) == 0 {
+		return
+	}
+	key := m.order[0]
+	m.order = m.order[1:]
+	if rec, ok := m.records[key]; ok {
+		m.totalBytes -= recordSize(rec)
+		delete(m.records, key)
 	}
 }
 
 func (m *MemoryStore) Save(record *MessageRecord) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if record.ContentSize == 0 && len(record.Content) > 0 {
+		record.ContentSize = len(record.Content)
+	}
+
 	key := record.ID + "." + record.Stage
-	if _, exists := m.records[key]; !exists {
+	if existing, exists := m.records[key]; exists {
+		m.totalBytes -= recordSize(existing)
+	} else {
 		m.order = append(m.order, key)
 	}
+
+	size := recordSize(record)
 	m.records[key] = record
+	m.totalBytes += size
+
+	for len(m.records) > m.maxRecords || m.totalBytes > m.maxBytes {
+		if len(m.order) <= 1 {
+			break
+		}
+		evictKey := m.order[0]
+		if evictKey == key {
+			break
+		}
+		m.evictOldest()
+	}
+
 	return nil
 }
 
@@ -135,6 +198,9 @@ func (m *MemoryStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 
 	for i := len(m.order) - 1; i >= 0; i-- {
 		rec := m.records[m.order[i]]
+		if rec == nil {
+			continue
+		}
 		if opts.ChannelID != "" && rec.ChannelID != opts.ChannelID {
 			continue
 		}
@@ -171,6 +237,36 @@ func (m *MemoryStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 	return results, nil
 }
 
+func (m *MemoryStore) Count(opts QueryOpts) (int64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var count int64
+	for i := len(m.order) - 1; i >= 0; i-- {
+		rec := m.records[m.order[i]]
+		if rec == nil {
+			continue
+		}
+		if opts.ChannelID != "" && rec.ChannelID != opts.ChannelID {
+			continue
+		}
+		if opts.Status != "" && rec.Status != opts.Status {
+			continue
+		}
+		if opts.Stage != "" && rec.Stage != opts.Stage {
+			continue
+		}
+		if !opts.Since.IsZero() && rec.Timestamp.Before(opts.Since) {
+			continue
+		}
+		if !opts.Before.IsZero() && rec.Timestamp.After(opts.Before) {
+			continue
+		}
+		count++
+	}
+	return count, nil
+}
+
 func (m *MemoryStore) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -178,6 +274,7 @@ func (m *MemoryStore) Delete(id string) error {
 	var newOrder []string
 	for _, key := range m.order {
 		if rec, ok := m.records[key]; ok && rec.ID == id {
+			m.totalBytes -= recordSize(rec)
 			delete(m.records, key)
 			continue
 		}
@@ -196,6 +293,7 @@ func (m *MemoryStore) Prune(before time.Time, channel string) (int, error) {
 	for _, key := range m.order {
 		rec := m.records[key]
 		if rec.Timestamp.Before(before) && (channel == "" || rec.ChannelID == channel) {
+			m.totalBytes -= recordSize(rec)
 			delete(m.records, key)
 			pruned++
 			continue
@@ -204,4 +302,16 @@ func (m *MemoryStore) Prune(before time.Time, channel string) (int, error) {
 	}
 	m.order = newOrder
 	return pruned, nil
+}
+
+func (m *MemoryStore) Len() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.records)
+}
+
+func (m *MemoryStore) BytesUsed() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.totalBytes
 }

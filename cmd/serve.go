@@ -116,7 +116,7 @@ func newServeCmd() *cobra.Command {
 			store, err := storage.NewMessageStore(cfg.MessageStorage)
 			if err != nil {
 				logger.Warn("message store init failed, using memory store", "error", err)
-				store = storage.NewMemoryStore()
+				store = storage.NewMemoryStore(0, 0)
 			}
 			storeDriver := "memory"
 			storeMode := "full"

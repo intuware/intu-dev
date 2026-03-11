@@ -74,8 +74,10 @@ func (p *PostgresStore) ensureTable() error {
 			channel_id TEXT NOT NULL,
 			stage TEXT NOT NULL,
 			content BYTEA,
+			content_size INTEGER NOT NULL DEFAULT 0,
 			status TEXT NOT NULL,
 			timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			duration_ms BIGINT NOT NULL DEFAULT 0,
 			metadata JSONB,
 			PRIMARY KEY (id, stage)
 		)`, table)
@@ -83,10 +85,22 @@ func (p *PostgresStore) ensureTable() error {
 		return fmt.Errorf("create table: %w", err)
 	}
 
+	migrations := []string{
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS content_size INTEGER NOT NULL DEFAULT 0", table),
+		fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS duration_ms BIGINT NOT NULL DEFAULT 0", table),
+	}
+	for _, m := range migrations {
+		p.db.Exec(m) // best-effort migration for existing tables
+	}
+
 	indexes := []string{
 		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%smsg_channel_status ON %s (channel_id, status)", p.tablePrefix, table),
-		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%smsg_channel_ts ON %s (channel_id, timestamp)", p.tablePrefix, table),
-		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%smsg_ts ON %s (timestamp)", p.tablePrefix, table),
+		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%smsg_channel_ts ON %s (channel_id, timestamp DESC)", p.tablePrefix, table),
+		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%smsg_ts ON %s (timestamp DESC)", p.tablePrefix, table),
+		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%smsg_status ON %s (status, timestamp DESC)", p.tablePrefix, table),
+		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%smsg_stage ON %s (stage, timestamp DESC)", p.tablePrefix, table),
+		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%smsg_corr ON %s (correlation_id)", p.tablePrefix, table),
+		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%smsg_channel_stage_ts ON %s (channel_id, stage, timestamp DESC)", p.tablePrefix, table),
 	}
 	for _, idx := range indexes {
 		if _, err := p.db.Exec(idx); err != nil {
@@ -103,14 +117,21 @@ func (p *PostgresStore) Save(record *MessageRecord) error {
 		metadataJSON = []byte("{}")
 	}
 
+	contentSize := record.ContentSize
+	if contentSize == 0 && len(record.Content) > 0 {
+		contentSize = len(record.Content)
+	}
+
 	query := fmt.Sprintf(`
-		INSERT INTO %s (id, correlation_id, channel_id, stage, content, status, timestamp, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO %s (id, correlation_id, channel_id, stage, content, content_size, status, timestamp, duration_ms, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (id, stage) DO UPDATE SET
 			correlation_id = EXCLUDED.correlation_id,
 			content = EXCLUDED.content,
+			content_size = EXCLUDED.content_size,
 			status = EXCLUDED.status,
 			timestamp = EXCLUDED.timestamp,
+			duration_ms = EXCLUDED.duration_ms,
 			metadata = EXCLUDED.metadata`, p.tableName())
 
 	_, err = p.db.Exec(query,
@@ -119,8 +140,10 @@ func (p *PostgresStore) Save(record *MessageRecord) error {
 		record.ChannelID,
 		record.Stage,
 		record.Content,
+		contentSize,
 		record.Status,
 		record.Timestamp,
+		record.DurationMs,
 		metadataJSON,
 	)
 	if err != nil {
@@ -131,7 +154,7 @@ func (p *PostgresStore) Save(record *MessageRecord) error {
 
 func (p *PostgresStore) Get(id string) (*MessageRecord, error) {
 	query := fmt.Sprintf(`
-		SELECT id, correlation_id, channel_id, stage, content, status, timestamp, metadata
+		SELECT id, correlation_id, channel_id, stage, content, content_size, status, timestamp, duration_ms, metadata
 		FROM %s WHERE id = $1
 		ORDER BY timestamp DESC LIMIT 1`, p.tableName())
 
@@ -141,7 +164,7 @@ func (p *PostgresStore) Get(id string) (*MessageRecord, error) {
 
 func (p *PostgresStore) GetStage(id, stage string) (*MessageRecord, error) {
 	query := fmt.Sprintf(`
-		SELECT id, correlation_id, channel_id, stage, content, status, timestamp, metadata
+		SELECT id, correlation_id, channel_id, stage, content, content_size, status, timestamp, duration_ms, metadata
 		FROM %s WHERE id = $1 AND stage = $2
 		LIMIT 1`, p.tableName())
 
@@ -185,9 +208,9 @@ func (p *PostgresStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 		where = " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	columns := "id, correlation_id, channel_id, stage, content, status, timestamp, metadata"
+	columns := "id, correlation_id, channel_id, stage, content, content_size, status, timestamp, duration_ms, metadata"
 	if opts.ExcludeContent {
-		columns = "id, correlation_id, channel_id, stage, NULL AS content, status, timestamp, metadata"
+		columns = "id, correlation_id, channel_id, stage, NULL AS content, content_size, status, timestamp, duration_ms, metadata"
 	}
 
 	query := fmt.Sprintf("SELECT %s FROM %s%s ORDER BY timestamp DESC",
@@ -216,6 +239,51 @@ func (p *PostgresStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 	}
 
 	return records, rows.Err()
+}
+
+func (p *PostgresStore) Count(opts QueryOpts) (int64, error) {
+	var conditions []string
+	var args []any
+	argIdx := 1
+
+	if opts.ChannelID != "" {
+		conditions = append(conditions, fmt.Sprintf("channel_id = $%d", argIdx))
+		args = append(args, opts.ChannelID)
+		argIdx++
+	}
+	if opts.Status != "" {
+		conditions = append(conditions, fmt.Sprintf("status = $%d", argIdx))
+		args = append(args, opts.Status)
+		argIdx++
+	}
+	if opts.Stage != "" {
+		conditions = append(conditions, fmt.Sprintf("stage = $%d", argIdx))
+		args = append(args, opts.Stage)
+		argIdx++
+	}
+	if !opts.Since.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("timestamp >= $%d", argIdx))
+		args = append(args, opts.Since)
+		argIdx++
+	}
+	if !opts.Before.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("timestamp <= $%d", argIdx))
+		args = append(args, opts.Before)
+		argIdx++
+	}
+
+	where := ""
+	if len(conditions) > 0 {
+		where = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s%s", p.tableName(), where)
+	var count int64
+	err := p.db.QueryRow(query, args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count messages: %w", err)
+	}
+	return count, nil
 }
 
 func (p *PostgresStore) Delete(id string) error {
@@ -266,8 +334,10 @@ func (p *PostgresStore) scanRecord(row *sql.Row) (*MessageRecord, error) {
 		&rec.ChannelID,
 		&rec.Stage,
 		&rec.Content,
+		&rec.ContentSize,
 		&rec.Status,
 		&rec.Timestamp,
+		&rec.DurationMs,
 		&metadataJSON,
 	)
 	if err != nil {
@@ -297,8 +367,10 @@ func (p *PostgresStore) scanRows(rows *sql.Rows) (*MessageRecord, error) {
 		&rec.ChannelID,
 		&rec.Stage,
 		&rec.Content,
+		&rec.ContentSize,
 		&rec.Status,
 		&rec.Timestamp,
+		&rec.DurationMs,
 		&metadataJSON,
 	)
 	if err != nil {

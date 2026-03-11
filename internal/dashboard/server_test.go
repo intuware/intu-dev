@@ -26,7 +26,7 @@ func newTestServer(store storage.MessageStore) *Server {
 }
 
 func TestHandleStorageInfoFull(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	s := newTestServer(store)
 	handler := s.BuildHandler()
 
@@ -38,15 +38,24 @@ func TestHandleStorageInfoFull(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
-	var result map[string]string
+	var result map[string]any
 	json.NewDecoder(w.Body).Decode(&result)
 	if result["mode"] != "full" {
-		t.Fatalf("expected mode=full for raw MemoryStore, got %s", result["mode"])
+		t.Fatalf("expected mode=full for raw MemoryStore, got %v", result["mode"])
+	}
+	if result["driver"] != "memory" {
+		t.Fatalf("expected driver=memory, got %v", result["driver"])
+	}
+	if _, ok := result["records"]; !ok {
+		t.Fatal("expected records field in storage info")
+	}
+	if _, ok := result["bytes_used"]; !ok {
+		t.Fatal("expected bytes_used field in storage info")
 	}
 }
 
 func TestHandleStorageInfoStatus(t *testing.T) {
-	inner := storage.NewMemoryStore()
+	inner := storage.NewMemoryStore(0, 0)
 	cs := storage.NewCompositeStore(inner, "status", nil)
 	s := newTestServer(cs)
 	handler := s.BuildHandler()
@@ -55,10 +64,10 @@ func TestHandleStorageInfoStatus(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	var result map[string]string
+	var result map[string]any
 	json.NewDecoder(w.Body).Decode(&result)
 	if result["mode"] != "status" {
-		t.Fatalf("expected mode=status, got %s", result["mode"])
+		t.Fatalf("expected mode=status, got %v", result["mode"])
 	}
 }
 
@@ -70,15 +79,15 @@ func TestHandleStorageInfoNone(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	var result map[string]string
+	var result map[string]any
 	json.NewDecoder(w.Body).Decode(&result)
 	if result["mode"] != "none" {
-		t.Fatalf("expected mode=none, got %s", result["mode"])
+		t.Fatalf("expected mode=none, got %v", result["mode"])
 	}
 }
 
 func TestHandlePayloadPreview(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	now := time.Now()
 	store.Save(&storage.MessageRecord{
 		ID: "m1", ChannelID: "ch-1", Stage: "received",
@@ -113,7 +122,7 @@ func TestHandlePayloadPreview(t *testing.T) {
 }
 
 func TestHandlePayloadPreviewTruncation(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	now := time.Now()
 
 	longContent := make([]byte, 3000)
@@ -146,7 +155,7 @@ func TestHandlePayloadPreviewTruncation(t *testing.T) {
 }
 
 func TestHandlePayloadUnavailable(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	now := time.Now()
 	store.Save(&storage.MessageRecord{
 		ID: "m3", ChannelID: "ch-1", Stage: "received",
@@ -169,7 +178,7 @@ func TestHandlePayloadUnavailable(t *testing.T) {
 }
 
 func TestHandlePayloadDownload(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	now := time.Now()
 	store.Save(&storage.MessageRecord{
 		ID: "m4", ChannelID: "ch-1", Stage: "sent",
@@ -198,7 +207,7 @@ func TestHandlePayloadDownload(t *testing.T) {
 }
 
 func TestHandlePayloadMissingStage(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	now := time.Now()
 	store.Save(&storage.MessageRecord{
 		ID: "m5", ChannelID: "ch-1", Stage: "received",
@@ -220,7 +229,7 @@ func TestHandlePayloadMissingStage(t *testing.T) {
 }
 
 func TestHandleMessagesStageFilter(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	now := time.Now()
 	store.Save(&storage.MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("r")})
 	store.Save(&storage.MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "sent", Status: "SENT", Timestamp: now, Content: []byte("s")})
@@ -247,7 +256,7 @@ func TestHandleMessagesStageFilter(t *testing.T) {
 }
 
 func TestHandleMessagesDedupe(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	now := time.Now()
 	store.Save(&storage.MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now})
 	store.Save(&storage.MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "transformed", Status: "TRANSFORMED", Timestamp: now})
@@ -285,7 +294,7 @@ func TestHandleMessagesDedupe(t *testing.T) {
 }
 
 func TestHandlePayloadIntuMessageJSON(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	now := time.Now()
 
 	intuJSON := `{"body":"test payload","transport":"http","contentType":"json","http":{"headers":{"Content-Type":"application/json"},"statusCode":0}}`
@@ -315,7 +324,7 @@ func TestHandlePayloadIntuMessageJSON(t *testing.T) {
 }
 
 func TestHandlePayloadResponseStage(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	now := time.Now()
 
 	respJSON := `{"body":"OK","transport":"http","contentType":"raw","http":{"headers":{},"statusCode":200}}`
@@ -347,7 +356,7 @@ func TestHandlePayloadResponseStage(t *testing.T) {
 }
 
 func TestHandlePayloadDownloadJSON(t *testing.T) {
-	store := storage.NewMemoryStore()
+	store := storage.NewMemoryStore(0, 0)
 	now := time.Now()
 
 	intuJSON := `{"body":"test","transport":"http","contentType":"raw"}`
@@ -391,7 +400,7 @@ func TestListChannelsReturnsDescriptionAndProfiles(t *testing.T) {
 	s := NewServer(&ServerConfig{
 		Config:      cfg,
 		ChannelsDir: dir,
-		Store:       storage.NewMemoryStore(),
+		Store:       storage.NewMemoryStore(0, 0),
 		Metrics:     observability.Global(),
 		Logger:      slog.Default(),
 	})

@@ -29,7 +29,7 @@ func projectFiles(projectName string) map[string]string {
 		"src/types/intu.d.ts":                  intuDTS,
 		"README.md":                            projectREADME,
 		"Dockerfile":                           dockerfile,
-		"docker-compose.yml":                   fmt.Sprintf(dockerComposeTpl, projectName, projectName),
+		"docker-compose.yml":                   fmt.Sprintf(dockerComposeTpl, projectName, projectName, projectName, projectName),
 		".dockerignore":                        dockerignore,
 		".gitignore":                           gitignore,
 		".vscode/settings.json":                vscodeSettings,
@@ -52,6 +52,9 @@ channels_dir: src/channels
 message_storage:
   driver: memory
   mode: full
+  memory:
+    max_records: 100000       # evicts oldest when exceeded
+    max_bytes: 536870912      # 512 MB; evicts oldest when exceeded
 
 destinations:
   file-output:
@@ -104,10 +107,15 @@ runtime:
 # --- Message Storage ---------------------------------------------------------
 # Controls how messages are persisted globally. Channels can override per-channel.
 # Drivers: memory | postgres | s3
+# Modes: none (disabled) | status (metadata only, no payloads) | full (full payloads)
 message_storage:
   driver: postgres
-  dsn: ${INTU_POSTGRES_DSN}
   mode: status               # none | status (metadata only) | full (payloads + metadata)
+  postgres:
+    dsn: ${INTU_POSTGRES_DSN}
+    table_prefix: intu_
+    max_open_conns: 25
+    max_idle_conns: 5
 
 # To use S3 instead of postgres for message content:
 # message_storage:
@@ -382,13 +390,15 @@ const dotEnv = `# intu Environment Variables
 INTU_PROFILE=dev
 
 # --- Core ---
+# Used by docker-compose: postgres://postgres:postgres@postgres:5432/intu?sslmode=disable
 INTU_POSTGRES_DSN=postgres://postgres:postgres@localhost:5432/intu?sslmode=disable
 
 # --- Dashboard ---
 INTU_DASHBOARD_USER=admin
 INTU_DASHBOARD_PASS=admin
 
-# --- Cluster (uncomment when enabling cluster mode) ---
+# --- Cluster (enable cluster mode for horizontal scaling) ---
+# docker-compose sets INTU_REDIS_ADDRESS automatically; override here if needed
 # INTU_REDIS_ADDRESS=localhost:6379
 # INTU_REDIS_PASSWORD=
 
@@ -829,30 +839,89 @@ VS Code setup (.vscode/settings.json):
 https://intu.dev/documentation/index.html
 `
 
-const dockerfile = `FROM node:22-alpine
-RUN npm install -g intu-dev
+const dockerfile = `# --- Build stage ---
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json tsconfig.json ./
 RUN npm install
 COPY src/ src/
 RUN npm run build
-COPY intu.yaml intu.*.yaml .env ./
+
+# --- Runtime stage ---
+FROM node:22-alpine
+RUN apk add --no-cache tini && npm install -g intu-dev
+WORKDIR /app
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/package.json ./
+COPY src/ src/
+COPY intu.yaml intu.*.yaml ./
+COPY .env* ./
+RUN mkdir -p /app/output
 EXPOSE 8081 8082 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q --spider http://localhost:3000/ || exit 1
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["intu", "serve", "--dir", ".", "--profile", "prod"]
 `
 
 const dockerComposeTpl = `services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: %s-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: intu
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: %s-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   %s:
     build: .
     container_name: %s
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8081:8081"
       - "8082:8082"
       - "3000:3000"
     env_file:
       - .env
+    environment:
+      INTU_POSTGRES_DSN: postgres://postgres:postgres@postgres:5432/intu?sslmode=disable
+      INTU_REDIS_ADDRESS: redis:6379
     volumes:
       - ./output:/app/output
+
+volumes:
+  pgdata:
+  redisdata:
 `
 
 const dockerignore = `node_modules

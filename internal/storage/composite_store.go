@@ -93,6 +93,13 @@ func (c *CompositeStore) Query(opts QueryOpts) ([]*MessageRecord, error) {
 	return c.inner.Query(opts)
 }
 
+func (c *CompositeStore) Count(opts QueryOpts) (int64, error) {
+	if c.mode == "none" {
+		return 0, nil
+	}
+	return c.inner.Count(opts)
+}
+
 func (c *CompositeStore) Delete(id string) error {
 	if c.mode == "none" {
 		return nil

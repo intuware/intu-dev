@@ -256,9 +256,15 @@ type MessageStorageConfig struct {
 	Driver    string                  `mapstructure:"driver"`
 	Mode      string                  `mapstructure:"mode"`
 	Stages    []string                `mapstructure:"stages"`
+	Memory    *StorageMemoryConfig    `mapstructure:"memory"`
 	Postgres  *StoragePostgresConfig  `mapstructure:"postgres"`
 	S3        *StorageS3Config        `mapstructure:"s3"`
 	Retention *StorageRetentionConfig `mapstructure:"retention"`
+}
+
+type StorageMemoryConfig struct {
+	MaxRecords int `mapstructure:"max_records"`
+	MaxBytes   int `mapstructure:"max_bytes"`
 }
 
 type StoragePostgresConfig struct {

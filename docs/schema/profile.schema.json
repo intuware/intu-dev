@@ -250,30 +250,49 @@
     },
     "message_storage": {
       "type": "object",
-      "description": "Global message storage configuration",
+      "description": "Global message storage configuration. Drivers: memory (default), postgres, s3. Modes: none (disabled), status (metadata only), full (payloads + metadata).",
       "properties": {
-        "driver": { "type": "string", "enum": ["memory", "postgres", "s3"] },
+        "driver": { "type": "string", "enum": ["memory", "postgres", "s3"], "default": "memory", "description": "Storage backend driver" },
+        "mode": { "type": "string", "enum": ["none", "status", "full"], "default": "full", "description": "Storage mode: none (no storage), status (metadata only), full (full payloads)" },
+        "stages": { "type": "array", "items": { "type": "string", "enum": ["received", "transformed", "filtered", "sent", "error", "response"] }, "description": "When mode is full, restrict storage to these pipeline stages only" },
+        "memory": {
+          "type": "object",
+          "description": "Memory driver configuration (OOM protection limits)",
+          "properties": {
+            "max_records": { "type": "integer", "default": 100000, "description": "Maximum number of records before oldest are evicted" },
+            "max_bytes": { "type": "integer", "default": 536870912, "description": "Maximum memory usage in bytes before oldest records are evicted (default 512 MB)" }
+          }
+        },
         "postgres": {
           "type": "object",
+          "description": "PostgreSQL driver configuration",
           "properties": {
-            "dsn": { "type": "string" },
-            "table_prefix": { "type": "string" }
-          }
+            "dsn": { "type": "string", "description": "PostgreSQL connection string (supports ${ENV_VAR} syntax)" },
+            "table_prefix": { "type": "string", "default": "intu_", "description": "Table name prefix" },
+            "max_open_conns": { "type": "integer", "default": 25, "description": "Maximum open database connections" },
+            "max_idle_conns": { "type": "integer", "default": 5, "description": "Maximum idle database connections" }
+          },
+          "required": ["dsn"]
         },
         "s3": {
           "type": "object",
+          "description": "S3 driver configuration",
           "properties": {
-            "bucket": { "type": "string" },
-            "region": { "type": "string" }
-          }
+            "bucket": { "type": "string", "description": "S3 bucket name" },
+            "region": { "type": "string", "description": "AWS region" },
+            "prefix": { "type": "string", "description": "Object key prefix (e.g. intu/messages)" },
+            "endpoint": { "type": "string", "description": "Custom S3 endpoint (for MinIO, LocalStack, etc.)" }
+          },
+          "required": ["bucket"]
         },
         "retention": {
           "type": "object",
+          "description": "Retention and pruning configuration",
           "properties": {
-            "days": { "type": "integer" },
-            "prune_interval": { "type": "string" },
-            "prune_errored": { "type": "boolean" },
-            "errored_retention_days": { "type": "integer" }
+            "days": { "type": "integer", "description": "Default retention period in days" },
+            "prune_interval": { "type": "string", "description": "How often to run automatic pruning (e.g. 1h, 6h)" },
+            "prune_errored": { "type": "boolean", "description": "Whether to prune errored messages" },
+            "errored_retention_days": { "type": "integer", "description": "Separate retention period for errored messages" }
           }
         }
       }

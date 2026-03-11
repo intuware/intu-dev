@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -24,6 +25,29 @@ func TestNewMessageStoreMemoryExplicit(t *testing.T) {
 	}
 	if _, ok := store.(*MemoryStore); !ok {
 		t.Fatal("expected MemoryStore with driver=memory")
+	}
+}
+
+func TestNewMessageStoreMemoryWithLimits(t *testing.T) {
+	store, err := NewMessageStore(&config.MessageStorageConfig{
+		Driver: "memory",
+		Memory: &config.StorageMemoryConfig{
+			MaxRecords: 500,
+			MaxBytes:   1024 * 1024,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ms, ok := store.(*MemoryStore)
+	if !ok {
+		t.Fatal("expected MemoryStore")
+	}
+	if ms.maxRecords != 500 {
+		t.Fatalf("expected maxRecords=500, got %d", ms.maxRecords)
+	}
+	if ms.maxBytes != 1024*1024 {
+		t.Fatalf("expected maxBytes=1048576, got %d", ms.maxBytes)
 	}
 }
 
@@ -79,7 +103,7 @@ func TestNewMessageStoreWithStagesReturnsCompositeStore(t *testing.T) {
 }
 
 func TestCompositeStoreNoneModeSkipsAllOperations(t *testing.T) {
-	inner := NewMemoryStore()
+	inner := NewMemoryStore(0, 0)
 	cs := NewCompositeStore(inner, "none", nil)
 
 	record := &MessageRecord{
@@ -128,7 +152,7 @@ func TestCompositeStoreNoneModeSkipsAllOperations(t *testing.T) {
 }
 
 func TestCompositeStoreStatusModeStripsContent(t *testing.T) {
-	inner := NewMemoryStore()
+	inner := NewMemoryStore(0, 0)
 	cs := NewCompositeStore(inner, "status", nil)
 
 	record := &MessageRecord{
@@ -164,7 +188,7 @@ func TestCompositeStoreStatusModeStripsContent(t *testing.T) {
 }
 
 func TestCompositeStoreFullModeWithStageFiltering(t *testing.T) {
-	inner := NewMemoryStore()
+	inner := NewMemoryStore(0, 0)
 	cs := NewCompositeStore(inner, "full", []string{"received", "sent"})
 
 	now := time.Now()
@@ -209,7 +233,7 @@ func TestCompositeStoreFullModeWithStageFiltering(t *testing.T) {
 }
 
 func TestCompositeStoreFullModeNoStagesStoresAll(t *testing.T) {
-	inner := NewMemoryStore()
+	inner := NewMemoryStore(0, 0)
 	cs := NewCompositeStore(inner, "full", nil)
 
 	now := time.Now()
@@ -257,7 +281,7 @@ func TestCompositeStoreShouldStore(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		cs := NewCompositeStore(NewMemoryStore(), tt.mode, tt.stages)
+		cs := NewCompositeStore(NewMemoryStore(0, 0), tt.mode, tt.stages)
 		got := cs.ShouldStore(tt.stage)
 		if got != tt.want {
 			t.Errorf("ShouldStore(mode=%s, stages=%v, stage=%s) = %v, want %v",
@@ -267,7 +291,7 @@ func TestCompositeStoreShouldStore(t *testing.T) {
 }
 
 func TestMemoryStoreResponseStage(t *testing.T) {
-	store := NewMemoryStore()
+	store := NewMemoryStore(0, 0)
 	now := time.Now()
 
 	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("data")})
@@ -298,7 +322,7 @@ func TestMemoryStoreResponseStage(t *testing.T) {
 }
 
 func TestCompositeStoreResponseStageFiltering(t *testing.T) {
-	inner := NewMemoryStore()
+	inner := NewMemoryStore(0, 0)
 	cs := NewCompositeStore(inner, "full", []string{"received", "sent", "response"})
 
 	now := time.Now()
@@ -327,14 +351,14 @@ func TestCompositeStoreResponseStageFiltering(t *testing.T) {
 }
 
 func TestCompositeStoreDefaultsToFull(t *testing.T) {
-	cs := NewCompositeStore(NewMemoryStore(), "", nil)
+	cs := NewCompositeStore(NewMemoryStore(0, 0), "", nil)
 	if cs.Mode() != "full" {
 		t.Fatalf("expected default mode=full, got %s", cs.Mode())
 	}
 }
 
 func TestCompositeStoreStatusModeDelegatesReadOps(t *testing.T) {
-	inner := NewMemoryStore()
+	inner := NewMemoryStore(0, 0)
 	cs := NewCompositeStore(inner, "status", nil)
 
 	now := time.Now()
@@ -373,7 +397,7 @@ func TestCompositeStoreStatusModeDelegatesReadOps(t *testing.T) {
 }
 
 func TestCompositeStorePruneDelegates(t *testing.T) {
-	inner := NewMemoryStore()
+	inner := NewMemoryStore(0, 0)
 	cs := NewCompositeStore(inner, "full", nil)
 
 	past := time.Now().Add(-1 * time.Hour)
@@ -399,7 +423,7 @@ func TestCompositeStorePruneDelegates(t *testing.T) {
 }
 
 func TestMemoryStoreBasicOperations(t *testing.T) {
-	store := NewMemoryStore()
+	store := NewMemoryStore(0, 0)
 	now := time.Now()
 
 	if err := store.Save(&MessageRecord{
@@ -459,7 +483,7 @@ func TestMemoryStoreBasicOperations(t *testing.T) {
 }
 
 func TestMemoryStorePrune(t *testing.T) {
-	store := NewMemoryStore()
+	store := NewMemoryStore(0, 0)
 	past := time.Now().Add(-2 * time.Hour)
 	recent := time.Now()
 
@@ -490,7 +514,7 @@ func TestMemoryStorePrune(t *testing.T) {
 }
 
 func TestMemoryStoreQueryStageFilter(t *testing.T) {
-	store := NewMemoryStore()
+	store := NewMemoryStore(0, 0)
 	now := time.Now()
 
 	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("r")})
@@ -526,7 +550,7 @@ func TestMemoryStoreQueryStageFilter(t *testing.T) {
 }
 
 func TestMemoryStoreQueryExcludeContent(t *testing.T) {
-	store := NewMemoryStore()
+	store := NewMemoryStore(0, 0)
 	now := time.Now()
 
 	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("big payload here")})
@@ -553,7 +577,7 @@ func TestMemoryStoreQueryExcludeContent(t *testing.T) {
 }
 
 func TestMemoryStoreQueryStageAndExcludeContent(t *testing.T) {
-	store := NewMemoryStore()
+	store := NewMemoryStore(0, 0)
 	now := time.Now()
 
 	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("r")})
@@ -575,7 +599,7 @@ func TestMemoryStoreQueryStageAndExcludeContent(t *testing.T) {
 }
 
 func TestMemoryStoreGetStage(t *testing.T) {
-	store := NewMemoryStore()
+	store := NewMemoryStore(0, 0)
 	now := time.Now()
 
 	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("recv-data")})
@@ -610,7 +634,7 @@ func TestMemoryStoreGetStage(t *testing.T) {
 }
 
 func TestCompositeStoreGetStageNoneMode(t *testing.T) {
-	cs := NewCompositeStore(NewMemoryStore(), "none", nil)
+	cs := NewCompositeStore(NewMemoryStore(0, 0), "none", nil)
 	rec, err := cs.GetStage("m1", "received")
 	if err != nil {
 		t.Fatalf("expected no error in none mode, got %v", err)
@@ -621,7 +645,7 @@ func TestCompositeStoreGetStageNoneMode(t *testing.T) {
 }
 
 func TestCompositeStoreGetStageDelegates(t *testing.T) {
-	inner := NewMemoryStore()
+	inner := NewMemoryStore(0, 0)
 	cs := NewCompositeStore(inner, "full", nil)
 	now := time.Now()
 
@@ -637,7 +661,7 @@ func TestCompositeStoreGetStageDelegates(t *testing.T) {
 }
 
 func TestMemoryStorePruneByChannel(t *testing.T) {
-	store := NewMemoryStore()
+	store := NewMemoryStore(0, 0)
 	past := time.Now().Add(-2 * time.Hour)
 
 	store.Save(&MessageRecord{
@@ -663,5 +687,145 @@ func TestMemoryStorePruneByChannel(t *testing.T) {
 	}
 	if records[0].ChannelID != "ch-2" {
 		t.Fatalf("expected ch-2 remaining, got %s", records[0].ChannelID)
+	}
+}
+
+func TestMemoryStoreEvictionByRecordCount(t *testing.T) {
+	store := NewMemoryStore(5, 0)
+	now := time.Now()
+
+	for i := 0; i < 10; i++ {
+		store.Save(&MessageRecord{
+			ID:        fmt.Sprintf("msg-%d", i),
+			ChannelID: "ch-1",
+			Stage:     "received",
+			Status:    "RECEIVED",
+			Timestamp: now.Add(time.Duration(i) * time.Second),
+			Content:   []byte("data"),
+		})
+	}
+
+	if store.Len() > 5 {
+		t.Fatalf("expected at most 5 records after eviction, got %d", store.Len())
+	}
+
+	_, err := store.Get("msg-9")
+	if err != nil {
+		t.Fatal("expected most recent record to survive eviction")
+	}
+
+	_, err = store.Get("msg-0")
+	if err == nil {
+		t.Fatal("expected oldest record to be evicted")
+	}
+}
+
+func TestMemoryStoreEvictionByBytes(t *testing.T) {
+	store := NewMemoryStore(1000, 500)
+	now := time.Now()
+
+	for i := 0; i < 20; i++ {
+		store.Save(&MessageRecord{
+			ID:        fmt.Sprintf("msg-%d", i),
+			ChannelID: "ch-1",
+			Stage:     "received",
+			Status:    "RECEIVED",
+			Timestamp: now.Add(time.Duration(i) * time.Second),
+			Content:   make([]byte, 100),
+		})
+	}
+
+	if store.BytesUsed() > 500 {
+		t.Fatalf("expected bytes used <= 500, got %d", store.BytesUsed())
+	}
+}
+
+func TestMemoryStoreCount(t *testing.T) {
+	store := NewMemoryStore(0, 0)
+	now := time.Now()
+
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now})
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "sent", Status: "SENT", Timestamp: now})
+	store.Save(&MessageRecord{ID: "m2", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now})
+	store.Save(&MessageRecord{ID: "m3", ChannelID: "ch-2", Stage: "received", Status: "ERROR", Timestamp: now})
+
+	count, err := store.Count(QueryOpts{})
+	if err != nil {
+		t.Fatalf("count failed: %v", err)
+	}
+	if count != 4 {
+		t.Fatalf("expected 4 total, got %d", count)
+	}
+
+	count, err = store.Count(QueryOpts{Stage: "received"})
+	if err != nil {
+		t.Fatalf("count failed: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("expected 3 received, got %d", count)
+	}
+
+	count, err = store.Count(QueryOpts{ChannelID: "ch-1"})
+	if err != nil {
+		t.Fatalf("count failed: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("expected 3 for ch-1, got %d", count)
+	}
+
+	count, err = store.Count(QueryOpts{Status: "ERROR"})
+	if err != nil {
+		t.Fatalf("count failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 error, got %d", count)
+	}
+}
+
+func TestCompositeStoreCount(t *testing.T) {
+	inner := NewMemoryStore(0, 0)
+	cs := NewCompositeStore(inner, "full", nil)
+
+	now := time.Now()
+	cs.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now})
+	cs.Save(&MessageRecord{ID: "m2", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now})
+
+	count, err := cs.Count(QueryOpts{Stage: "received"})
+	if err != nil {
+		t.Fatalf("count failed: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2, got %d", count)
+	}
+
+	noneStore := NewCompositeStore(inner, "none", nil)
+	count, err = noneStore.Count(QueryOpts{})
+	if err != nil {
+		t.Fatalf("count failed: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 in none mode, got %d", count)
+	}
+}
+
+func TestMemoryStoreContentSize(t *testing.T) {
+	store := NewMemoryStore(0, 0)
+	now := time.Now()
+
+	store.Save(&MessageRecord{
+		ID:        "m1",
+		ChannelID: "ch-1",
+		Stage:     "received",
+		Status:    "RECEIVED",
+		Timestamp: now,
+		Content:   []byte("hello world"),
+	})
+
+	rec, err := store.Get("m1")
+	if err != nil {
+		t.Fatalf("get failed: %v", err)
+	}
+	if rec.ContentSize != 11 {
+		t.Fatalf("expected ContentSize=11, got %d", rec.ContentSize)
 	}
 }
