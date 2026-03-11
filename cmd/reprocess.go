@@ -219,7 +219,10 @@ func newReprocessBatchCmd() *cobra.Command {
 }
 
 func rebuildMessage(record *storage.MessageRecord) *message.Message {
-	msg := message.New(record.ChannelID, record.Content)
+	msg, err := message.FromIntuJSON(record.Content, record.ChannelID)
+	if err != nil {
+		msg = message.New(record.ChannelID, record.Content)
+	}
 	msg.CorrelationID = record.CorrelationID
 	if msg.CorrelationID == "" {
 		msg.CorrelationID = record.ID

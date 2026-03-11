@@ -18,6 +18,7 @@ func NewChannelDest(name, targetChannelID string, logger *slog.Logger) *ChannelD
 }
 
 func (c *ChannelDest) Send(ctx context.Context, msg *message.Message) (*message.Response, error) {
+	// Clone preserves original transport metadata for the target channel.
 	clone := &message.Message{
 		ID:            msg.ID,
 		CorrelationID: msg.CorrelationID,
@@ -39,6 +40,10 @@ func (c *ChannelDest) Send(ctx context.Context, msg *message.Message) (*message.
 	for k, v := range msg.Metadata {
 		clone.Metadata[k] = v
 	}
+
+	// Stamp msg so the "sent" record reflects the channel destination.
+	msg.ClearTransportMeta()
+	msg.Transport = "channel"
 
 	channelBus.Publish(c.targetChannelID, clone)
 	c.logger.Debug("message published to channel", "target", c.targetChannelID, "messageId", msg.ID)

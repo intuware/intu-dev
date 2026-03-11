@@ -87,49 +87,49 @@ type SFTPDestMapConfig struct {
 }
 
 type KafkaDestConfig struct {
-	Brokers  []string        `mapstructure:"brokers"`
-	Topic    string          `mapstructure:"topic"`
-	ClientID string          `mapstructure:"client_id"`
-	Auth     *HTTPAuthConfig `mapstructure:"auth"`
-	TLS      *TLSMapConfig   `mapstructure:"tls"`
+	Brokers  []string        `mapstructure:"brokers" yaml:"brokers"`
+	Topic    string          `mapstructure:"topic" yaml:"topic"`
+	ClientID string          `mapstructure:"client_id" yaml:"client_id"`
+	Auth     *HTTPAuthConfig `mapstructure:"auth" yaml:"auth,omitempty"`
+	TLS      *TLSMapConfig   `mapstructure:"tls" yaml:"tls,omitempty"`
 }
 
 type HTTPDestConfig struct {
-	URL         string            `mapstructure:"url"`
-	Method      string            `mapstructure:"method"`
-	Headers     map[string]string `mapstructure:"headers"`
-	QueryParams map[string]string `mapstructure:"query_params"`
-	PathParams  map[string]string `mapstructure:"path_params"`
-	TimeoutMs   int               `mapstructure:"timeout_ms"`
-	Auth        *HTTPAuthConfig   `mapstructure:"auth"`
-	TLS         *TLSMapConfig     `mapstructure:"tls"`
+	URL         string            `mapstructure:"url" yaml:"url"`
+	Method      string            `mapstructure:"method" yaml:"method"`
+	Headers     map[string]string `mapstructure:"headers" yaml:"headers"`
+	QueryParams map[string]string `mapstructure:"query_params" yaml:"query_params"`
+	PathParams  map[string]string `mapstructure:"path_params" yaml:"path_params"`
+	TimeoutMs   int               `mapstructure:"timeout_ms" yaml:"timeout_ms,omitempty"`
+	Auth        *HTTPAuthConfig   `mapstructure:"auth" yaml:"auth,omitempty"`
+	TLS         *TLSMapConfig     `mapstructure:"tls" yaml:"tls,omitempty"`
 }
 
 type HTTPAuthConfig struct {
-	Type           string   `mapstructure:"type"`
-	Token          string   `mapstructure:"token"`
-	Username       string   `mapstructure:"username"`
-	Password       string   `mapstructure:"password"`
-	Key            string   `mapstructure:"key"`
-	Header         string   `mapstructure:"header"`
-	QueryParam     string   `mapstructure:"query_param"`
-	TokenURL       string   `mapstructure:"token_url"`
-	ClientID       string   `mapstructure:"client_id"`
-	ClientSecret   string   `mapstructure:"client_secret"`
-	Scopes         []string `mapstructure:"scopes"`
-	PrivateKeyFile string   `mapstructure:"private_key_file"`
-	Passphrase     string   `mapstructure:"passphrase"`
+	Type           string   `mapstructure:"type" yaml:"type"`
+	Token          string   `mapstructure:"token" yaml:"token"`
+	Username       string   `mapstructure:"username" yaml:"username"`
+	Password       string   `mapstructure:"password" yaml:"password"`
+	Key            string   `mapstructure:"key" yaml:"key"`
+	Header         string   `mapstructure:"header" yaml:"header"`
+	QueryParam     string   `mapstructure:"query_param" yaml:"query_param"`
+	TokenURL       string   `mapstructure:"token_url" yaml:"token_url"`
+	ClientID       string   `mapstructure:"client_id" yaml:"client_id"`
+	ClientSecret   string   `mapstructure:"client_secret" yaml:"client_secret"`
+	Scopes         []string `mapstructure:"scopes" yaml:"scopes"`
+	PrivateKeyFile string   `mapstructure:"private_key_file" yaml:"private_key_file"`
+	Passphrase     string   `mapstructure:"passphrase" yaml:"passphrase"`
 }
 
 type TLSMapConfig struct {
-	Enabled            bool   `mapstructure:"enabled"`
-	CertFile           string `mapstructure:"cert_file"`
-	KeyFile            string `mapstructure:"key_file"`
-	CAFile             string `mapstructure:"ca_file"`
-	ClientCertFile     string `mapstructure:"client_cert_file"`
-	ClientKeyFile      string `mapstructure:"client_key_file"`
-	MinVersion         string `mapstructure:"min_version"`
-	InsecureSkipVerify bool   `mapstructure:"insecure_skip_verify"`
+	Enabled            bool   `mapstructure:"enabled" yaml:"enabled"`
+	CertFile           string `mapstructure:"cert_file" yaml:"cert_file"`
+	KeyFile            string `mapstructure:"key_file" yaml:"key_file"`
+	CAFile             string `mapstructure:"ca_file" yaml:"ca_file"`
+	ClientCertFile     string `mapstructure:"client_cert_file" yaml:"client_cert_file"`
+	ClientKeyFile      string `mapstructure:"client_key_file" yaml:"client_key_file"`
+	MinVersion         string `mapstructure:"min_version" yaml:"min_version"`
+	InsecureSkipVerify bool   `mapstructure:"insecure_skip_verify" yaml:"insecure_skip_verify"`
 }
 
 type TCPDestMapConfig struct {

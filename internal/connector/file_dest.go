@@ -43,6 +43,10 @@ func (f *FileDest) Send(ctx context.Context, msg *message.Message) (*message.Res
 		filename = strings.ReplaceAll(filename, "{{timestamp}}", time.Now().Format("20060102T150405"))
 	}
 
+	msg.ClearTransportMeta()
+	msg.Transport = "file"
+	msg.File = &message.FileMeta{Filename: filename, Directory: dir}
+
 	path := filepath.Join(dir, filename)
 	if err := os.WriteFile(path, msg.Raw, 0o644); err != nil {
 		return nil, fmt.Errorf("write file %s: %w", path, err)

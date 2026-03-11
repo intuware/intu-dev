@@ -339,17 +339,25 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 			continue
 		}
 
-		ref := d.Ref
-		if ref == "" {
-			ref = d.Name
+		var destCfg config.Destination
+
+		if d.Type != "" {
+			destCfg = d.ToDestination()
+		} else {
+			ref := d.Ref
+			if ref == "" {
+				ref = d.Name
+			}
+
+			rootDest, ok := e.cfg.Destinations[ref]
+			if !ok {
+				e.logger.Warn("destination not found in root config", "ref", ref, "channel", chCfg.ID)
+				continue
+			}
+			destCfg = rootDest
 		}
 
-		rootDest, ok := e.cfg.Destinations[ref]
-		if !ok {
-			e.logger.Warn("destination not found in root config", "ref", ref, "channel", chCfg.ID)
-			continue
-		}
-		dest, err := e.factory.CreateDestination(name, rootDest)
+		dest, err := e.factory.CreateDestination(name, destCfg)
 		if err != nil {
 			return nil, fmt.Errorf("create destination %s: %w", name, err)
 		}

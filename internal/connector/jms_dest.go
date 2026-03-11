@@ -66,6 +66,19 @@ func (j *JMSDest) Send(ctx context.Context, msg *message.Message) (*message.Resp
 		j.applyAuth(req)
 	}
 
+	finalHeaders := make(map[string]string, len(req.Header))
+	for k, v := range req.Header {
+		if len(v) > 0 {
+			finalHeaders[k] = v[0]
+		}
+	}
+	msg.ClearTransportMeta()
+	msg.Transport = "jms"
+	msg.HTTP = &message.HTTPMeta{
+		Headers: finalHeaders,
+		Method:  "POST",
+	}
+
 	resp, err := j.client.Do(req)
 	if err != nil {
 		j.logger.Error("jms dest send failed", "destination", j.name, "error", err)

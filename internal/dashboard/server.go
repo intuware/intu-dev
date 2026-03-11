@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -518,17 +519,34 @@ func (s *Server) handlePayload(w http.ResponseWriter, r *http.Request, msgID str
 	}
 
 	if r.URL.Query().Get("download") == "true" {
+		ext := "dat"
+		dlContent := record.Content
+		if json.Valid(record.Content) {
+			ext = "json"
+			var buf bytes.Buffer
+			if err := json.Indent(&buf, record.Content, "", "  "); err == nil {
+				dlContent = buf.Bytes()
+			}
+		}
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s_%s.dat"`, msgID, stage))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s_%s.%s"`, msgID, stage, ext))
 		w.WriteHeader(http.StatusOK)
-		w.Write(record.Content)
+		w.Write(dlContent)
 		return
 	}
 
-	preview := string(record.Content)
-	size := len(record.Content)
-	if len(preview) > 500 {
-		preview = preview[:500]
+	content := record.Content
+	if json.Valid(content) {
+		var buf bytes.Buffer
+		if err := json.Indent(&buf, content, "", "  "); err == nil {
+			content = buf.Bytes()
+		}
+	}
+
+	preview := string(content)
+	size := len(content)
+	if len(preview) > 2000 {
+		preview = preview[:2000]
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{

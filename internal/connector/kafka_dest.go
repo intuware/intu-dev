@@ -169,6 +169,10 @@ func (k *KafkaDest) Send(ctx context.Context, msg *message.Message) (*message.Re
 		return &message.Response{StatusCode: 502, Error: fmt.Errorf("kafka connect: %w", err)}, nil
 	}
 
+	msg.ClearTransportMeta()
+	msg.Transport = "kafka"
+	msg.Kafka = &message.KafkaMeta{Topic: k.cfg.Topic}
+
 	if err := k.produce(conn, msg.Raw); err != nil {
 		k.mu.Lock()
 		if k.conn != nil {

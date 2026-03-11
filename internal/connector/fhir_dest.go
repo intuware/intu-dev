@@ -73,6 +73,19 @@ func (f *FHIRDest) Send(ctx context.Context, msg *message.Message) (*message.Res
 		f.applyAuth(req)
 	}
 
+	finalHeaders := make(map[string]string, len(req.Header))
+	for k, v := range req.Header {
+		if len(v) > 0 {
+			finalHeaders[k] = v[0]
+		}
+	}
+	msg.ClearTransportMeta()
+	msg.Transport = "fhir"
+	msg.HTTP = &message.HTTPMeta{
+		Headers: finalHeaders,
+		Method:  method,
+	}
+
 	resp, err := f.client.Do(req)
 	if err != nil {
 		f.logger.Error("fhir dest send failed", "destination", f.name, "error", err)

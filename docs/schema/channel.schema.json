@@ -313,6 +313,163 @@
               "name": { "type": "string", "description": "Destination name" },
               "ref": { "type": "string", "description": "Reference to named destination in intu.yaml" },
               "type": { "type": "string", "enum": ["http", "kafka", "tcp", "file", "database", "sftp", "smtp", "channel", "dicom", "jms", "fhir", "direct"] },
+              "http": {
+                "type": "object",
+                "description": "HTTP destination configuration",
+                "properties": {
+                  "url": { "type": "string", "description": "Target URL" },
+                  "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"], "default": "POST" },
+                  "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Request headers" },
+                  "query_params": { "type": "object", "additionalProperties": { "type": "string" }, "description": "URL query parameters" },
+                  "path_params": { "type": "object", "additionalProperties": { "type": "string" }, "description": "URL path parameters (replaces {key} in URL)" },
+                  "timeout_ms": { "type": "integer", "description": "Request timeout in milliseconds" },
+                  "auth": { "$ref": "#/definitions/auth" },
+                  "tls": { "$ref": "#/definitions/tls" }
+                },
+                "required": ["url"]
+              },
+              "kafka": {
+                "type": "object",
+                "description": "Kafka producer destination",
+                "properties": {
+                  "brokers": { "type": "array", "items": { "type": "string" } },
+                  "topic": { "type": "string" },
+                  "client_id": { "type": "string" },
+                  "auth": { "$ref": "#/definitions/auth" },
+                  "tls": { "$ref": "#/definitions/tls" }
+                },
+                "required": ["topic"]
+              },
+              "tcp": {
+                "type": "object",
+                "description": "TCP/MLLP destination",
+                "properties": {
+                  "host": { "type": "string" },
+                  "port": { "type": "integer" },
+                  "mode": { "type": "string", "enum": ["raw", "mllp"] },
+                  "timeout_ms": { "type": "integer" },
+                  "tls": { "$ref": "#/definitions/tls" },
+                  "keep_alive": { "type": "boolean" }
+                },
+                "required": ["host", "port"]
+              },
+              "file": {
+                "type": "object",
+                "description": "File destination",
+                "properties": {
+                  "scheme": { "type": "string", "enum": ["local", "ftp", "s3", "smb"] },
+                  "directory": { "type": "string" },
+                  "filename_pattern": { "type": "string", "description": "Filename template (supports {{channelId}}, {{messageId}}, {{correlationId}}, {{timestamp}})" },
+                  "sftp": {
+                    "type": "object",
+                    "properties": {
+                      "host": { "type": "string" },
+                      "port": { "type": "integer" },
+                      "auth": { "$ref": "#/definitions/auth" }
+                    }
+                  }
+                }
+              },
+              "sftp": {
+                "type": "object",
+                "description": "SFTP destination",
+                "properties": {
+                  "host": { "type": "string" },
+                  "port": { "type": "integer", "default": 22 },
+                  "directory": { "type": "string" },
+                  "filename_pattern": { "type": "string" },
+                  "auth": { "$ref": "#/definitions/auth" }
+                },
+                "required": ["host"]
+              },
+              "database": {
+                "type": "object",
+                "description": "Database destination",
+                "properties": {
+                  "driver": { "type": "string", "enum": ["postgres", "mysql", "mssql", "sqlite"] },
+                  "dsn": { "type": "string" },
+                  "statement": { "type": "string", "description": "SQL statement with ${field} placeholders" }
+                },
+                "required": ["driver", "dsn", "statement"]
+              },
+              "smtp": {
+                "type": "object",
+                "description": "SMTP email destination",
+                "properties": {
+                  "host": { "type": "string" },
+                  "port": { "type": "integer" },
+                  "from": { "type": "string" },
+                  "to": { "type": "array", "items": { "type": "string" } },
+                  "subject": { "type": "string" },
+                  "auth": { "$ref": "#/definitions/auth" },
+                  "tls": { "$ref": "#/definitions/tls" }
+                },
+                "required": ["host", "from", "to"]
+              },
+              "channel": {
+                "type": "object",
+                "description": "Route to another intu channel",
+                "properties": {
+                  "target_channel_id": { "type": "string" }
+                },
+                "required": ["target_channel_id"]
+              },
+              "dicom": {
+                "type": "object",
+                "description": "DICOM C-STORE SCU destination",
+                "properties": {
+                  "host": { "type": "string" },
+                  "port": { "type": "integer", "default": 104 },
+                  "ae_title": { "type": "string" },
+                  "called_ae_title": { "type": "string" },
+                  "timeout_ms": { "type": "integer" },
+                  "tls": { "$ref": "#/definitions/tls" }
+                },
+                "required": ["host"]
+              },
+              "jms": {
+                "type": "object",
+                "description": "JMS destination via HTTP/REST bridge",
+                "properties": {
+                  "provider": { "type": "string", "enum": ["activemq"] },
+                  "url": { "type": "string" },
+                  "queue": { "type": "string" },
+                  "auth": { "$ref": "#/definitions/auth" },
+                  "timeout_ms": { "type": "integer" }
+                },
+                "required": ["url", "queue"]
+              },
+              "fhir": {
+                "type": "object",
+                "description": "FHIR REST destination",
+                "properties": {
+                  "base_url": { "type": "string" },
+                  "version": { "type": "string", "enum": ["R4", "STU3"] },
+                  "operations": { "type": "array", "items": { "type": "string", "enum": ["create", "update", "delete", "read", "transaction", "batch"] } },
+                  "auth": { "$ref": "#/definitions/auth" },
+                  "tls": { "$ref": "#/definitions/tls" },
+                  "timeout_ms": { "type": "integer" }
+                },
+                "required": ["base_url"]
+              },
+              "direct": {
+                "type": "object",
+                "description": "Direct Secure Messaging destination",
+                "properties": {
+                  "to": { "type": "string" },
+                  "from": { "type": "string" },
+                  "certificate": { "type": "string" },
+                  "smtp": {
+                    "type": "object",
+                    "properties": {
+                      "host": { "type": "string" },
+                      "port": { "type": "integer" }
+                    }
+                  },
+                  "tls": { "$ref": "#/definitions/tls" }
+                },
+                "required": ["to", "from"]
+              },
               "filter": { "type": "string", "description": "Destination-specific filter script" },
               "transformer": { "type": "string", "description": "Destination-specific transformer script" },
               "response_transformer": { "type": "string", "description": "Response transformer script" },

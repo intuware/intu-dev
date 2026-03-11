@@ -108,6 +108,10 @@ func (d *DatabaseDest) Send(ctx context.Context, msg *message.Message) (*message
 
 	stmt = strings.ReplaceAll(stmt, "${raw}", string(msg.Raw))
 
+	msg.ClearTransportMeta()
+	msg.Transport = "database"
+	msg.Database = &message.DatabaseMeta{Query: stmt}
+
 	result, err := db.ExecContext(ctx, stmt)
 	if err != nil {
 		d.logger.Error("database dest exec failed",

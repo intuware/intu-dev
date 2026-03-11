@@ -266,6 +266,66 @@ func TestCompositeStoreShouldStore(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreResponseStage(t *testing.T) {
+	store := NewMemoryStore()
+	now := time.Now()
+
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Status: "RECEIVED", Timestamp: now, Content: []byte("data")})
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "sent", Status: "SENT", Timestamp: now, Content: []byte("sent-data")})
+	store.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "response", Status: "SENT", Timestamp: now, Content: []byte(`{"body":"OK","transport":"http","http":{"statusCode":200}}`)})
+
+	rec, err := store.GetStage("m1", "response")
+	if err != nil {
+		t.Fatalf("GetStage(response) failed: %v", err)
+	}
+	if rec == nil {
+		t.Fatal("expected response stage record")
+	}
+	if rec.Stage != "response" {
+		t.Fatalf("expected stage=response, got %s", rec.Stage)
+	}
+	if string(rec.Content) != `{"body":"OK","transport":"http","http":{"statusCode":200}}` {
+		t.Fatalf("unexpected content: %s", string(rec.Content))
+	}
+
+	records, err := store.Query(QueryOpts{Stage: "response"})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 response record, got %d", len(records))
+	}
+}
+
+func TestCompositeStoreResponseStageFiltering(t *testing.T) {
+	inner := NewMemoryStore()
+	cs := NewCompositeStore(inner, "full", []string{"received", "sent", "response"})
+
+	now := time.Now()
+	cs.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "received", Content: []byte("r"), Status: "RECEIVED", Timestamp: now})
+	cs.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "transformed", Content: []byte("t"), Status: "TRANSFORMED", Timestamp: now})
+	cs.Save(&MessageRecord{ID: "m1", ChannelID: "ch-1", Stage: "response", Content: []byte("resp"), Status: "SENT", Timestamp: now})
+
+	allRecords, _ := inner.Query(QueryOpts{})
+	if len(allRecords) != 2 {
+		t.Fatalf("expected 2 records (received + response, transformed filtered out), got %d", len(allRecords))
+	}
+
+	stages := make(map[string]bool)
+	for _, r := range allRecords {
+		stages[r.Stage] = true
+	}
+	if !stages["received"] {
+		t.Fatal("expected received stage")
+	}
+	if !stages["response"] {
+		t.Fatal("expected response stage")
+	}
+	if stages["transformed"] {
+		t.Fatal("did not expect transformed stage")
+	}
+}
+
 func TestCompositeStoreDefaultsToFull(t *testing.T) {
 	cs := NewCompositeStore(NewMemoryStore(), "", nil)
 	if cs.Mode() != "full" {

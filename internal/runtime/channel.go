@@ -188,14 +188,14 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 		"correlationId", msg.CorrelationID,
 	)
 
-	cr.storeMessage(msg, "received", "RECEIVED")
+	cr.storeIntuMessage(msg, "received", "RECEIVED")
 
 	result, err := cr.Pipeline.Execute(ctx, msg)
 	if err != nil {
 		if cr.Metrics != nil {
 			cr.Metrics.IncrErrored(cr.ID, "pipeline")
 		}
-		cr.storeMessage(msg, "error", "ERROR", time.Since(startTime).Milliseconds())
+		cr.storeIntuMessage(msg, "error", "ERROR", time.Since(startTime).Milliseconds())
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("pipeline execute: %w", err)
 	}
@@ -204,12 +204,16 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 		if cr.Metrics != nil {
 			cr.Metrics.IncrFiltered(cr.ID)
 		}
-		cr.storeMessage(msg, "filtered", "FILTERED", time.Since(startTime).Milliseconds())
+		cr.storeIntuMessage(msg, "filtered", "FILTERED", time.Since(startTime).Milliseconds())
 		span.SetAttributes(attribute.Bool("filtered", true))
 		return nil
 	}
 
-	cr.storeMessageWithContent(msg, "transformed", "TRANSFORMED", result.OutputBytes)
+	transformedMsg := result.OutputMsg
+	if transformedMsg == nil {
+		transformedMsg = msg.CloneWithRaw(result.OutputBytes)
+	}
+	cr.storeIntuMessage(transformedMsg, "transformed", "TRANSFORMED")
 
 	activeDests := cr.resolveActiveDestinations(result.RouteTo)
 	span.SetAttributes(attribute.Int("destinations.count", len(activeDests)))
@@ -298,7 +302,15 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 
 		if resp != nil {
 			_ = cr.Pipeline.ExecuteResponseTransformer(ctx, msg, destCfg, resp)
+
+			destType := dest.Type()
+			if destType == "http" || destType == "fhir" {
+				cr.storeResponseMessage(msg, resp)
+			}
 		}
+
+		outMsg.Metadata["destination"] = destName
+		cr.storeIntuMessage(outMsg, "sent", "SENT", time.Since(destStart).Milliseconds())
 
 		success := resp == nil || resp.Error == nil
 		dr := DestinationResult{
@@ -331,8 +343,6 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 		cr.Metrics.RecordLatency(cr.ID, "total", time.Since(startTime))
 	}
 
-	cr.storeMessageWithContent(msg, "sent", "SENT", result.OutputBytes, time.Since(startTime).Milliseconds())
-
 	cr.Logger.Info("message processed",
 		"channel", cr.ID,
 		"messageId", msg.ID,
@@ -363,7 +373,7 @@ func (cr *ChannelRuntime) sendToDestination(ctx context.Context, destName string
 	return dest.Send(ctx, msg)
 }
 
-func (cr *ChannelRuntime) storeMessage(msg *message.Message, stage, status string, durationMs ...int64) {
+func (cr *ChannelRuntime) storeIntuMessage(msg *message.Message, stage, status string, durationMs ...int64) {
 	if cr.Store == nil {
 		return
 	}
@@ -372,32 +382,9 @@ func (cr *ChannelRuntime) storeMessage(msg *message.Message, stage, status strin
 			return
 		}
 	}
-	record := &storage.MessageRecord{
-		ID:            msg.ID,
-		CorrelationID: msg.CorrelationID,
-		ChannelID:     cr.ID,
-		Stage:         stage,
-		Content:       msg.Raw,
-		Status:        status,
-		Timestamp:     time.Now(),
-		Metadata:      msg.Metadata,
-	}
-	if len(durationMs) > 0 {
-		record.DurationMs = durationMs[0]
-	}
-	if err := cr.Store.Save(record); err != nil {
-		cr.Logger.Warn("failed to store message", "stage", stage, "error", err)
-	}
-}
-
-func (cr *ChannelRuntime) storeMessageWithContent(msg *message.Message, stage, status string, content []byte, durationMs ...int64) {
-	if cr.Store == nil {
-		return
-	}
-	if cs, ok := cr.Store.(*storage.CompositeStore); ok {
-		if !cs.ShouldStore(stage) {
-			return
-		}
+	content, err := msg.ToIntuJSON()
+	if err != nil {
+		content = msg.Raw
 	}
 	record := &storage.MessageRecord{
 		ID:            msg.ID,
@@ -414,6 +401,35 @@ func (cr *ChannelRuntime) storeMessageWithContent(msg *message.Message, stage, s
 	}
 	if err := cr.Store.Save(record); err != nil {
 		cr.Logger.Warn("failed to store message", "stage", stage, "error", err)
+	}
+}
+
+func (cr *ChannelRuntime) storeResponseMessage(msg *message.Message, resp *message.Response) {
+	if cr.Store == nil || resp == nil {
+		return
+	}
+	stage := "response"
+	if cs, ok := cr.Store.(*storage.CompositeStore); ok {
+		if !cs.ShouldStore(stage) {
+			return
+		}
+	}
+	content, err := message.ResponseToIntuJSON(resp)
+	if err != nil {
+		return
+	}
+	record := &storage.MessageRecord{
+		ID:            msg.ID,
+		CorrelationID: msg.CorrelationID,
+		ChannelID:     cr.ID,
+		Stage:         stage,
+		Content:       content,
+		Status:        "SENT",
+		Timestamp:     time.Now(),
+		Metadata:      msg.Metadata,
+	}
+	if err := cr.Store.Save(record); err != nil {
+		cr.Logger.Warn("failed to store response", "error", err)
 	}
 }
 

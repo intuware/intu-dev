@@ -345,6 +345,113 @@ func TestHTTPDest_Type(t *testing.T) {
 	}
 }
 
+func TestHTTPDest_TransportStamping(t *testing.T) {
+	var receivedHeaders http.Header
+	var receivedQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header
+		receivedQuery = r.URL.RawQuery
+		w.WriteHeader(200)
+		w.Write([]byte("ok"))
+	}))
+	defer server.Close()
+
+	cfg := &config.HTTPDestConfig{
+		URL:         server.URL,
+		Method:      "PUT",
+		Headers:     map[string]string{"X-Dest": "custom"},
+		QueryParams: map[string]string{"page": "1"},
+		Auth:        &config.HTTPAuthConfig{Type: "bearer", Token: "tok123"},
+	}
+	dest := NewHTTPDest("test-http-stamp", cfg, testLogger())
+
+	msg := message.New("ch1", []byte("body"))
+	msg.Transport = "sftp"
+	msg.FTP = &message.FTPMeta{Filename: "in.dat", Directory: "/upload"}
+
+	resp, err := dest.Send(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	if msg.Transport != "http" {
+		t.Fatalf("expected transport=http after Send, got %q", msg.Transport)
+	}
+	if msg.FTP != nil {
+		t.Fatal("expected FTP meta to be cleared after Send")
+	}
+	if msg.HTTP == nil {
+		t.Fatal("expected HTTP meta to be set after Send")
+	}
+	if msg.HTTP.Method != "PUT" {
+		t.Fatalf("expected method=PUT, got %q", msg.HTTP.Method)
+	}
+	if msg.HTTP.Headers["X-Dest"] != "custom" {
+		t.Fatalf("expected X-Dest header, got %v", msg.HTTP.Headers)
+	}
+	if msg.HTTP.Headers["Authorization"] != "Bearer tok123" {
+		t.Fatalf("expected Authorization header from auth config, got %v", msg.HTTP.Headers["Authorization"])
+	}
+	if msg.HTTP.QueryParams["page"] != "1" {
+		t.Fatalf("expected page=1 query param, got %v", msg.HTTP.QueryParams)
+	}
+
+	_ = receivedHeaders
+	_ = receivedQuery
+}
+
+func TestHTTPDest_TransportStampingWithMessageHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+
+	cfg := &config.HTTPDestConfig{
+		URL:         server.URL,
+		Headers:     map[string]string{"X-Config": "base"},
+		QueryParams: map[string]string{"from": "config"},
+	}
+	dest := NewHTTPDest("test-http-merge", cfg, testLogger())
+
+	msg := message.New("ch1", []byte("body"))
+	msg.Transport = "tcp"
+	msg.TCP = &message.TCPMeta{RemoteAddr: "1.2.3.4:9999"}
+	msg.HTTP = &message.HTTPMeta{
+		Headers:     map[string]string{"X-Msg": "override"},
+		QueryParams: map[string]string{"from": "msg", "extra": "yes"},
+	}
+
+	_, err := dest.Send(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	if msg.Transport != "http" {
+		t.Fatalf("expected transport=http, got %q", msg.Transport)
+	}
+	if msg.TCP != nil {
+		t.Fatal("expected TCP meta to be cleared")
+	}
+	if msg.HTTP.Headers["X-Config"] != "base" {
+		t.Fatalf("expected X-Config header from config, got %v", msg.HTTP.Headers)
+	}
+	if msg.HTTP.Headers["X-Msg"] != "override" {
+		t.Fatalf("expected X-Msg header from message, got %v", msg.HTTP.Headers)
+	}
+	if msg.HTTP.QueryParams["from"] != "msg" {
+		t.Fatalf("expected message query param to override config, got %v", msg.HTTP.QueryParams["from"])
+	}
+	if msg.HTTP.QueryParams["extra"] != "yes" {
+		t.Fatalf("expected extra query param, got %v", msg.HTTP.QueryParams)
+	}
+	if msg.HTTP.Method != "POST" {
+		t.Fatalf("expected default method=POST, got %q", msg.HTTP.Method)
+	}
+}
+
 // ===================================================================
 // File Destination Tests
 // ===================================================================

@@ -63,6 +63,10 @@ func (d *DICOMDest) Send(ctx context.Context, msg *message.Message) (*message.Re
 
 	conn.SetDeadline(time.Now().Add(timeout))
 
+	msg.ClearTransportMeta()
+	msg.Transport = "dicom"
+	msg.DICOM = &message.DICOMMeta{CallingAE: d.callingAE(), CalledAE: d.calledAE()}
+
 	if err := d.sendAssociateRQ(conn); err != nil {
 		d.logger.Error("dicom dest A-ASSOCIATE-RQ failed", "destination", d.name, "error", err)
 		return &message.Response{StatusCode: 502, Error: fmt.Errorf("dicom associate: %w", err)}, nil

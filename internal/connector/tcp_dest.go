@@ -87,6 +87,10 @@ func (t *TCPDest) Send(ctx context.Context, msg *message.Message) (*message.Resp
 	}
 	conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 
+	msg.ClearTransportMeta()
+	msg.Transport = "tcp"
+	msg.TCP = &message.TCPMeta{RemoteAddr: conn.RemoteAddr().String()}
+
 	var payload []byte
 	if t.cfg.Mode == "mllp" {
 		var buf bytes.Buffer

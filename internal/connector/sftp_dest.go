@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -43,7 +44,8 @@ func (s *SFTPDest) Send(ctx context.Context, msg *message.Message) (*message.Res
 	}
 	defer client.Close()
 
-	dir := s.cfg.Directory
+	// SFTP remote paths must use forward slashes (Unix-style) regardless of OS.
+	dir := filepath.ToSlash(s.cfg.Directory)
 	if dir == "" {
 		dir = "."
 	}
@@ -59,7 +61,12 @@ func (s *SFTPDest) Send(ctx context.Context, msg *message.Message) (*message.Res
 		filename = strings.ReplaceAll(filename, "{{timestamp}}", time.Now().Format("20060102T150405"))
 	}
 
-	remotePath := filepath.Join(dir, filename)
+	remotePath := path.Join(dir, filename)
+
+	msg.ClearTransportMeta()
+	msg.Transport = "sftp"
+	msg.FTP = &message.FTPMeta{Filename: filename, Directory: dir}
+
 	f, err := client.Create(remotePath)
 	if err != nil {
 		return &message.Response{StatusCode: 502, Error: fmt.Errorf("SFTP create %s: %w", remotePath, err)}, nil

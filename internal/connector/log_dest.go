@@ -17,6 +17,9 @@ func NewLogDest(name string, logger *slog.Logger) *LogDest {
 }
 
 func (l *LogDest) Send(ctx context.Context, msg *message.Message) (*message.Response, error) {
+	msg.ClearTransportMeta()
+	msg.Transport = "log"
+
 	l.logger.Info("destination send",
 		"destination", l.name,
 		"messageId", msg.ID,

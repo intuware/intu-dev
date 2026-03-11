@@ -118,6 +118,10 @@ func (s *SMTPDest) Send(ctx context.Context, msg *message.Message) (*message.Res
 	subject = strings.ReplaceAll(subject, "{{messageId}}", msg.ID)
 	subject = strings.ReplaceAll(subject, "{{channelId}}", msg.ChannelID)
 
+	msg.ClearTransportMeta()
+	msg.Transport = "smtp"
+	msg.SMTP = &message.SMTPMeta{From: s.cfg.From, To: s.cfg.To, Subject: subject}
+
 	var emailMsg strings.Builder
 	emailMsg.WriteString(fmt.Sprintf("From: %s\r\n", s.cfg.From))
 	emailMsg.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(s.cfg.To, ", ")))

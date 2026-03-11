@@ -94,6 +94,10 @@ func (d *DirectDest) Send(ctx context.Context, msg *message.Message) (*message.R
 		}
 	}
 
+	msg.ClearTransportMeta()
+	msg.Transport = "direct"
+	msg.SMTP = &message.SMTPMeta{From: d.cfg.From, To: []string{d.cfg.To}}
+
 	if err := client.Mail(d.cfg.From); err != nil {
 		return &message.Response{StatusCode: 502, Error: fmt.Errorf("direct MAIL FROM: %w", err)}, nil
 	}

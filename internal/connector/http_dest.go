@@ -94,6 +94,23 @@ func (h *HTTPDest) Send(ctx context.Context, msg *message.Message) (*message.Res
 		h.applyAuth(req)
 	}
 
+	// Stamp message with the actual HTTP request metadata so the stored
+	// "sent" record reflects the destination transport, not the source.
+	finalHeaders := make(map[string]string, len(req.Header))
+	for k, v := range req.Header {
+		if len(v) > 0 {
+			finalHeaders[k] = v[0]
+		}
+	}
+	msg.ClearTransportMeta()
+	msg.Transport = "http"
+	msg.HTTP = &message.HTTPMeta{
+		Headers:     finalHeaders,
+		QueryParams: queryParams,
+		PathParams:  pathParams,
+		Method:      method,
+	}
+
 	resp, err := h.client.Do(req)
 	if err != nil {
 		return &message.Response{Error: err}, nil

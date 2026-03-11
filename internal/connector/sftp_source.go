@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -163,7 +164,8 @@ func (s *SFTPSource) poll(ctx context.Context, handler MessageHandler) error {
 	}
 	defer client.Close()
 
-	dir := s.cfg.Directory
+	// SFTP remote paths must use forward slashes (Unix-style) regardless of OS.
+	dir := filepath.ToSlash(s.cfg.Directory)
 	if dir == "" {
 		dir = "."
 	}
@@ -196,13 +198,13 @@ func (s *SFTPSource) poll(ctx context.Context, handler MessageHandler) error {
 		default:
 		}
 
-		remotePath := filepath.Join(dir, entry.Name())
+		remotePath := path.Join(dir, entry.Name())
 
 		data, err := s.readRemoteFile(client, remotePath)
 		if err != nil {
 			s.logger.Error("SFTP read file failed", "path", remotePath, "error", err)
 			if s.cfg.ErrorDir != "" {
-				s.moveRemoteFile(client, remotePath, filepath.Join(s.cfg.ErrorDir, entry.Name()))
+				s.moveRemoteFile(client, remotePath, path.Join(filepath.ToSlash(s.cfg.ErrorDir), entry.Name()))
 			}
 			continue
 		}
@@ -222,13 +224,13 @@ func (s *SFTPSource) poll(ctx context.Context, handler MessageHandler) error {
 		if err := handler(ctx, msg); err != nil {
 			s.logger.Error("SFTP handler error", "file", entry.Name(), "error", err)
 			if s.cfg.ErrorDir != "" {
-				s.moveRemoteFile(client, remotePath, filepath.Join(s.cfg.ErrorDir, entry.Name()))
+				s.moveRemoteFile(client, remotePath, path.Join(filepath.ToSlash(s.cfg.ErrorDir), entry.Name()))
 			}
 			continue
 		}
 
 		if s.cfg.MoveTo != "" {
-			s.moveRemoteFile(client, remotePath, filepath.Join(s.cfg.MoveTo, entry.Name()))
+			s.moveRemoteFile(client, remotePath, path.Join(filepath.ToSlash(s.cfg.MoveTo), entry.Name()))
 		} else {
 			if err := client.Remove(remotePath); err != nil {
 				s.logger.Error("SFTP remove failed", "path", remotePath, "error", err)
@@ -254,7 +256,7 @@ func (s *SFTPSource) readRemoteFile(client *sftp.Client, path string) ([]byte, e
 }
 
 func (s *SFTPSource) moveRemoteFile(client *sftp.Client, src, dst string) {
-	dstDir := filepath.Dir(dst)
+	dstDir := path.Dir(dst)
 	client.MkdirAll(dstDir)
 
 	if err := client.Rename(src, dst); err != nil {

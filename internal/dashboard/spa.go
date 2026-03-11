@@ -669,9 +669,10 @@ function renderMessageGrid(msgs) {
       '<td class="' + tdCls + ' text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">' + (m.DurationMs ? m.DurationMs + ' ms' : '-') + '</td>' +
       '<td class="' + tdCls + '">' +
         '<div class="flex items-center gap-1.5">' +
-          '<button class="' + stageBtnCls + ' bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'received\')" title="View received payload">' + eyeIcon + 'Received</button>' +
-          '<button class="' + stageBtnCls + ' bg-violet-50 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'transformed\')" title="View transformed payload">' + eyeIcon + 'Transformed</button>' +
-          '<button class="' + stageBtnCls + ' bg-emerald-50 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'sent\')" title="View sent payload">' + eyeIcon + 'Sent</button>' +
+          '<button class="' + stageBtnCls + ' bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'received\')" title="View received message">' + eyeIcon + 'Received</button>' +
+          '<button class="' + stageBtnCls + ' bg-violet-50 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'transformed\')" title="View transformed message">' + eyeIcon + 'Transformed</button>' +
+          '<button class="' + stageBtnCls + ' bg-emerald-50 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'sent\')" title="View sent message">' + eyeIcon + 'Sent</button>' +
+          '<button class="' + stageBtnCls + ' bg-amber-50 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-400/20" onclick="viewPayload(\'' + esc(m.ID) + '\',\'response\')" title="View destination response">' + eyeIcon + 'Response</button>' +
         '</div>' +
       '</td>' +
       '<td class="' + tdCls + ' text-right">' +
@@ -709,7 +710,8 @@ function viewPayload(msgID, stage) {
   var badgeColors = {
     'received':    'bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-400/20',
     'transformed': 'bg-violet-50 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-400/20',
-    'sent':        'bg-emerald-50 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-400/20'
+    'sent':        'bg-emerald-50 dark:bg-emerald-400/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-400/20',
+    'response':    'bg-amber-50 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-400/20'
   };
   var badge = document.getElementById('modal-stage-badge');
   badge.className = 'px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase ' + (badgeColors[stage] || '');
@@ -733,8 +735,8 @@ function viewPayload(msgID, stage) {
         document.getElementById('modal-size').textContent = '';
       } else {
         body.innerHTML = '<pre class="text-xs text-gray-600 dark:text-slate-300 font-mono bg-gray-50 dark:bg-slate-950/50 rounded-lg p-4 overflow-x-auto max-h-[50vh] border border-gray-200 dark:border-slate-800/30 whitespace-pre-wrap break-all">' + esc(data.preview || '') + '</pre>';
-        if (data.size > 500) {
-          body.innerHTML += '<p class="text-[10px] text-gray-400 dark:text-slate-500 mt-2">Showing first 500 characters of ' + formatBytes(data.size) + '</p>';
+        if (data.size > 2000) {
+          body.innerHTML += '<p class="text-[10px] text-gray-400 dark:text-slate-500 mt-2">Showing first 2000 characters of ' + formatBytes(data.size) + '</p>';
         }
         document.getElementById('modal-size').textContent = formatBytes(data.size);
         document.getElementById('modal-download-btn').classList.remove('hidden');

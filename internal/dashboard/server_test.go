@@ -116,7 +116,7 @@ func TestHandlePayloadPreviewTruncation(t *testing.T) {
 	store := storage.NewMemoryStore()
 	now := time.Now()
 
-	longContent := make([]byte, 1000)
+	longContent := make([]byte, 3000)
 	for i := range longContent {
 		longContent[i] = 'A'
 	}
@@ -136,12 +136,12 @@ func TestHandlePayloadPreviewTruncation(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&result)
 
 	preview, _ := result["preview"].(string)
-	if len(preview) != 500 {
-		t.Fatalf("expected 500-char preview, got %d chars", len(preview))
+	if len(preview) != 2000 {
+		t.Fatalf("expected 2000-char preview, got %d chars", len(preview))
 	}
 	size, _ := result["size"].(float64)
-	if int(size) != 1000 {
-		t.Fatalf("expected size=1000, got %v", size)
+	if int(size) != 3000 {
+		t.Fatalf("expected size=3000, got %v", size)
 	}
 }
 
@@ -281,6 +281,97 @@ func TestHandleMessagesDedupe(t *testing.T) {
 	}
 	if statusByID["m2"] != "ERROR" {
 		t.Fatalf("expected m2 status=ERROR (higher than RECEIVED), got %s", statusByID["m2"])
+	}
+}
+
+func TestHandlePayloadIntuMessageJSON(t *testing.T) {
+	store := storage.NewMemoryStore()
+	now := time.Now()
+
+	intuJSON := `{"body":"test payload","transport":"http","contentType":"json","http":{"headers":{"Content-Type":"application/json"},"statusCode":0}}`
+	store.Save(&storage.MessageRecord{
+		ID: "m-json", ChannelID: "ch-1", Stage: "received",
+		Status: "RECEIVED", Timestamp: now, Content: []byte(intuJSON),
+	})
+
+	s := newTestServer(store)
+	handler := s.BuildHandler()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/m-json/payload?stage=received", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	var result map[string]any
+	json.NewDecoder(w.Body).Decode(&result)
+
+	preview, _ := result["preview"].(string)
+	if len(preview) == 0 {
+		t.Fatal("expected non-empty preview")
+	}
+	// Pretty-printed JSON should contain indentation
+	if !json.Valid([]byte(preview)) {
+		t.Fatal("expected valid JSON in preview")
+	}
+}
+
+func TestHandlePayloadResponseStage(t *testing.T) {
+	store := storage.NewMemoryStore()
+	now := time.Now()
+
+	respJSON := `{"body":"OK","transport":"http","contentType":"raw","http":{"headers":{},"statusCode":200}}`
+	store.Save(&storage.MessageRecord{
+		ID: "m-resp", ChannelID: "ch-1", Stage: "response",
+		Status: "SENT", Timestamp: now, Content: []byte(respJSON),
+	})
+
+	s := newTestServer(store)
+	handler := s.BuildHandler()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/m-resp/payload?stage=response", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var result map[string]any
+	json.NewDecoder(w.Body).Decode(&result)
+	if result["unavailable"] != nil {
+		t.Fatal("did not expect unavailable for response stage")
+	}
+	preview, _ := result["preview"].(string)
+	if len(preview) == 0 {
+		t.Fatal("expected non-empty preview for response stage")
+	}
+}
+
+func TestHandlePayloadDownloadJSON(t *testing.T) {
+	store := storage.NewMemoryStore()
+	now := time.Now()
+
+	intuJSON := `{"body":"test","transport":"http","contentType":"raw"}`
+	store.Save(&storage.MessageRecord{
+		ID: "m-dl", ChannelID: "ch-1", Stage: "received",
+		Status: "RECEIVED", Timestamp: now, Content: []byte(intuJSON),
+	})
+
+	s := newTestServer(store)
+	handler := s.BuildHandler()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/m-dl/payload?stage=received&download=true", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	cd := w.Header().Get("Content-Disposition")
+	if cd == "" {
+		t.Fatal("expected Content-Disposition header")
+	}
+	if !json.Valid(w.Body.Bytes()) {
+		t.Fatal("expected valid JSON in download body")
 	}
 }
 

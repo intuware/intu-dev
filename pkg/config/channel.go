@@ -293,8 +293,180 @@ func (cd *ChannelDestination) UnmarshalYAML(value *yaml.Node) error {
 		cd.Ref = value.Value
 		return nil
 	}
+
+	if value.Kind == yaml.MappingNode {
+		knownKeys := map[string]bool{
+			"name": true, "ref": true, "type": true,
+			"http": true, "kafka": true, "tcp": true, "file": true,
+			"database": true, "smtp": true, "channel": true,
+			"dicom": true, "jms": true, "fhir": true, "direct": true,
+			"filter": true, "transformer": true, "response_transformer": true,
+			"queue": true, "retry": true,
+		}
+
+		// Format: "- my-dest-name:\n    type: file\n    file: ..."
+		// Single unknown key whose value is a mapping containing the config.
+		if len(value.Content) == 2 {
+			keyNode := value.Content[0]
+			valNode := value.Content[1]
+			if keyNode.Kind == yaml.ScalarNode && !knownKeys[keyNode.Value] && valNode.Kind == yaml.MappingNode {
+				cd.Name = keyNode.Value
+				type plain ChannelDestination
+				return valNode.Decode((*plain)(cd))
+			}
+		}
+
+		// Format: "- my-dest-name:\n  type: file\n  file: ..."
+		// Unknown key at the same level as known keys (name key has null value).
+		for i := 0; i < len(value.Content)-1; i += 2 {
+			keyNode := value.Content[i]
+			if keyNode.Kind == yaml.ScalarNode && !knownKeys[keyNode.Value] {
+				cd.Name = keyNode.Value
+				break
+			}
+		}
+	}
+
 	type plain ChannelDestination
 	return value.Decode((*plain)(cd))
+}
+
+// ToDestination converts an inline ChannelDestination to a root-level
+// Destination so the connector factory can create it without a named ref.
+func (cd *ChannelDestination) ToDestination() Destination {
+	dest := Destination{Type: cd.Type}
+
+	dest.HTTP = cd.HTTP
+	dest.Kafka = cd.Kafka
+
+	if cd.TCP != nil {
+		dest.TCP = &TCPDestMapConfig{
+			Host:      cd.TCP.Host,
+			Port:      cd.TCP.Port,
+			Mode:      cd.TCP.Mode,
+			TimeoutMs: cd.TCP.TimeoutMs,
+		}
+		if cd.TCP.TLS != nil {
+			dest.TCP.TLS = convertTLSConfig(cd.TCP.TLS)
+		}
+	}
+
+	if cd.File != nil {
+		dest.File = &FileDestMapConfig{
+			Scheme:          cd.File.Scheme,
+			Directory:       cd.File.Directory,
+			FilenamePattern: cd.File.FilenamePattern,
+		}
+	}
+
+	if cd.Database != nil {
+		dest.Database = &DBDestMapConfig{
+			Driver:    cd.Database.Driver,
+			DSN:       cd.Database.DSN,
+			Statement: cd.Database.Statement,
+		}
+	}
+
+	if cd.SMTP != nil {
+		dest.SMTP = &SMTPDestMapConfig{
+			Host:    cd.SMTP.Host,
+			Port:    cd.SMTP.Port,
+			From:    cd.SMTP.From,
+			To:      cd.SMTP.To,
+			Subject: cd.SMTP.Subject,
+		}
+		if cd.SMTP.Auth != nil {
+			dest.SMTP.Auth = convertAuthConfig(cd.SMTP.Auth)
+		}
+		if cd.SMTP.TLS != nil {
+			dest.SMTP.TLS = convertTLSConfig(cd.SMTP.TLS)
+		}
+	}
+
+	if cd.ChannelDest != nil {
+		dest.Channel = &ChannelDestMapConfig{
+			TargetChannelID: cd.ChannelDest.TargetChannelID,
+		}
+	}
+
+	if cd.DICOM != nil {
+		dest.DICOM = &DICOMDestMapConfig{
+			Host:          cd.DICOM.Host,
+			Port:          cd.DICOM.Port,
+			AETitle:       cd.DICOM.AETitle,
+			CalledAETitle: cd.DICOM.CalledAETitle,
+		}
+	}
+
+	if cd.JMS != nil {
+		dest.JMS = &JMSDestMapConfig{
+			Provider: cd.JMS.Provider,
+			URL:      cd.JMS.URL,
+			Queue:    cd.JMS.Queue,
+		}
+		if cd.JMS.Auth != nil {
+			dest.JMS.Auth = convertAuthConfig(cd.JMS.Auth)
+		}
+	}
+
+	if cd.FHIR != nil {
+		dest.FHIR = &FHIRDestMapConfig{
+			BaseURL:    cd.FHIR.BaseURL,
+			Version:    cd.FHIR.Version,
+			Operations: cd.FHIR.Operations,
+		}
+		if cd.FHIR.Auth != nil {
+			dest.FHIR.Auth = convertAuthConfig(cd.FHIR.Auth)
+		}
+	}
+
+	if cd.Direct != nil {
+		dest.Direct = &DirectDestMapConfig{
+			To:          cd.Direct.To,
+			From:        cd.Direct.From,
+			Certificate: cd.Direct.Certificate,
+		}
+		if cd.Direct.SMTP != nil {
+			dest.Direct.SMTPHost = cd.Direct.SMTP.Host
+			dest.Direct.SMTPPort = cd.Direct.SMTP.Port
+			if cd.Direct.SMTP.TLS != nil {
+				dest.Direct.TLS = convertTLSConfig(cd.Direct.SMTP.TLS)
+			}
+		}
+	}
+
+	return dest
+}
+
+func convertTLSConfig(t *TLSConfig) *TLSMapConfig {
+	return &TLSMapConfig{
+		Enabled:            t.Enabled,
+		CertFile:           t.CertFile,
+		KeyFile:            t.KeyFile,
+		CAFile:             t.CAFile,
+		ClientCertFile:     t.ClientCertFile,
+		ClientKeyFile:      t.ClientKeyFile,
+		MinVersion:         t.MinVersion,
+		InsecureSkipVerify: t.InsecureSkipVerify,
+	}
+}
+
+func convertAuthConfig(a *AuthConfig) *HTTPAuthConfig {
+	return &HTTPAuthConfig{
+		Type:           a.Type,
+		Token:          a.Token,
+		Username:       a.Username,
+		Password:       a.Password,
+		Key:            a.Key,
+		Header:         a.Header,
+		QueryParam:     a.QueryParam,
+		TokenURL:       a.TokenURL,
+		ClientID:       a.ClientID,
+		ClientSecret:   a.ClientSecret,
+		Scopes:         a.Scopes,
+		PrivateKeyFile: a.PrivateKeyFile,
+		Passphrase:     a.Passphrase,
+	}
 }
 
 type TCPDestConfig struct {
