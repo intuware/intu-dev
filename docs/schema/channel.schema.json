@@ -535,10 +535,13 @@
     },
     "message_storage": {
       "type": "object",
+      "description": "Per-channel message storage overrides. Overrides the global message_storage settings for this channel.",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "content_types": { "type": "array", "items": { "type": "string", "enum": ["source", "transformed", "sent", "response", "error"] } },
-        "retention_days": { "type": "integer" }
+        "enabled": { "type": "boolean", "description": "Enable or disable message storage for this channel" },
+        "mode": { "type": "string", "enum": ["none", "status", "full"], "description": "Storage mode override: none (no storage), status (metadata only), full (full payloads)" },
+        "stages": { "type": "array", "items": { "type": "string", "enum": ["received", "transformed", "filtered", "sent", "error", "response"] }, "description": "Restrict storage to these pipeline stages only" },
+        "content_types": { "type": "array", "items": { "type": "string", "enum": ["source", "transformed", "sent", "response", "error"] }, "description": "Legacy alias for stages" },
+        "retention_days": { "type": "integer", "description": "Per-channel retention period in days (overrides global)" }
       }
     },
     "batch": {

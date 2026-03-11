@@ -28,8 +28,10 @@ type s3MessageEnvelope struct {
 	ChannelID     string         `json:"channel_id"`
 	Stage         string         `json:"stage"`
 	Content       []byte         `json:"content,omitempty"`
+	ContentSize   int            `json:"content_size,omitempty"`
 	Status        string         `json:"status"`
 	Timestamp     time.Time      `json:"timestamp"`
+	DurationMs    int64          `json:"duration_ms,omitempty"`
 	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
@@ -77,14 +79,20 @@ func (s *S3Store) objectKey(channelID, stage, id string) string {
 }
 
 func (s *S3Store) Save(record *MessageRecord) error {
+	contentSize := record.ContentSize
+	if contentSize == 0 && len(record.Content) > 0 {
+		contentSize = len(record.Content)
+	}
 	envelope := s3MessageEnvelope{
 		ID:            record.ID,
 		CorrelationID: record.CorrelationID,
 		ChannelID:     record.ChannelID,
 		Stage:         record.Stage,
 		Content:       record.Content,
+		ContentSize:   contentSize,
 		Status:        record.Status,
 		Timestamp:     record.Timestamp,
+		DurationMs:    record.DurationMs,
 		Metadata:      record.Metadata,
 	}
 
@@ -132,7 +140,10 @@ func (s *S3Store) Get(id string) (*MessageRecord, error) {
 
 func (s *S3Store) GetStage(id, stage string) (*MessageRecord, error) {
 	ctx := context.Background()
-	records, err := s.listByPrefix(ctx, s.prefix, func(env *s3MessageEnvelope) bool {
+
+	// Try all channels via a suffix-based scan narrowed to the stage
+	stagePrefix := s.prefix
+	records, err := s.listByPrefix(ctx, stagePrefix, func(env *s3MessageEnvelope) bool {
 		return env.ID == id && env.Stage == stage
 	}, 1)
 	if err != nil {
@@ -197,6 +208,59 @@ func (s *S3Store) Query(opts QueryOpts) ([]*MessageRecord, error) {
 	}
 
 	return records, nil
+}
+
+func (s *S3Store) Count(opts QueryOpts) (int64, error) {
+	ctx := context.Background()
+
+	searchPrefix := s.prefix
+	if opts.ChannelID != "" {
+		searchPrefix = fmt.Sprintf("%s%s/", s.prefix, opts.ChannelID)
+		if opts.Stage != "" {
+			searchPrefix = fmt.Sprintf("%s%s/%s/", s.prefix, opts.ChannelID, opts.Stage)
+		}
+	}
+
+	var count int64
+	paginator := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucket),
+		Prefix: aws.String(searchPrefix),
+	})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("list objects: %w", err)
+		}
+		for _, obj := range page.Contents {
+			if obj.Key == nil || !strings.HasSuffix(*obj.Key, ".json") {
+				continue
+			}
+			if opts.Status == "" && opts.Since.IsZero() && opts.Before.IsZero() {
+				count++
+				continue
+			}
+			env, err := s.getObject(ctx, *obj.Key)
+			if err != nil {
+				continue
+			}
+			if opts.Status != "" && env.Status != opts.Status {
+				continue
+			}
+			if opts.Stage != "" && env.Stage != opts.Stage {
+				continue
+			}
+			if !opts.Since.IsZero() && env.Timestamp.Before(opts.Since) {
+				continue
+			}
+			if !opts.Before.IsZero() && env.Timestamp.After(opts.Before) {
+				continue
+			}
+			count++
+		}
+	}
+
+	return count, nil
 }
 
 func (s *S3Store) Delete(id string) error {
@@ -363,8 +427,10 @@ func (s *S3Store) listByPrefix(ctx context.Context, prefix string, filter func(*
 				ChannelID:     env.ChannelID,
 				Stage:         env.Stage,
 				Content:       env.Content,
+				ContentSize:   env.ContentSize,
 				Status:        env.Status,
 				Timestamp:     env.Timestamp,
+				DurationMs:    env.DurationMs,
 				Metadata:      env.Metadata,
 			})
 
