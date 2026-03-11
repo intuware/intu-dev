@@ -246,7 +246,7 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 			continue
 		}
 
-		outMsg, filtered, err := cr.Pipeline.ExecuteDestinationPipeline(ctx, msg, result.Output, destCfg)
+		outMsg, filtered, err := cr.Pipeline.ExecuteDestinationPipeline(ctx, msg, result.Output, result.SourceIntuMsg, destCfg)
 		if err != nil {
 			cr.Logger.Error("destination pipeline error", "destination", destName, "error", err)
 			if cr.Metrics != nil {

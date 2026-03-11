@@ -22,17 +22,18 @@ import (
 )
 
 type Pipeline struct {
-	channelDir   string
-	projectDir   string
-	channelID    string
-	config       *config.ChannelConfig
-	runner       *NodeRunner
-	logger       *slog.Logger
-	parser       datatype.Parser
-	store        storage.MessageStore
-	maps         *MapVariables
-	connectorMap *SyncMap
-	splitter     datatype.BatchSplitter
+	channelDir    string
+	projectDir    string
+	channelID     string
+	config        *config.ChannelConfig
+	runner        *NodeRunner
+	logger        *slog.Logger
+	parser        datatype.Parser
+	store         storage.MessageStore
+	maps          *MapVariables
+	connectorMap  *SyncMap
+	splitter      datatype.BatchSplitter
+	resolvedDests map[string]config.Destination
 }
 
 func NewPipeline(channelDir, projectDir, channelID string, cfg *config.ChannelConfig, runner *NodeRunner, logger *slog.Logger) *Pipeline {
@@ -77,6 +78,10 @@ func (p *Pipeline) SetMapContext(maps *MapVariables, connectorMap *SyncMap) {
 	p.connectorMap = connectorMap
 }
 
+func (p *Pipeline) SetResolvedDestinations(dests map[string]config.Destination) {
+	p.resolvedDests = dests
+}
+
 type DestinationResult struct {
 	Name     string
 	Success  bool
@@ -85,13 +90,14 @@ type DestinationResult struct {
 }
 
 type PipelineResult struct {
-	Filtered    bool
-	Output      any
-	OutputBytes []byte
-	OutputMsg   *message.Message
-	RouteTo     []string
-	DestResults []DestinationResult
-	BatchItems  []BatchItem
+	Filtered      bool
+	Output        any
+	OutputBytes   []byte
+	OutputMsg     *message.Message
+	RouteTo       []string
+	DestResults   []DestinationResult
+	BatchItems    []BatchItem
+	SourceIntuMsg map[string]any
 }
 
 type BatchItem struct {
@@ -270,23 +276,25 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 
 		outputBytes := p.toBytes(outMsg.Output)
 		return &PipelineResult{
-			Output:      outMsg.Output,
-			OutputBytes: outputBytes,
-			OutputMsg:   outMsg.Msg,
-			RouteTo:     routeTo,
+			Output:        outMsg.Output,
+			OutputBytes:   outputBytes,
+			OutputMsg:     outMsg.Msg,
+			RouteTo:       routeTo,
+			SourceIntuMsg: intuMsg,
 		}, nil
 	}
 
 	outputBytes := p.toBytes(current)
 
 	return &PipelineResult{
-		Output:      current,
-		OutputBytes: outputBytes,
-		RouteTo:     routeTo,
+		Output:        current,
+		OutputBytes:   outputBytes,
+		RouteTo:       routeTo,
+		SourceIntuMsg: intuMsg,
 	}, nil
 }
 
-func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.Message, transformed any, dest config.ChannelDestination) (*message.Message, bool, error) {
+func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.Message, transformed any, sourceIntuMsg map[string]any, dest config.ChannelDestination) (*message.Message, bool, error) {
 	tracer := otel.Tracer("intu.pipeline")
 	destName := dest.Name
 	if destName == "" {
@@ -301,13 +309,14 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 	defer span.End()
 
 	current := transformed
-	intuMsg := p.buildIntuMessage(msg, current)
+	intuMsg := p.buildDestIntuMessage(current, destName, dest)
+	destCtx := p.buildDestCtx(msg, destName, sourceIntuMsg)
 
 	if dest.Filter != "" {
 		_, filterSpan := tracer.Start(ctx, "pipeline.destination.filter",
 			trace.WithAttributes(attribute.String("script", dest.Filter)),
 		)
-		out, err := p.callScript("filter", dest.Filter, intuMsg, p.buildDestCtx(msg, dest.Name))
+		out, err := p.callScript("filter", dest.Filter, intuMsg, destCtx)
 		if err != nil {
 			filterSpan.SetStatus(codes.Error, err.Error())
 			filterSpan.End()
@@ -321,12 +330,14 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 		}
 	}
 
+	destType := p.resolveDestType(destName, dest)
+
 	destTransformer := resolveDestTransformer(dest)
 	if destTransformer != "" {
 		_, transformSpan := tracer.Start(ctx, "pipeline.destination.transform",
 			trace.WithAttributes(attribute.String("script", destTransformer)),
 		)
-		out, err := p.callScript("transform", destTransformer, intuMsg, p.buildDestCtx(msg, dest.Name))
+		out, err := p.callScript("transform", destTransformer, intuMsg, destCtx)
 		if err != nil {
 			transformSpan.SetStatus(codes.Error, err.Error())
 			transformSpan.End()
@@ -337,29 +348,15 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 		outResult := p.parseIntuResult(out, msg)
 		current = outResult.Output
 		outMsg := outResult.Msg
+		outMsg.Transport = destType
 		outMsg.Raw = p.toBytes(current)
 		return outMsg, false, nil
 	}
 
 	outBytes := p.toBytes(current)
-	outMsg := &message.Message{
-		ID:            msg.ID,
-		CorrelationID: msg.CorrelationID,
-		ChannelID:     msg.ChannelID,
-		Raw:           outBytes,
-		Transport:     msg.Transport,
-		ContentType:   msg.ContentType,
-		HTTP:          msg.HTTP,
-		File:          msg.File,
-		FTP:           msg.FTP,
-		Kafka:         msg.Kafka,
-		TCP:           msg.TCP,
-		SMTP:          msg.SMTP,
-		DICOM:         msg.DICOM,
-		Database:      msg.Database,
-		Metadata:      msg.Metadata,
-		Timestamp:     msg.Timestamp,
-	}
+	outMsg := cloneMessageShell(msg)
+	outMsg.Raw = outBytes
+	outMsg.Transport = destType
 
 	return outMsg, false, nil
 }
@@ -385,7 +382,7 @@ func (p *Pipeline) ExecuteResponseTransformer(ctx context.Context, msg *message.
 		respData["error"] = resp.Error.Error()
 	}
 
-	_, err := p.callScript("transformResponse", respTransformer, respData, p.buildDestCtx(msg, dest.Name))
+	_, err := p.callScript("transformResponse", respTransformer, respData, p.buildDestCtx(msg, dest.Name, nil))
 	return err
 }
 
@@ -497,9 +494,12 @@ func (p *Pipeline) buildTransformCtx(msg *message.Message) map[string]any {
 	return ctx
 }
 
-func (p *Pipeline) buildDestCtx(msg *message.Message, destName string) map[string]any {
+func (p *Pipeline) buildDestCtx(msg *message.Message, destName string, sourceIntuMsg map[string]any) map[string]any {
 	ctx := p.buildPipelineCtx(msg)
 	ctx["destinationName"] = destName
+	if sourceIntuMsg != nil {
+		ctx["sourceMessage"] = sourceIntuMsg
+	}
 	return ctx
 }
 
@@ -569,6 +569,157 @@ func (p *Pipeline) buildIntuMessage(msg *message.Message, parsed any) map[string
 	}
 
 	return im
+}
+
+// resolveDestType determines the transport type for a destination by checking
+// the inline config, the resolved root-level config, or inferring from which
+// protocol config block is populated.
+func (p *Pipeline) resolveDestType(destName string, destCfg config.ChannelDestination) string {
+	if destCfg.Type != "" {
+		return destCfg.Type
+	}
+	if p.resolvedDests != nil {
+		if rd, ok := p.resolvedDests[destName]; ok && rd.Type != "" {
+			return rd.Type
+		}
+	}
+	switch {
+	case destCfg.HTTP != nil:
+		return "http"
+	case destCfg.File != nil:
+		return "file"
+	case destCfg.Kafka != nil:
+		return "kafka"
+	case destCfg.TCP != nil:
+		return "tcp"
+	case destCfg.SMTP != nil:
+		return "smtp"
+	case destCfg.Database != nil:
+		return "database"
+	case destCfg.DICOM != nil:
+		return "dicom"
+	case destCfg.ChannelDest != nil:
+		return "channel"
+	case destCfg.FHIR != nil:
+		return "fhir"
+	case destCfg.JMS != nil:
+		return "jms"
+	case destCfg.Direct != nil:
+		return "direct"
+	}
+	return ""
+}
+
+// getResolvedDest returns the fully resolved Destination config. It first
+// checks the engine-resolved map, then falls back to converting the inline
+// ChannelDestination.
+func (p *Pipeline) getResolvedDest(destName string, destCfg config.ChannelDestination) config.Destination {
+	if p.resolvedDests != nil {
+		if rd, ok := p.resolvedDests[destName]; ok {
+			return rd
+		}
+	}
+	return destCfg.ToDestination()
+}
+
+// buildDestIntuMessage constructs a destination-native IntuMessage. Unlike
+// buildIntuMessage (which uses source transport metadata), this method
+// populates protocol fields from the destination config so that destination
+// transformers see the outbound transport context instead of the inbound one.
+func (p *Pipeline) buildDestIntuMessage(transformed any, destName string, destCfg config.ChannelDestination) map[string]any {
+	destType := p.resolveDestType(destName, destCfg)
+	rd := p.getResolvedDest(destName, destCfg)
+
+	contentType := ""
+	if p.config.DataTypes != nil && p.config.DataTypes.Outbound != "" {
+		contentType = p.config.DataTypes.Outbound
+	}
+
+	im := map[string]any{
+		"body":        transformed,
+		"transport":   destType,
+		"contentType": contentType,
+	}
+
+	switch destType {
+	case "http":
+		if rd.HTTP != nil {
+			im["http"] = map[string]any{
+				"headers":     nonNilStrMap(rd.HTTP.Headers),
+				"queryParams": nonNilStrMap(rd.HTTP.QueryParams),
+				"pathParams":  nonNilStrMap(rd.HTTP.PathParams),
+				"method":      rd.HTTP.Method,
+			}
+		}
+	case "fhir":
+		if rd.FHIR != nil {
+			im["http"] = map[string]any{
+				"headers":     make(map[string]string),
+				"queryParams": make(map[string]string),
+				"pathParams":  make(map[string]string),
+				"method":      "POST",
+			}
+		}
+	case "file":
+		if rd.File != nil {
+			im["file"] = map[string]any{
+				"filename":  rd.File.FilenamePattern,
+				"directory": rd.File.Directory,
+			}
+		}
+	case "sftp":
+		if rd.SFTP != nil {
+			im["file"] = map[string]any{
+				"filename":  rd.SFTP.FilenamePattern,
+				"directory": rd.SFTP.Directory,
+			}
+		}
+	case "kafka":
+		if rd.Kafka != nil {
+			im["kafka"] = map[string]any{
+				"headers": make(map[string]string),
+				"topic":   rd.Kafka.Topic,
+				"key":     "",
+			}
+		}
+	case "tcp":
+		if rd.TCP != nil {
+			im["tcp"] = map[string]any{
+				"remoteAddr": fmt.Sprintf("%s:%d", rd.TCP.Host, rd.TCP.Port),
+			}
+		}
+	case "smtp":
+		if rd.SMTP != nil {
+			im["smtp"] = map[string]any{
+				"from":    rd.SMTP.From,
+				"to":      rd.SMTP.To,
+				"subject": rd.SMTP.Subject,
+			}
+		}
+	case "dicom":
+		if rd.DICOM != nil {
+			im["dicom"] = map[string]any{
+				"callingAE": rd.DICOM.AETitle,
+				"calledAE":  rd.DICOM.CalledAETitle,
+			}
+		}
+	case "database":
+		if rd.Database != nil {
+			im["database"] = map[string]any{
+				"query":  rd.Database.Statement,
+				"params": make(map[string]any),
+			}
+		}
+	}
+
+	return im
+}
+
+func nonNilStrMap(m map[string]string) map[string]string {
+	if m == nil {
+		return make(map[string]string)
+	}
+	return m
 }
 
 type intuResult struct {

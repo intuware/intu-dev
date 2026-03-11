@@ -330,6 +330,7 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 	}
 
 	dests := make(map[string]connector.DestinationConnector)
+	resolvedDestCfgs := make(map[string]config.Destination)
 	for _, d := range chCfg.Destinations {
 		name := d.Name
 		if name == "" {
@@ -357,6 +358,8 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 			destCfg = rootDest
 		}
 
+		resolvedDestCfgs[name] = destCfg
+
 		dest, err := e.factory.CreateDestination(name, destCfg)
 		if err != nil {
 			return nil, fmt.Errorf("create destination %s: %w", name, err)
@@ -365,6 +368,7 @@ func (e *DefaultEngine) buildChannelRuntime(channelDir string, chCfg *config.Cha
 	}
 
 	pipeline := NewPipeline(channelDir, e.rootDir, chCfg.ID, chCfg, e.jsRunner, e.logger)
+	pipeline.SetResolvedDestinations(resolvedDestCfgs)
 
 	channelStore := e.resolveChannelStore(chCfg)
 	if channelStore != nil {

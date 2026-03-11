@@ -1767,3 +1767,222 @@ exports.transform = function transform(msg, ctx) {
 		t.Fatalf("expected engine_test=true, got %v", result)
 	}
 }
+
+// ===================================================================
+// Test 20: Destination Transformer Receives Dest-Native IntuMessage
+// Verifies that dest transformer sees destination HTTP config (headers,
+// method) instead of source transport metadata, and has access to the
+// original source message via ctx.sourceMessage.
+// ===================================================================
+
+func TestE2E_DestTransformerReceivesDestNativeIntuMessage(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: { source_transformed: true, data: msg.body } };
+};`)
+	writeJS(t, channelDir, "dest-transform.js", `
+exports.transform = function transform(msg, ctx) {
+	return {
+		body: {
+			original_body: msg.body,
+			dest_transport: msg.transport,
+			dest_method: msg.http ? msg.http.method : null,
+			dest_headers: msg.http ? msg.http.headers : null,
+			source_transport: ctx.sourceMessage ? ctx.sourceMessage.transport : null,
+			source_http_method: ctx.sourceMessage && ctx.sourceMessage.http ? ctx.sourceMessage.http.method : null,
+			destination_name: ctx.destinationName,
+		},
+	};
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-dest-native-msg",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{
+				Name: "api-dest",
+				Type: "http",
+				HTTP: &config.HTTPDestConfig{
+					URL:    destServer.URL,
+					Method: "PUT",
+					Headers: map[string]string{
+						"X-Dest-Header": "dest-value",
+						"Content-Type":  "application/fhir+json",
+					},
+				},
+				Transformer: &config.ScriptRef{Entrypoint: "dest-transform.js"},
+			},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("api-dest", &config.HTTPDestConfig{
+		URL:    destServer.URL,
+		Method: "PUT",
+		Headers: map[string]string{
+			"X-Dest-Header": "dest-value",
+			"Content-Type":  "application/fhir+json",
+		},
+	}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"api-dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("hello"))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+
+	if result["dest_transport"] != "http" {
+		t.Fatalf("expected dest_transport=http, got %v", result["dest_transport"])
+	}
+	if result["dest_method"] != "PUT" {
+		t.Fatalf("expected dest_method=PUT (from dest config), got %v", result["dest_method"])
+	}
+	destHeaders, ok := result["dest_headers"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected dest_headers to be a map, got %T", result["dest_headers"])
+	}
+	if destHeaders["X-Dest-Header"] != "dest-value" {
+		t.Fatalf("expected X-Dest-Header=dest-value, got %v", destHeaders["X-Dest-Header"])
+	}
+
+	if result["source_transport"] != "http" {
+		t.Fatalf("expected source_transport=http, got %v", result["source_transport"])
+	}
+	if result["source_http_method"] != "POST" {
+		t.Fatalf("expected source_http_method=POST, got %v", result["source_http_method"])
+	}
+	if result["destination_name"] != "api-dest" {
+		t.Fatalf("expected destination_name=api-dest, got %v", result["destination_name"])
+	}
+}
+
+// ===================================================================
+// Test 21: Cross-Transport Dest IntuMessage (HTTP Source -> File Dest)
+// Verifies the dest transformer receives file transport metadata from
+// the destination config, not the source's HTTP metadata.
+// ===================================================================
+
+func TestE2E_CrossTransportDestIntuMessage(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "output")
+	os.MkdirAll(outputDir, 0o755)
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: { transformed: true, data: msg.body } };
+};`)
+	writeJS(t, channelDir, "dest-transform.js", `
+exports.transform = function transform(msg, ctx) {
+	return {
+		body: {
+			dest_transport: msg.transport,
+			has_file_meta: !!msg.file,
+			file_directory: msg.file ? msg.file.directory : null,
+			has_http_meta: !!msg.http,
+			source_transport: ctx.sourceMessage ? ctx.sourceMessage.transport : null,
+			source_has_http: ctx.sourceMessage ? !!ctx.sourceMessage.http : false,
+		},
+	};
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-cross-transport",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{
+				Name: "file-dest",
+				Type: "file",
+				File: &config.FileDestConfig{
+					Directory:       outputDir,
+					FilenamePattern: "{{channelId}}_{{messageId}}.json",
+				},
+				Transformer: &config.ScriptRef{Entrypoint: "dest-transform.js"},
+			},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	fileDest := connector.NewFileDest("file-dest", &config.FileDestMapConfig{
+		Directory:       outputDir,
+		FilenamePattern: "{{channelId}}_{{messageId}}.json",
+	}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"file-dest": fileDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("file payload"))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool {
+		entries, _ := os.ReadDir(outputDir)
+		return len(entries) >= 1
+	})
+
+	entries, _ := os.ReadDir(outputDir)
+	if len(entries) < 1 {
+		t.Fatal("expected at least 1 output file")
+	}
+
+	data, _ := os.ReadFile(filepath.Join(outputDir, entries[0].Name()))
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+
+	if result["dest_transport"] != "file" {
+		t.Fatalf("expected dest_transport=file, got %v", result["dest_transport"])
+	}
+	if result["has_file_meta"] != true {
+		t.Fatalf("expected has_file_meta=true, got %v", result["has_file_meta"])
+	}
+	if result["file_directory"] != outputDir {
+		t.Fatalf("expected file_directory=%s, got %v", outputDir, result["file_directory"])
+	}
+	if result["has_http_meta"] != false {
+		t.Fatalf("expected has_http_meta=false (dest is file, not http), got %v", result["has_http_meta"])
+	}
+	if result["source_transport"] != "http" {
+		t.Fatalf("expected source_transport=http (from ctx.sourceMessage), got %v", result["source_transport"])
+	}
+	if result["source_has_http"] != true {
+		t.Fatalf("expected source_has_http=true, got %v", result["source_has_http"])
+	}
+}

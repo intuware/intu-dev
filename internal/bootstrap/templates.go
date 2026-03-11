@@ -701,6 +701,7 @@ interface IntuContext {
   inboundDataType?: string;
   outboundDataType?: string;
   destinationName?: string;
+  sourceMessage?: IntuMessage;
   globalMap: IntuMap;
   channelMap: IntuMap;
   responseMap: IntuMap;
