@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,13 +23,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// produceViaConnector publishes a message to Kafka using the real KafkaDest
+// connector — the same code path used in production. This avoids re-implementing
+// the Kafka wire protocol (CRC, framing, etc.) in test helpers.
+func produceViaConnector(t *testing.T, brokers []string, topic string, payload []byte) {
+	t.Helper()
+	dest := connector.NewKafkaDest("test-producer", &config.KafkaDestConfig{
+		Brokers:  brokers,
+		Topic:    topic,
+		ClientID: "integration-test-producer",
+	}, testutil.DiscardLogger())
+	t.Cleanup(func() { dest.Stop(context.Background()) })
+
+	msg := message.New("", payload)
+	resp, err := dest.Send(context.Background(), msg)
+	require.NoError(t, err, "produce to kafka")
+	require.NotNil(t, resp)
+	require.Equal(t, 200, resp.StatusCode, "produce should succeed (status 200)")
+}
+
 func TestKafkaSource_ReceivesMessages(t *testing.T) {
 	if kafkaC == nil {
 		t.Skip("Kafka container not available")
 	}
 
 	topic := "test-source-recv"
-	produceToKafka(t, kafkaC.Brokers[0], topic, []byte(`{"patient":"John Doe","mrn":"MRN001"}`))
 
 	var mu sync.Mutex
 	var received [][]byte
@@ -41,7 +58,7 @@ func TestKafkaSource_ReceivesMessages(t *testing.T) {
 		GroupID: "test-group",
 	}, testutil.DiscardLogger())
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	err := src.Start(ctx, func(ctx context.Context, msg *message.Message) error {
@@ -53,7 +70,12 @@ func TestKafkaSource_ReceivesMessages(t *testing.T) {
 	require.NoError(t, err)
 	defer src.Stop(context.Background())
 
-	testutil.WaitFor(t, 10*time.Second, func() bool {
+	// Let the source connect and begin its poll loop before producing.
+	time.Sleep(3 * time.Second)
+
+	produceViaConnector(t, kafkaC.Brokers, topic, []byte(`{"patient":"John Doe","mrn":"MRN001"}`))
+
+	testutil.WaitFor(t, 12*time.Second, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return len(received) >= 1
@@ -78,8 +100,10 @@ func TestKafkaDest_SendsMessages(t *testing.T) {
 	msg := message.New("", []byte(`{"event":"test","value":42}`))
 	msg.Transport = "kafka"
 
-	_, err := dest.Send(context.Background(), msg)
+	resp, err := dest.Send(context.Background(), msg)
 	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, 200, resp.StatusCode)
 
 	assert.Equal(t, "kafka", dest.Type())
 }
@@ -137,7 +161,10 @@ func TestKafkaSourceToHTTPDest_Pipeline(t *testing.T) {
 	require.NoError(t, cr.Start(ctx))
 	defer cr.Stop(ctx)
 
-	produceToKafka(t, kafkaC.Brokers[0], topic, []byte(`{"patient":"Jane Smith"}`))
+	// Let the pipeline's source connect and start polling before producing.
+	time.Sleep(3 * time.Second)
+
+	produceViaConnector(t, kafkaC.Brokers, topic, []byte(`{"patient":"Jane Smith"}`))
 
 	testutil.WaitFor(t, 15*time.Second, func() bool {
 		mu.Lock()
@@ -179,107 +206,6 @@ func buildIntegrationChannelRuntime(
 		Pipeline:     pipeline,
 		Logger:       logger,
 	}
-}
-
-func produceToKafka(t *testing.T, broker, topic string, value []byte) {
-	t.Helper()
-	conn, err := net.DialTimeout("tcp", broker, 5*time.Second)
-	require.NoError(t, err, "connect to kafka broker")
-	defer conn.Close()
-
-	sendMetadataRequest(t, conn, topic)
-	time.Sleep(500 * time.Millisecond)
-	sendProduceRequest(t, conn, topic, value)
-}
-
-func sendMetadataRequest(t *testing.T, conn net.Conn, topic string) {
-	t.Helper()
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
-
-	var buf []byte
-	buf = appendInt16(buf, 3)  // Metadata API
-	buf = appendInt16(buf, 0)  // v0
-	buf = appendInt32(buf, 99) // correlationID
-	buf = appendKafkaString(buf, "test-producer")
-	buf = appendInt32(buf, 1)
-	buf = appendKafkaString(buf, topic)
-
-	frame := make([]byte, 4+len(buf))
-	frame[0] = byte(len(buf) >> 24)
-	frame[1] = byte(len(buf) >> 16)
-	frame[2] = byte(len(buf) >> 8)
-	frame[3] = byte(len(buf))
-	copy(frame[4:], buf)
-	conn.Write(frame)
-
-	respSizeBuf := make([]byte, 4)
-	io.ReadFull(conn, respSizeBuf)
-	respSize := int(respSizeBuf[0])<<24 | int(respSizeBuf[1])<<16 | int(respSizeBuf[2])<<8 | int(respSizeBuf[3])
-	if respSize > 0 && respSize < 1024*1024 {
-		resp := make([]byte, respSize)
-		io.ReadFull(conn, resp)
-	}
-}
-
-func sendProduceRequest(t *testing.T, conn net.Conn, topic string, value []byte) {
-	t.Helper()
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
-
-	var msgBuf []byte
-	msgBuf = append(msgBuf, 0, 0, 0, 0) // CRC placeholder
-	msgBuf = append(msgBuf, 0)           // magic
-	msgBuf = append(msgBuf, 0)           // attributes
-	msgBuf = appendInt32(msgBuf, -1)     // key: null
-	msgBuf = appendInt32(msgBuf, int32(len(value)))
-	msgBuf = append(msgBuf, value...)
-
-	var msgSet []byte
-	msgSet = append(msgSet, 0, 0, 0, 0, 0, 0, 0, 0) // offset
-	msgSet = appendInt32(msgSet, int32(len(msgBuf)))
-	msgSet = append(msgSet, msgBuf...)
-
-	var buf []byte
-	buf = appendInt16(buf, 0) // Produce API
-	buf = appendInt16(buf, 0) // v0
-	buf = appendInt32(buf, 1) // correlationID
-	buf = appendKafkaString(buf, "test-producer")
-	buf = appendInt16(buf, 1)    // acks
-	buf = appendInt32(buf, 5000) // timeout
-	buf = appendInt32(buf, 1)    // 1 topic
-	buf = appendKafkaString(buf, topic)
-	buf = appendInt32(buf, 1) // 1 partition
-	buf = appendInt32(buf, 0) // partition 0
-	buf = appendInt32(buf, int32(len(msgSet)))
-	buf = append(buf, msgSet...)
-
-	frame := make([]byte, 4+len(buf))
-	frame[0] = byte(len(buf) >> 24)
-	frame[1] = byte(len(buf) >> 16)
-	frame[2] = byte(len(buf) >> 8)
-	frame[3] = byte(len(buf))
-	copy(frame[4:], buf)
-	conn.Write(frame)
-
-	respSizeBuf := make([]byte, 4)
-	io.ReadFull(conn, respSizeBuf)
-	respSize := int(respSizeBuf[0])<<24 | int(respSizeBuf[1])<<16 | int(respSizeBuf[2])<<8 | int(respSizeBuf[3])
-	if respSize > 0 && respSize < 1024*1024 {
-		resp := make([]byte, respSize)
-		io.ReadFull(conn, resp)
-	}
-}
-
-func appendInt16(buf []byte, v int16) []byte {
-	return append(buf, byte(v>>8), byte(v))
-}
-
-func appendInt32(buf []byte, v int32) []byte {
-	return append(buf, byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
-}
-
-func appendKafkaString(buf []byte, s string) []byte {
-	buf = appendInt16(buf, int16(len(s)))
-	return append(buf, []byte(s)...)
 }
 
 // TestMain starts containers once and shares them across all tests in this package.
