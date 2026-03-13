@@ -41,7 +41,7 @@ func TestDatabaseSource_PollsRows(t *testing.T) {
 	var received [][]byte
 
 	src := connector.NewDatabaseSource(&config.DBListener{
-		Driver:       "postgres",
+		Driver:       "pgx",
 		DSN:          pgC.DSN,
 		PollInterval: "500ms",
 		Query:        "SELECT id, mrn, first_name, last_name FROM patients WHERE processed = false",
@@ -84,9 +84,9 @@ func TestDatabaseDest_InsertsRows(t *testing.T) {
 	setupAuditTable(t, db)
 
 	dest := connector.NewDatabaseDest("db-dest", &config.DBDestMapConfig{
-		Driver:    "postgres",
+		Driver:    "pgx",
 		DSN:       pgC.DSN,
-		Statement: "INSERT INTO audit_log (channel_id, message_body) VALUES ('test-channel', $1)",
+		Statement: "INSERT INTO audit_log (channel_id, message_body) VALUES ('${channelId}', '${raw}')",
 	}, testutil.DiscardLogger())
 
 	msg := message.New("test-channel", []byte(`{"event":"patient_registered","mrn":"MRN001"}`))
@@ -134,7 +134,7 @@ func TestDatabaseSourceToHTTPDest_Pipeline(t *testing.T) {
 		Listener: config.ListenerConfig{
 			Type: "database",
 			Database: &config.DBListener{
-				Driver:       "postgres",
+				Driver:       "pgx",
 				DSN:          pgC.DSN,
 				PollInterval: "500ms",
 				Query:        "SELECT id, mrn, first_name, last_name FROM patients WHERE processed = false",
