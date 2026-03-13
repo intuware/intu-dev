@@ -253,6 +253,13 @@ func (d *DICOMSource) sendReleaseRP(conn net.Conn) {
 	conn.Write(pdu)
 }
 
+func (d *DICOMSource) Addr() string {
+	if d.listener != nil {
+		return d.listener.Addr().String()
+	}
+	return ""
+}
+
 func (d *DICOMSource) Stop(ctx context.Context) error {
 	if d.cancel != nil {
 		d.cancel()

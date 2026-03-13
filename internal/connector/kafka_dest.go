@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"log/slog"
 	"net"
@@ -206,13 +207,19 @@ func (k *KafkaDest) produce(conn net.Conn, value []byte) error {
 
 	var msgBuf []byte
 	// CRC placeholder (4) + magic (1) + attributes (1) + key length (4) + value length (4) + value
-	crcPlaceholder := make([]byte, 4)
-	msgBuf = append(msgBuf, crcPlaceholder...)
-	msgBuf = append(msgBuf, 0x00) // magic
-	msgBuf = append(msgBuf, 0x00) // attributes
+	msgBuf = append(msgBuf, 0, 0, 0, 0) // CRC placeholder — filled below
+	msgBuf = append(msgBuf, 0x00)        // magic
+	msgBuf = append(msgBuf, 0x00)        // attributes
 	msgBuf = appendInt32(msgBuf, -1)
 	msgBuf = appendInt32(msgBuf, int32(len(value)))
 	msgBuf = append(msgBuf, value...)
+
+	// Kafka v0 message CRC covers everything after the CRC field itself.
+	crc := crc32.ChecksumIEEE(msgBuf[4:])
+	msgBuf[0] = byte(crc >> 24)
+	msgBuf[1] = byte(crc >> 16)
+	msgBuf[2] = byte(crc >> 8)
+	msgBuf[3] = byte(crc)
 
 	// MessageSet entry: offset(8) + message_size(4) + message
 	var msgSet []byte

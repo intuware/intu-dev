@@ -148,6 +148,10 @@ func (cr *ChannelRuntime) Stop(ctx context.Context) error {
 	return nil
 }
 
+func (cr *ChannelRuntime) HandleMessage(ctx context.Context, msg *message.Message) error {
+	return cr.handleMessage(ctx, msg)
+}
+
 func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Message) error {
 	tracer := otel.Tracer("intu.channel")
 	ctx, span := tracer.Start(ctx, "channel.process",

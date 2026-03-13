@@ -1986,3 +1986,913 @@ exports.transform = function transform(msg, ctx) {
 		t.Fatalf("expected source_has_http=true, got %v", result["source_has_http"])
 	}
 }
+
+// ===================================================================
+// Test 22: SOAP Source -> Transformer -> HTTP Dest
+// ===================================================================
+
+func TestE2E_SOAPSourceToHTTPDest(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	var soapAction = (msg.http && msg.http.headers) ? (msg.http.headers["Soapaction"] || msg.http.headers["SOAPAction"] || "") : "";
+	return { body: { source: msg.transport, soap_action: soapAction, data: msg.body } };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-soap-to-http",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "soap",
+			SOAP: &config.SOAPListener{Port: 0, ServiceName: "PatientService"},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	soapSrc := connector.NewSOAPSource(chCfg.Listener.SOAP, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, soapSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+	addr := soapSrc.Addr()
+	if addr == "" {
+		t.Fatal("SOAP source has no address")
+	}
+
+	soapEnvelope := `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><RegisterPatient><mrn>MRN001</mrn></RegisterPatient></soap:Body>
+</soap:Envelope>`
+
+	req, _ := http.NewRequest("POST", "http://"+addr+"/", strings.NewReader(soapEnvelope))
+	req.Header.Set("Content-Type", "text/xml; charset=utf-8")
+	req.Header.Set("SOAPAction", "RegisterPatient")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["source"] != "soap" {
+		t.Fatalf("expected source=soap, got %v", result["source"])
+	}
+	soapAction, _ := result["soap_action"].(string)
+	if soapAction != "RegisterPatient" {
+		t.Fatalf("expected soap_action=RegisterPatient, got %v", result["soap_action"])
+	}
+}
+
+// ===================================================================
+// Test 23: FHIR Source -> Transformer -> HTTP Dest
+// ===================================================================
+
+func TestE2E_FHIRSourceToHTTPDest(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	var rt = (typeof msg.body === "object" && msg.body) ? msg.body.resourceType : null;
+	return { body: { source: msg.transport, resource_type: rt, patient: msg.body } };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-fhir-src-to-http",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "fhir",
+			FHIR: &config.FHIRListener{Port: 0, BasePath: "/fhir", Resources: []string{"Patient"}},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	fhirSrc := connector.NewFHIRSource(chCfg.Listener.FHIR, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, fhirSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+	addr := fhirSrc.Addr()
+	if addr == "" {
+		t.Fatal("FHIR source has no address")
+	}
+
+	patient := `{"resourceType":"Patient","id":"P-123","name":[{"family":"Smith","given":["Jane"]}]}`
+	req, _ := http.NewRequest("POST", "http://"+addr+"/fhir/Patient", strings.NewReader(patient))
+	req.Header.Set("Content-Type", "application/fhir+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", resp.StatusCode)
+	}
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["source"] != "fhir" {
+		t.Fatalf("expected source=fhir, got %v", result["source"])
+	}
+	if result["resource_type"] != "Patient" {
+		t.Fatalf("expected resource_type=Patient, got %v", result["resource_type"])
+	}
+}
+
+// ===================================================================
+// Test 24: IHE Source (XDS Repository) -> Transformer -> HTTP Dest
+// ===================================================================
+
+func TestE2E_IHESourceToHTTPDest(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: { source: msg.transport, data: msg.body } };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-ihe-to-http",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "ihe",
+			IHE:  &config.IHEListener{Profile: "xds_repository", Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	iheSrc := connector.NewIHESource(chCfg.Listener.IHE, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, iheSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+	addr := iheSrc.Addr()
+	if addr == "" {
+		t.Fatal("IHE source has no address")
+	}
+
+	xdsDoc := `<?xml version="1.0"?><ProvideAndRegisterDocumentSet><document id="doc1"/></ProvideAndRegisterDocumentSet>`
+	req, _ := http.NewRequest("POST", "http://"+addr+"/xds/repository/provide", strings.NewReader(xdsDoc))
+	req.Header.Set("Content-Type", "text/xml")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["source"] != "ihe" {
+		t.Fatalf("expected source=ihe, got %v", result["source"])
+	}
+}
+
+// ===================================================================
+// Test 25: DICOM Source -> Transformer -> HTTP Dest
+// ===================================================================
+
+func TestE2E_DICOMSourceToHTTPDest(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	var ae = (msg.dicom && msg.dicom.calledAE) ? msg.dicom.calledAE : "unknown";
+	return { body: { source: msg.transport, ae_title: ae, data_length: typeof msg.body === "string" ? msg.body.length : 0 } };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-dicom-to-http",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type:  "dicom",
+			DICOM: &config.DICOMListener{Port: 0, AETitle: "TEST_SCP"},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	dicomSrc := connector.NewDICOMSource(chCfg.Listener.DICOM, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, dicomSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+	addr := dicomSrc.Addr()
+	if addr == "" {
+		t.Fatal("DICOM source has no address")
+	}
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+
+	calledAE := fmt.Sprintf("%-16s", "TEST_SCP")
+	callingAE := fmt.Sprintf("%-16s", "TEST_SCU")
+	var assocData []byte
+	assocData = append(assocData, 0x00, 0x01) // protocol version
+	assocData = append(assocData, 0x00, 0x00) // reserved
+	assocData = append(assocData, []byte(calledAE)...)
+	assocData = append(assocData, []byte(callingAE)...)
+	assocData = append(assocData, make([]byte, 32)...)
+
+	assocPDU := make([]byte, 6+len(assocData))
+	assocPDU[0] = 0x01 // A-ASSOCIATE-RQ
+	assocPDU[1] = 0x00
+	assocPDU[2] = byte(len(assocData) >> 24)
+	assocPDU[3] = byte(len(assocData) >> 16)
+	assocPDU[4] = byte(len(assocData) >> 8)
+	assocPDU[5] = byte(len(assocData))
+	copy(assocPDU[6:], assocData)
+	conn.Write(assocPDU)
+
+	time.Sleep(100 * time.Millisecond)
+
+	pDataPayload := []byte("DICOM-STUDY-DATA-PAYLOAD")
+	pDataPDU := make([]byte, 6+len(pDataPayload))
+	pDataPDU[0] = 0x04 // P-DATA-TF
+	pDataPDU[1] = 0x00
+	pDataPDU[2] = byte(len(pDataPayload) >> 24)
+	pDataPDU[3] = byte(len(pDataPayload) >> 16)
+	pDataPDU[4] = byte(len(pDataPayload) >> 8)
+	pDataPDU[5] = byte(len(pDataPayload))
+	copy(pDataPDU[6:], pDataPayload)
+	conn.Write(pDataPDU)
+
+	releasePDU := make([]byte, 10)
+	releasePDU[0] = 0x05 // A-RELEASE-RQ
+	releasePDU[1] = 0x00
+	releasePDU[2] = 0x00
+	releasePDU[3] = 0x00
+	releasePDU[4] = 0x00
+	releasePDU[5] = 0x04
+	conn.Write(releasePDU)
+	conn.Close()
+
+	waitFor(t, 3*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["source"] != "dicom" {
+		t.Fatalf("expected source=dicom, got %v", result["source"])
+	}
+	if result["ae_title"] != "TEST_SCP" {
+		t.Fatalf("expected ae_title=TEST_SCP, got %v", result["ae_title"])
+	}
+}
+
+// ===================================================================
+// Test 26: HTTP Source -> TCP Destination (MLLP)
+// ===================================================================
+
+func TestE2E_HTTPSourceToTCPDest(t *testing.T) {
+	var tcpMu sync.Mutex
+	var tcpReceived [][]byte
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 4096)
+				n, _ := c.Read(buf)
+				if n > 0 {
+					tcpMu.Lock()
+					tcpReceived = append(tcpReceived, buf[:n])
+					tcpMu.Unlock()
+				}
+			}(conn)
+		}
+	}()
+
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: "TRANSFORMED:" + msg.body };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-http-to-tcp",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "tcp-dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	tcpDest := connector.NewTCPDest("tcp-dest", &config.TCPDestMapConfig{
+		Host: "127.0.0.1",
+		Port: tcpAddr.Port,
+		Mode: "raw",
+	}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"tcp-dest": tcpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, err := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("hello tcp"))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool {
+		tcpMu.Lock()
+		defer tcpMu.Unlock()
+		return len(tcpReceived) >= 1
+	})
+
+	tcpMu.Lock()
+	defer tcpMu.Unlock()
+	received := string(tcpReceived[0])
+	if !strings.Contains(received, "TRANSFORMED:") {
+		t.Fatalf("expected transformed content on TCP, got %q", received)
+	}
+}
+
+// ===================================================================
+// Test 27: HTTP Source -> FHIR Destination
+// ===================================================================
+
+func TestE2E_HTTPSourceToFHIRDest(t *testing.T) {
+	var fhirMu sync.Mutex
+	var fhirPaths []string
+	var fhirBodies [][]byte
+
+	fhirServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		fhirMu.Lock()
+		fhirPaths = append(fhirPaths, r.URL.Path)
+		fhirBodies = append(fhirBodies, body)
+		fhirMu.Unlock()
+		w.Header().Set("Content-Type", "application/fhir+json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"resourceType":"OperationOutcome","issue":[]}`))
+	}))
+	defer fhirServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: { resourceType: "Patient", id: "P-999", name: [{ family: "TestFamily" }] } };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-http-to-fhir-dest",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "fhir-out"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	fhirDest := connector.NewFHIRDest("fhir-out", &config.FHIRDestMapConfig{
+		BaseURL:    fhirServer.URL + "/fhir",
+		Operations: []string{"create"},
+	}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"fhir-out": fhirDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, err := http.Post("http://"+httpSrc.Addr()+"/", "application/json", strings.NewReader(`{"trigger":"admission"}`))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool {
+		fhirMu.Lock()
+		defer fhirMu.Unlock()
+		return len(fhirBodies) >= 1
+	})
+
+	fhirMu.Lock()
+	defer fhirMu.Unlock()
+	if !strings.Contains(fhirPaths[0], "/Patient") {
+		t.Fatalf("expected FHIR path to contain /Patient, got %s", fhirPaths[0])
+	}
+	var patient map[string]any
+	json.Unmarshal(fhirBodies[0], &patient)
+	if patient["resourceType"] != "Patient" {
+		t.Fatalf("expected resourceType=Patient, got %v", patient["resourceType"])
+	}
+}
+
+// ===================================================================
+// Test 28: HTTP Source -> Log Destination
+// ===================================================================
+
+func TestE2E_HTTPSourceToLogDest(t *testing.T) {
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: { logged: true, data: msg.body } };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-http-to-log",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "log-dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	logDest := connector.NewLogDest("log-dest", e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"log-dest": logDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, err := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("log this message"))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	time.Sleep(500 * time.Millisecond)
+}
+
+// ===================================================================
+// Test 29: 3-Destination Fan-Out (HTTP + File + TCP)
+// ===================================================================
+
+func TestE2E_ThreeDestFanOut(t *testing.T) {
+	captureHTTP := &destCapture{}
+	serverHTTP := httptest.NewServer(captureHTTP.handler())
+	defer serverHTTP.Close()
+
+	outputDir := filepath.Join(t.TempDir(), "output")
+	os.MkdirAll(outputDir, 0o755)
+
+	var tcpMu sync.Mutex
+	var tcpReceived [][]byte
+	tcpLn, _ := net.Listen("tcp", "127.0.0.1:0")
+	defer tcpLn.Close()
+	go func() {
+		for {
+			conn, err := tcpLn.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				buf := make([]byte, 8192)
+				n, _ := c.Read(buf)
+				if n > 0 {
+					tcpMu.Lock()
+					tcpReceived = append(tcpReceived, buf[:n])
+					tcpMu.Unlock()
+				}
+			}(conn)
+		}
+	}()
+	tcpAddr := tcpLn.Addr().(*net.TCPAddr)
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: { fanout: true, data: msg.body } };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-3-dest-fanout",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "http-dest"},
+			{Name: "file-dest"},
+			{Name: "tcp-dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	httpDest := connector.NewHTTPDest("http-dest", &config.HTTPDestConfig{URL: serverHTTP.URL}, e2eLogger())
+	fileDest := connector.NewFileDest("file-dest", &config.FileDestMapConfig{
+		Directory:       outputDir,
+		FilenamePattern: "{{channelId}}_{{messageId}}.json",
+	}, e2eLogger())
+	tcpDest := connector.NewTCPDest("tcp-dest", &config.TCPDestMapConfig{
+		Host: "127.0.0.1",
+		Port: tcpAddr.Port,
+		Mode: "raw",
+	}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"http-dest": httpDest,
+		"file-dest": fileDest,
+		"tcp-dest":  tcpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("fanout payload"))
+	resp.Body.Close()
+
+	waitFor(t, 3*time.Second, func() bool {
+		tcpMu.Lock()
+		tcpCount := len(tcpReceived)
+		tcpMu.Unlock()
+		entries, _ := os.ReadDir(outputDir)
+		return captureHTTP.count() >= 1 && len(entries) >= 1 && tcpCount >= 1
+	})
+
+	if captureHTTP.count() < 1 {
+		t.Fatal("HTTP dest did not receive message")
+	}
+	entries, _ := os.ReadDir(outputDir)
+	if len(entries) < 1 {
+		t.Fatal("File dest did not write file")
+	}
+	tcpMu.Lock()
+	if len(tcpReceived) < 1 {
+		t.Fatal("TCP dest did not receive message")
+	}
+	tcpMu.Unlock()
+
+	var httpResult map[string]any
+	json.Unmarshal(captureHTTP.body(0), &httpResult)
+	if httpResult["fanout"] != true {
+		t.Fatal("expected fanout=true on HTTP dest")
+	}
+}
+
+// ===================================================================
+// Test 30: Conditional Routing via _routeTo
+// ===================================================================
+
+func TestE2E_ConditionalRouteTo(t *testing.T) {
+	captureA := &destCapture{}
+	captureB := &destCapture{}
+	captureC := &destCapture{}
+	serverA := httptest.NewServer(captureA.handler())
+	defer serverA.Close()
+	serverB := httptest.NewServer(captureB.handler())
+	defer serverB.Close()
+	serverC := httptest.NewServer(captureC.handler())
+	defer serverC.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	var body = typeof msg.body === "string" ? msg.body : JSON.stringify(msg.body);
+	if (body.indexOf("CRITICAL") >= 0) {
+		return { body: { priority: "critical", data: body }, _routeTo: ["dest-a", "dest-b"] };
+	}
+	return { body: { priority: "normal", data: body }, _routeTo: ["dest-c"] };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-route-to",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest-a"},
+			{Name: "dest-b"},
+			{Name: "dest-c"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"dest-a": connector.NewHTTPDest("dest-a", &config.HTTPDestConfig{URL: serverA.URL}, e2eLogger()),
+		"dest-b": connector.NewHTTPDest("dest-b", &config.HTTPDestConfig{URL: serverB.URL}, e2eLogger()),
+		"dest-c": connector.NewHTTPDest("dest-c", &config.HTTPDestConfig{URL: serverC.URL}, e2eLogger()),
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	addr := httpSrc.Addr()
+
+	r1, _ := http.Post("http://"+addr+"/", "text/plain", strings.NewReader("CRITICAL lab result"))
+	r1.Body.Close()
+
+	r2, _ := http.Post("http://"+addr+"/", "text/plain", strings.NewReader("normal update"))
+	r2.Body.Close()
+
+	waitFor(t, 3*time.Second, func() bool {
+		return captureA.count() >= 1 && captureB.count() >= 1 && captureC.count() >= 1
+	})
+
+	time.Sleep(300 * time.Millisecond)
+
+	if captureA.count() != 1 {
+		t.Fatalf("dest-a: expected 1 (critical only), got %d", captureA.count())
+	}
+	if captureB.count() != 1 {
+		t.Fatalf("dest-b: expected 1 (critical only), got %d", captureB.count())
+	}
+	if captureC.count() != 1 {
+		t.Fatalf("dest-c: expected 1 (normal only), got %d", captureC.count())
+	}
+
+	var resultA map[string]any
+	json.Unmarshal(captureA.body(0), &resultA)
+	if resultA["priority"] != "critical" {
+		t.Fatalf("dest-a: expected priority=critical, got %v", resultA["priority"])
+	}
+
+	var resultC map[string]any
+	json.Unmarshal(captureC.body(0), &resultC)
+	if resultC["priority"] != "normal" {
+		t.Fatalf("dest-c: expected priority=normal, got %v", resultC["priority"])
+	}
+}
+
+// ===================================================================
+// Test 31: Multi-Dest with Mixed Filters and Transformers
+// ===================================================================
+
+func TestE2E_MultiDestMixedFilterAndTransform(t *testing.T) {
+	captureBlocked := &destCapture{}
+	captureEnriched := &destCapture{}
+	serverBlocked := httptest.NewServer(captureBlocked.handler())
+	defer serverBlocked.Close()
+	serverEnriched := httptest.NewServer(captureEnriched.handler())
+	defer serverEnriched.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: { source_transformed: true, data: msg.body } };
+};`)
+	writeJS(t, channelDir, "block-filter.js", `
+exports.filter = function filter(msg, ctx) {
+	return false;
+};`)
+	writeJS(t, channelDir, "enrich-transform.js", `
+exports.transform = function transform(msg, ctx) {
+	var result = msg.body;
+	result.enriched = true;
+	result.destination = ctx.destinationName;
+	return { body: result };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-mixed-filter-xform",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "blocked-dest", Filter: "block-filter.js"},
+			{Name: "enriched-dest", Transformer: &config.ScriptRef{Entrypoint: "enrich-transform.js"}},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"blocked-dest":  connector.NewHTTPDest("blocked-dest", &config.HTTPDestConfig{URL: serverBlocked.URL}, e2eLogger()),
+		"enriched-dest": connector.NewHTTPDest("enriched-dest", &config.HTTPDestConfig{URL: serverEnriched.URL}, e2eLogger()),
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("test data"))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return captureEnriched.count() >= 1 })
+	time.Sleep(300 * time.Millisecond)
+
+	if captureBlocked.count() != 0 {
+		t.Fatalf("blocked-dest: expected 0, got %d", captureBlocked.count())
+	}
+	if captureEnriched.count() != 1 {
+		t.Fatalf("enriched-dest: expected 1, got %d", captureEnriched.count())
+	}
+
+	var result map[string]any
+	json.Unmarshal(captureEnriched.body(0), &result)
+	if result["enriched"] != true {
+		t.Fatal("expected enriched=true")
+	}
+	if result["destination"] != "enriched-dest" {
+		t.Fatalf("expected destination=enriched-dest, got %v", result["destination"])
+	}
+}
+
+// ===================================================================
+// Test 32: Multi-Dest Failure Isolation
+// ===================================================================
+
+func TestE2E_MultiDestFailureIsolation(t *testing.T) {
+	captureHealthy := &destCapture{}
+	serverHealthy := httptest.NewServer(captureHealthy.handler())
+	defer serverHealthy.Close()
+
+	serverFailing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"server error"}`))
+	}))
+	defer serverFailing.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: { resilient: true, data: msg.body } };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-failure-isolation",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "http",
+			HTTP: &config.HTTPListener{Port: 0},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "healthy-dest"},
+			{Name: "failing-dest"},
+		},
+	}
+
+	httpSrc := connector.NewHTTPSource(chCfg.Listener.HTTP, e2eLogger())
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, httpSrc, map[string]connector.DestinationConnector{
+		"healthy-dest": connector.NewHTTPDest("healthy-dest", &config.HTTPDestConfig{URL: serverHealthy.URL}, e2eLogger()),
+		"failing-dest": connector.NewHTTPDest("failing-dest", &config.HTTPDestConfig{URL: serverFailing.URL}, e2eLogger()),
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	resp, _ := http.Post("http://"+httpSrc.Addr()+"/", "text/plain", strings.NewReader("test payload"))
+	resp.Body.Close()
+
+	waitFor(t, 2*time.Second, func() bool { return captureHealthy.count() >= 1 })
+
+	if captureHealthy.count() != 1 {
+		t.Fatalf("healthy-dest: expected 1, got %d", captureHealthy.count())
+	}
+
+	var result map[string]any
+	json.Unmarshal(captureHealthy.body(0), &result)
+	if result["resilient"] != true {
+		t.Fatal("expected resilient=true on healthy dest")
+	}
+}

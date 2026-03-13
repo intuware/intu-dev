@@ -273,6 +273,13 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 		if routes, ok := tctx["_routeTo"].([]string); ok && len(routes) > 0 {
 			routeTo = routes
 		}
+		if len(routeTo) == 0 {
+			if m, ok := out.(map[string]any); ok {
+				if r, exists := m["_routeTo"]; exists {
+					routeTo = toStringSlice(r)
+				}
+			}
+		}
 
 		outputBytes := p.toBytes(outMsg.Output)
 		return &PipelineResult{

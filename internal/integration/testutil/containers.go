@@ -206,3 +206,66 @@ func (m *MailHogContainer) Terminate(ctx context.Context) {
 		m.Container.Terminate(ctx)
 	}
 }
+
+// GreenMailContainer wraps a GreenMail Docker container that provides both
+// SMTP (for sending test emails) and IMAP (for the EmailSource to poll).
+type GreenMailContainer struct {
+	Container testcontainers.Container
+	Host      string
+	SMTPPort  int
+	IMAPPort  int
+}
+
+func StartGreenMailContainer(ctx context.Context) (*GreenMailContainer, error) {
+	req := testcontainers.ContainerRequest{
+		Image:        "greenmail/standalone:2.0.1",
+		ExposedPorts: []string{"3025/tcp", "3143/tcp"},
+		Env: map[string]string{
+			"GREENMAIL_OPTS": "-Dgreenmail.setup.test.all -Dgreenmail.users=testuser:testpass",
+		},
+		WaitingFor: wait.ForListeningPort("3143/tcp").WithStartupTimeout(60 * time.Second),
+	}
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("start greenmail container: %w", err)
+	}
+
+	host, err := container.Host(ctx)
+	if err != nil {
+		container.Terminate(ctx)
+		return nil, fmt.Errorf("get greenmail host: %w", err)
+	}
+
+	smtpPort, err := container.MappedPort(ctx, "3025")
+	if err != nil {
+		container.Terminate(ctx)
+		return nil, fmt.Errorf("get greenmail smtp port: %w", err)
+	}
+
+	imapPort, err := container.MappedPort(ctx, "3143")
+	if err != nil {
+		container.Terminate(ctx)
+		return nil, fmt.Errorf("get greenmail imap port: %w", err)
+	}
+
+	return &GreenMailContainer{
+		Container: container,
+		Host:      host,
+		SMTPPort:  smtpPort.Int(),
+		IMAPPort:  imapPort.Int(),
+	}, nil
+}
+
+func (g *GreenMailContainer) SMTPAddr() string {
+	return fmt.Sprintf("%s:%d", g.Host, g.SMTPPort)
+}
+
+func (g *GreenMailContainer) Terminate(ctx context.Context) {
+	if g.Container != nil {
+		g.Container.Terminate(ctx)
+	}
+}

@@ -207,6 +207,13 @@ func soapSuccessResponse() string {
 </soap:Envelope>`
 }
 
+func (s *SOAPSource) Addr() string {
+	if s.listener != nil {
+		return s.listener.Addr().String()
+	}
+	return ""
+}
+
 func (s *SOAPSource) Stop(ctx context.Context) error {
 	if s.server != nil {
 		return s.server.Shutdown(ctx)

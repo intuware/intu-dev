@@ -243,6 +243,12 @@ func TestMain(m *testing.M) {
 		mailhogC = nil
 	}
 
+	greenmailC, err = testutil.StartGreenMailContainer(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARN: GreenMail container failed: %v\n", err)
+		greenmailC = nil
+	}
+
 	code := m.Run()
 
 	if kafkaC != nil {
@@ -257,13 +263,17 @@ func TestMain(m *testing.M) {
 	if mailhogC != nil {
 		mailhogC.Terminate(ctx)
 	}
+	if greenmailC != nil {
+		greenmailC.Terminate(ctx)
+	}
 
 	os.Exit(code)
 }
 
 var (
-	kafkaC   *testutil.KafkaContainer
-	pgC      *testutil.PostgresContainer
-	sftpC    *testutil.SFTPContainer
-	mailhogC *testutil.MailHogContainer
+	kafkaC     *testutil.KafkaContainer
+	pgC        *testutil.PostgresContainer
+	sftpC      *testutil.SFTPContainer
+	mailhogC   *testutil.MailHogContainer
+	greenmailC *testutil.GreenMailContainer
 )

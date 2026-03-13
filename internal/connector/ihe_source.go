@@ -231,6 +231,13 @@ func (i *IHESource) handleIHERequest(w http.ResponseWriter, r *http.Request, han
 		profile, transaction)
 }
 
+func (i *IHESource) Addr() string {
+	if i.listener != nil {
+		return i.listener.Addr().String()
+	}
+	return ""
+}
+
 func (i *IHESource) Stop(ctx context.Context) error {
 	if i.server != nil {
 		return i.server.Shutdown(ctx)

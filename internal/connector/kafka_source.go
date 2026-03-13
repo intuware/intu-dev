@@ -328,13 +328,13 @@ func (k *KafkaSource) parseMessageSet(data []byte) [][]byte {
 	var messages [][]byte
 
 	offset := 0
-	offset += 4
+	offset += 4 // skip correlationId
 
-	if offset+2 > len(data) {
+	if offset+4 > len(data) {
 		return messages
 	}
-	topicCount := int(data[offset])<<8 | int(data[offset+1])
-	offset += 2
+	topicCount := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+	offset += 4
 
 	for t := 0; t < topicCount && offset < len(data); t++ {
 		if offset+2 > len(data) {
@@ -395,24 +395,24 @@ func (k *KafkaSource) parseMessageSet(data []byte) [][]byte {
 					offset = endOfMsgSet
 					break
 				}
-				keyLen := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+				keyLen := int32(data[offset])<<24 | int32(data[offset+1])<<16 | int32(data[offset+2])<<8 | int32(data[offset+3])
 				offset += 4
 				if keyLen > 0 {
-					offset += keyLen
+					offset += int(keyLen)
 				}
 
 				if offset+4 > endOfMsgSet {
 					offset = endOfMsgSet
 					break
 				}
-				valueLen := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+				valueLen := int32(data[offset])<<24 | int32(data[offset+1])<<16 | int32(data[offset+2])<<8 | int32(data[offset+3])
 				offset += 4
 
-				if valueLen > 0 && offset+valueLen <= endOfMsgSet {
+				if valueLen > 0 && offset+int(valueLen) <= endOfMsgSet {
 					msgData := make([]byte, valueLen)
-					copy(msgData, data[offset:offset+valueLen])
+					copy(msgData, data[offset:offset+int(valueLen)])
 					messages = append(messages, msgData)
-					offset += valueLen
+					offset += int(valueLen)
 				} else if valueLen > 0 {
 					offset = endOfMsgSet
 					break

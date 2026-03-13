@@ -292,6 +292,13 @@ func writeOperationOutcome(w http.ResponseWriter, severity, code, diagnostics st
 	json.NewEncoder(w).Encode(oo)
 }
 
+func (f *FHIRSource) Addr() string {
+	if f.listener != nil {
+		return f.listener.Addr().String()
+	}
+	return ""
+}
+
 func (f *FHIRSource) Stop(ctx context.Context) error {
 	if f.server != nil {
 		return f.server.Shutdown(ctx)
