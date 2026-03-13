@@ -1,0 +1,48 @@
+name: Integration Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * *' # Nightly at 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install intu-dev runtime
+        run: npm install -g intu-dev
+
+      - name: Run integration tests
+        run: |
+          go test ./internal/integration/... \
+            -v -race -count=1 \
+            -tags=integration \
+            -timeout=15m
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-logs
+          path: /tmp/integration-*.log
+          retention-days: 7

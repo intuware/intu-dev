@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,12 +24,32 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+  test:
+    name: Unit & Contract Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install intu-dev runtime
+        run: npm install -g intu-dev
+
       - name: Test
         run: go test ./... -v -race -count=1
 
   build:
     name: Build
     runs-on: ubuntu-latest
+    needs: test
     strategy:
       matrix:
         goos: [linux, darwin, windows]
