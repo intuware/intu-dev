@@ -3,6 +3,7 @@ package message
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestToIntuJSON_HTTPMessage(t *testing.T) {
@@ -372,5 +373,171 @@ func TestFromIntuJSON_DatabaseMeta(t *testing.T) {
 	}
 	if restored.Database.Query != "SELECT * FROM patients" {
 		t.Fatalf("expected query, got %s", restored.Database.Query)
+	}
+}
+
+func TestToIntuJSON_IncludesVersion(t *testing.T) {
+	msg := New("ch-1", []byte("test"))
+	data, err := msg.ToIntuJSON()
+	if err != nil {
+		t.Fatalf("ToIntuJSON failed: %v", err)
+	}
+	var im map[string]any
+	json.Unmarshal(data, &im)
+	if im["version"] != IntuJSONVersion {
+		t.Fatalf("expected version=%s, got %v", IntuJSONVersion, im["version"])
+	}
+}
+
+func TestToIntuJSON_IncludesIdentityFields(t *testing.T) {
+	msg := New("ch-1", []byte("test"))
+	data, err := msg.ToIntuJSON()
+	if err != nil {
+		t.Fatalf("ToIntuJSON failed: %v", err)
+	}
+	var im map[string]any
+	json.Unmarshal(data, &im)
+	if im["id"] != msg.ID {
+		t.Fatalf("expected id=%s, got %v", msg.ID, im["id"])
+	}
+	if im["correlationId"] != msg.CorrelationID {
+		t.Fatalf("expected correlationId=%s, got %v", msg.CorrelationID, im["correlationId"])
+	}
+	if im["channelId"] != "ch-1" {
+		t.Fatalf("expected channelId=ch-1, got %v", im["channelId"])
+	}
+	if _, ok := im["timestamp"].(string); !ok || im["timestamp"] == "" {
+		t.Fatal("expected non-empty timestamp string")
+	}
+}
+
+func TestFromIntuJSON_RestoresIdentity(t *testing.T) {
+	original := New("ch-1", []byte("test payload"))
+	original.SourceCharset = "iso-8859-1"
+	original.Metadata["filename"] = "test.hl7"
+	original.Metadata["reprocessed"] = true
+
+	data, err := original.ToIntuJSON()
+	if err != nil {
+		t.Fatalf("ToIntuJSON failed: %v", err)
+	}
+
+	restored, err := FromIntuJSON(data, "ch-1")
+	if err != nil {
+		t.Fatalf("FromIntuJSON failed: %v", err)
+	}
+
+	if restored.ID != original.ID {
+		t.Fatalf("expected ID=%s, got %s", original.ID, restored.ID)
+	}
+	if restored.CorrelationID != original.CorrelationID {
+		t.Fatalf("expected CorrelationID=%s, got %s", original.CorrelationID, restored.CorrelationID)
+	}
+	if restored.ChannelID != "ch-1" {
+		t.Fatalf("expected ChannelID=ch-1, got %s", restored.ChannelID)
+	}
+	if !restored.Timestamp.Equal(original.Timestamp) {
+		t.Fatalf("expected Timestamp=%v, got %v", original.Timestamp, restored.Timestamp)
+	}
+	if restored.SourceCharset != "iso-8859-1" {
+		t.Fatalf("expected SourceCharset=iso-8859-1, got %s", restored.SourceCharset)
+	}
+	if restored.Metadata["filename"] != "test.hl7" {
+		t.Fatalf("expected metadata filename=test.hl7, got %v", restored.Metadata["filename"])
+	}
+	if restored.Metadata["reprocessed"] != true {
+		t.Fatalf("expected metadata reprocessed=true, got %v", restored.Metadata["reprocessed"])
+	}
+}
+
+func TestFromIntuJSON_BackwardCompatNoIdentity(t *testing.T) {
+	legacyJSON := `{"body":"hello","transport":"http","contentType":"json"}`
+	restored, err := FromIntuJSON([]byte(legacyJSON), "ch-1")
+	if err != nil {
+		t.Fatalf("FromIntuJSON failed: %v", err)
+	}
+	if restored.ID == "" {
+		t.Fatal("expected non-empty ID for legacy envelope")
+	}
+	if restored.ChannelID != "ch-1" {
+		t.Fatalf("expected ChannelID=ch-1, got %s", restored.ChannelID)
+	}
+	if string(restored.Raw) != "hello" {
+		t.Fatalf("expected raw=hello, got %s", string(restored.Raw))
+	}
+}
+
+func TestToIntuJSON_SourceCharsetAndMetadata(t *testing.T) {
+	msg := New("ch-1", []byte("test"))
+	msg.SourceCharset = "windows-1252"
+	msg.Metadata["custom_key"] = "custom_val"
+
+	data, err := msg.ToIntuJSON()
+	if err != nil {
+		t.Fatalf("ToIntuJSON failed: %v", err)
+	}
+	var im map[string]any
+	json.Unmarshal(data, &im)
+	if im["sourceCharset"] != "windows-1252" {
+		t.Fatalf("expected sourceCharset=windows-1252, got %v", im["sourceCharset"])
+	}
+	md, ok := im["metadata"].(map[string]any)
+	if !ok {
+		t.Fatal("expected metadata map")
+	}
+	if md["custom_key"] != "custom_val" {
+		t.Fatalf("expected custom_key=custom_val, got %v", md["custom_key"])
+	}
+}
+
+func TestToIntuJSON_OmitsEmptySourceCharsetAndMetadata(t *testing.T) {
+	msg := New("ch-1", []byte("test"))
+
+	data, err := msg.ToIntuJSON()
+	if err != nil {
+		t.Fatalf("ToIntuJSON failed: %v", err)
+	}
+	var im map[string]any
+	json.Unmarshal(data, &im)
+	if _, exists := im["sourceCharset"]; exists {
+		t.Fatal("sourceCharset should be omitted when empty")
+	}
+	if _, exists := im["metadata"]; exists {
+		t.Fatal("metadata should be omitted when empty")
+	}
+}
+
+func TestRebuild(t *testing.T) {
+	original := New("ch-1", []byte("original payload"))
+	original.Transport = "http"
+	original.HTTP = &HTTPMeta{Method: "POST"}
+
+	data, _ := original.ToIntuJSON()
+
+	msg := Rebuild("orig-id", "orig-corr", "ch-1", data, original.Timestamp)
+	if msg.CorrelationID != "orig-corr" {
+		t.Fatalf("expected CorrelationID=orig-corr, got %s", msg.CorrelationID)
+	}
+	if msg.Metadata["reprocessed"] != true {
+		t.Fatal("expected reprocessed metadata")
+	}
+	if msg.Metadata["original_message_id"] != "orig-id" {
+		t.Fatalf("expected original_message_id=orig-id, got %v", msg.Metadata["original_message_id"])
+	}
+	if string(msg.Raw) != "original payload" {
+		t.Fatalf("expected raw=original payload, got %s", string(msg.Raw))
+	}
+	if msg.Transport != "http" {
+		t.Fatalf("expected transport=http, got %s", msg.Transport)
+	}
+}
+
+func TestRebuild_RawFallback(t *testing.T) {
+	msg := Rebuild("id-1", "", "ch-1", []byte("plain text, not JSON"), time.Now())
+	if msg.CorrelationID != "id-1" {
+		t.Fatalf("expected CorrelationID=id-1 (fallback), got %s", msg.CorrelationID)
+	}
+	if string(msg.Raw) != "plain text, not JSON" {
+		t.Fatalf("expected raw fallback, got %s", string(msg.Raw))
 	}
 }
