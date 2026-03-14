@@ -1,31 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#020617"/>
       <stop offset="100%" stop-color="#0f172a"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="track" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#38bdf8"/>
-      <stop offset="100%" stop-color="#818cf8"/>
-    </linearGradient>
-    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#22c55e"/>
-      <stop offset="100%" stop-color="#10b981"/>
-    </linearGradient>
-    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#a78bfa"/>
-      <stop offset="100%" stop-color="#818cf8"/>
-    </linearGradient>
-    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#fb923c"/>
-      <stop offset="100%" stop-color="#f59e0b"/>
-    </linearGradient>
-    <linearGradient id="pink" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f472b6"/>
+      <stop offset="50%" stop-color="#818cf8"/>
       <stop offset="100%" stop-color="#e879f9"/>
     </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
+    <filter id="glow-sm">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
       <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
     <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
@@ -34,174 +19,300 @@
     <marker id="arrow-muted" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
       <path d="M0,0 L8,3 L0,6" fill="#475569" opacity="0.8"/>
     </marker>
+    <marker id="arrow-track" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <path d="M0,0 L6,2.5 L0,5" fill="#818cf8" opacity="0.6"/>
+    </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="960" height="540" fill="url(#bg)" rx="16"/>
+  <rect width="960" height="720" fill="url(#bg)" rx="16"/>
 
   <!-- Title -->
-  <text x="480" y="36" text-anchor="middle" fill="#f8fafc" font-size="18" font-weight="700" letter-spacing="-0.02em">intu<tspan fill="#38bdf8">.dev</tspan> Architecture</text>
+  <text x="480" y="34" text-anchor="middle" fill="#f8fafc" font-size="18" font-weight="700" letter-spacing="-0.02em">intu<tspan fill="#38bdf8">.dev</tspan> Architecture</text>
 
-  <!-- === INTU CLI BAR === -->
-  <rect x="120" y="56" width="720" height="44" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="140" y="83" fill="#38bdf8" font-size="13" font-weight="700">intu CLI</text>
-  <text x="230" y="83" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">init</text>
-  <text x="270" y="83" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">serve</text>
-  <text x="318" y="83" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">validate</text>
-  <text x="380" y="83" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">build</text>
-  <text x="425" y="83" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">channel</text>
-  <text x="490" y="83" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">deploy</text>
-  <text x="545" y="83" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">stats</text>
-  <text x="590" y="83" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">message</text>
-  <text x="655" y="83" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">dashboard</text>
-  <text x="733" y="83" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">prune</text>
+  <!-- === CLI BAR === -->
+  <rect x="80" y="52" width="800" height="40" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="100" y="77" fill="#38bdf8" font-size="13" font-weight="700">intu CLI</text>
+  <text x="190" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">init</text>
+  <text x="224" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">serve</text>
+  <text x="268" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">validate</text>
+  <text x="332" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">build</text>
+  <text x="374" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">channel</text>
+  <text x="436" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">deploy</text>
+  <text x="490" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">stats</text>
+  <text x="534" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">message</text>
+  <text x="600" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">dashboard</text>
+  <text x="686" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">prune</text>
+  <text x="732" y="77" fill="#94a3b8" font-size="10.5" font-family="'SF Mono', 'Fira Code', monospace">import</text>
 
-  <!-- Arrow from CLI to Runtime -->
-  <line x1="480" y1="100" x2="480" y2="118" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+  <line x1="480" y1="92" x2="480" y2="108" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
 
-  <!-- === INTU RUNTIME ENGINE === -->
-  <rect x="120" y="120" width="720" height="340" rx="14" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="6,4"/>
-  <rect x="132" y="112" width="156" height="20" rx="4" fill="#0f172a"/>
-  <text x="140" y="127" fill="#f8fafc" font-size="12" font-weight="700">intu Runtime Engine</text>
-  <text x="290" y="127" fill="#475569" font-size="10">(Go binary + Node.js workers)</text>
+  <!-- ============================================================ -->
+  <!--  LEFT: External Healthcare Systems (OUTSIDE engine)           -->
+  <!-- ============================================================ -->
+  <rect x="120" y="262" width="78" height="56" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="159" y="280" text-anchor="middle" fill="#94a3b8" font-size="8" font-weight="600">Healthcare</text>
+  <text x="159" y="292" text-anchor="middle" fill="#94a3b8" font-size="8" font-weight="600">Systems</text>
+  <text x="159" y="306" text-anchor="middle" fill="#64748b" font-size="7">EHR, Lab, Pharm,</text>
+  <text x="159" y="314" text-anchor="middle" fill="#64748b" font-size="7">Imaging, Payer</text>
+  <line x1="198" y1="290" x2="245" y2="290" stroke="#38bdf8" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
 
-  <!-- === LEFT: EXTERNAL SOURCES === -->
-  <rect x="16" y="218" width="88" height="140" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="60" y="244" text-anchor="middle" fill="#f8fafc" font-size="10" font-weight="600">Healthcare</text>
-  <text x="60" y="258" text-anchor="middle" fill="#f8fafc" font-size="10" font-weight="600">Systems</text>
-  <text x="60" y="282" text-anchor="middle" fill="#64748b" font-size="9">EHR</text>
-  <text x="60" y="296" text-anchor="middle" fill="#64748b" font-size="9">Lab / LIS</text>
-  <text x="60" y="310" text-anchor="middle" fill="#64748b" font-size="9">Pharmacy</text>
-  <text x="60" y="324" text-anchor="middle" fill="#64748b" font-size="9">Imaging</text>
-  <text x="60" y="338" text-anchor="middle" fill="#64748b" font-size="9">Payer</text>
+  <!-- ============================================================ -->
+  <!--  RUNTIME ENGINE BOUNDARY (centered)                           -->
+  <!-- ============================================================ -->
+  <rect x="220" y="114" width="520" height="420" rx="14" fill="none" stroke="#1e293b" stroke-width="1.5"/>
+  <rect x="232" y="104" width="230" height="22" rx="4" fill="#020617"/>
+  <text x="244" y="119" fill="#f8fafc" font-size="12" font-weight="700">intu Runtime Engine</text>
+  <text x="400" y="119" fill="#475569" font-size="9">Go + Node.js</text>
 
-  <!-- Arrow: External → Sources -->
-  <line x1="104" y1="288" x2="134" y2="288" stroke="#38bdf8" stroke-width="1.5" opacity="0.6" marker-end="url(#arrow)"/>
+  <!-- ============================================================ -->
+  <!--  Sources                                                      -->
+  <!-- ============================================================ -->
+  <rect x="251" y="158" width="88" height="252" rx="10" fill="#0f2818" stroke="#22c55e" stroke-width="1"/>
+  <text x="295" y="180" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="700">Sources</text>
+  <rect x="261" y="192" width="68" height="20" rx="10" fill="#14532d"/>
+  <text x="295" y="206" text-anchor="middle" fill="#86efac" font-size="9">HTTP</text>
+  <rect x="261" y="218" width="68" height="20" rx="10" fill="#14532d"/>
+  <text x="295" y="232" text-anchor="middle" fill="#86efac" font-size="9">TCP/MLLP</text>
+  <rect x="261" y="244" width="68" height="20" rx="10" fill="#14532d"/>
+  <text x="295" y="258" text-anchor="middle" fill="#86efac" font-size="9">FHIR R4</text>
+  <rect x="261" y="270" width="68" height="20" rx="10" fill="#14532d"/>
+  <text x="295" y="284" text-anchor="middle" fill="#86efac" font-size="9">Kafka</text>
+  <rect x="261" y="296" width="68" height="20" rx="10" fill="#14532d"/>
+  <text x="295" y="310" text-anchor="middle" fill="#86efac" font-size="9">Database</text>
+  <rect x="261" y="322" width="68" height="20" rx="10" fill="#14532d"/>
+  <text x="295" y="336" text-anchor="middle" fill="#86efac" font-size="9">File/SFTP</text>
+  <rect x="261" y="348" width="68" height="20" rx="10" fill="#14532d"/>
+  <text x="295" y="362" text-anchor="middle" fill="#86efac" font-size="9">DICOM</text>
+  <rect x="261" y="374" width="68" height="20" rx="10" fill="#14532d"/>
+  <text x="295" y="388" text-anchor="middle" fill="#86efac" font-size="9">Email</text>
 
-  <!-- === SOURCE CONNECTORS === -->
-  <rect x="140" y="160" width="130" height="256" rx="12" fill="#0f2818" stroke="#22c55e" stroke-width="1" opacity="0.9"/>
-  <text x="205" y="184" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="700">Sources</text>
-  <rect x="152" y="196" width="106" height="22" rx="5" fill="#14532d" opacity="0.7"/>
-  <text x="205" y="211" text-anchor="middle" fill="#86efac" font-size="9">HTTP / REST</text>
-  <rect x="152" y="224" width="106" height="22" rx="5" fill="#14532d" opacity="0.7"/>
-  <text x="205" y="239" text-anchor="middle" fill="#86efac" font-size="9">TCP / MLLP</text>
-  <rect x="152" y="252" width="106" height="22" rx="5" fill="#14532d" opacity="0.7"/>
-  <text x="205" y="267" text-anchor="middle" fill="#86efac" font-size="9">FHIR R4</text>
-  <rect x="152" y="280" width="106" height="22" rx="5" fill="#14532d" opacity="0.7"/>
-  <text x="205" y="295" text-anchor="middle" fill="#86efac" font-size="9">Kafka</text>
-  <rect x="152" y="308" width="106" height="22" rx="5" fill="#14532d" opacity="0.7"/>
-  <text x="205" y="323" text-anchor="middle" fill="#86efac" font-size="9">Database</text>
-  <rect x="152" y="336" width="106" height="22" rx="5" fill="#14532d" opacity="0.7"/>
-  <text x="205" y="351" text-anchor="middle" fill="#86efac" font-size="9">File / SFTP</text>
-  <rect x="152" y="364" width="106" height="22" rx="5" fill="#14532d" opacity="0.7"/>
-  <text x="205" y="379" text-anchor="middle" fill="#86efac" font-size="9">DICOM / IHE</text>
-  <rect x="152" y="392" width="106" height="22" rx="5" fill="#14532d" opacity="0.7"/>
-  <text x="205" y="407" text-anchor="middle" fill="#86efac" font-size="9">Email / SOAP</text>
+  <line x1="339" y1="290" x2="359" y2="290" stroke="#38bdf8" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
 
-  <!-- Arrow: Sources → Pipeline -->
-  <line x1="270" y1="288" x2="300" y2="288" stroke="#38bdf8" stroke-width="1.5" opacity="0.6" marker-end="url(#arrow)"/>
+  <!-- ============================================================ -->
+  <!--  CHANNEL PIPELINE — metro track + SVG icons + Go/TS badges    -->
+  <!-- ============================================================ -->
+  <rect x="365" y="134" width="230" height="390" rx="12" fill="#0c1425" stroke="#1e293b" stroke-width="1"/>
+  <text x="480" y="156" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="700">Pipeline Stages</text>
 
-  <!-- === PIPELINE (center) === -->
-  <rect x="306" y="160" width="290" height="256" rx="12" fill="#0c1425" stroke="#38bdf8" stroke-width="1" opacity="0.9"/>
-  <text x="451" y="184" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="700">Channel Pipeline</text>
+  <!-- IntuMessage icon + label (inside pipeline, enlarged) -->
+  <rect x="411" y="163" width="140" height="38" rx="8" fill="#2d1a4e" stroke="#e879f9" stroke-width="1"/>
+  <rect x="419" y="174" width="20" height="16" rx="2" fill="none" stroke="#e879f9" stroke-width="1.2"/>
+  <line x1="419" y1="174" x2="429" y2="184" stroke="#e879f9" stroke-width="1"/>
+  <line x1="439" y1="174" x2="429" y2="184" stroke="#e879f9" stroke-width="1"/>
+  <text x="445" y="180" fill="#e879f9" font-size="10" font-weight="700">IntuMessage</text>
+  <text x="445" y="191" fill="#c4b5fd" font-size="7.5">Core data envelope</text>
 
-  <!-- Pipeline stages -->
-  <rect x="322" y="200" width="258" height="32" rx="7" fill="#1e293b" stroke="#475569" stroke-width="0.75"/>
-  <text x="451" y="220" text-anchor="middle" fill="#94a3b8" font-size="10">Preprocessor</text>
+  <!-- Glowing track line (metro rail) -->
+  <line x1="401" y1="212" x2="401" y2="502" stroke="url(#track)" stroke-width="4" opacity="0.12" stroke-linecap="round"/>
+  <line x1="401" y1="212" x2="401" y2="502" stroke="url(#track)" stroke-width="2" opacity="0.35" stroke-linecap="round"/>
 
-  <line x1="451" y1="232" x2="451" y2="242" stroke="#38bdf8" stroke-width="1" opacity="0.5" marker-end="url(#arrow)"/>
+  <!-- ── Stage 1: Ingress ── Go ── -->
+  <circle cx="401" cy="220" r="11" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+  <g transform="translate(401,220)">
+    <path d="M0,5 L4,-1 L1.5,-1 L1.5,-5 L-1.5,-5 L-1.5,-1 L-4,-1 Z" fill="#94a3b8"/>
+  </g>
+  <text x="421" y="218" fill="#f8fafc" font-size="10" font-weight="600">Ingress</text>
+  <text x="421" y="230" fill="#64748b" font-size="8">receive → store</text>
+  <rect x="559" y="213" width="26" height="14" rx="4" fill="#0a3049" stroke="#00ADD8" stroke-width="0.8"/>
+  <text x="572" y="223" text-anchor="middle" fill="#00ADD8" font-size="7.5" font-weight="700">Go</text>
 
-  <rect x="322" y="246" width="258" height="32" rx="7" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1"/>
-  <text x="451" y="266" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="600">Validator</text>
-  <text x="560" y="266" fill="#7c3aed" font-size="8" font-family="'SF Mono', 'Fira Code', monospace">validator.ts</text>
+  <!-- Arrow 1→2 -->
+  <line x1="401" y1="233" x2="401" y2="249" stroke="#818cf8" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow-track)"/>
 
-  <line x1="451" y1="278" x2="451" y2="288" stroke="#38bdf8" stroke-width="1" opacity="0.5" marker-end="url(#arrow)"/>
+  <!-- ── Stage 2: Parse ── Go ── -->
+  <circle cx="401" cy="262" r="11" fill="#1e293b" stroke="#818cf8" stroke-width="1.5"/>
+  <g transform="translate(401,262)">
+    <path d="M-2,-4 L-5,0 L-2,4" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M2,-4 L5,0 L2,4" fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="421" y="260" fill="#f8fafc" font-size="10" font-weight="600">Parse</text>
+  <text x="421" y="272" fill="#c4b5fd" font-size="8">→ build IntuMessage</text>
+  <rect x="559" y="255" width="26" height="14" rx="4" fill="#0a3049" stroke="#00ADD8" stroke-width="0.8"/>
+  <text x="572" y="265" text-anchor="middle" fill="#00ADD8" font-size="7.5" font-weight="700">Go</text>
 
-  <rect x="322" y="292" width="258" height="32" rx="7" fill="#0c1a3d" stroke="#38bdf8" stroke-width="1"/>
-  <text x="451" y="312" text-anchor="middle" fill="#7dd3fc" font-size="10" font-weight="600">Transformer</text>
-  <text x="567" y="312" fill="#0369a1" font-size="8" font-family="'SF Mono', 'Fira Code', monospace">transformer.ts</text>
+  <!-- Arrow 2→3 -->
+  <line x1="401" y1="275" x2="401" y2="291" stroke="#818cf8" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow-track)"/>
 
-  <line x1="451" y1="324" x2="451" y2="334" stroke="#38bdf8" stroke-width="1" opacity="0.5" marker-end="url(#arrow)"/>
+  <!-- ── Stage 3: Validate ── TS ── -->
+  <circle cx="401" cy="304" r="11" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1.5"/>
+  <g transform="translate(401,304)">
+    <path d="M-4,0 L-1,3 L5,-4" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="421" y="302" fill="#f8fafc" font-size="10" font-weight="600">Validate</text>
+  <text x="421" y="314" fill="#a78bfa" font-size="8">validator.ts</text>
+  <rect x="559" y="297" width="26" height="14" rx="4" fill="#1a2640" stroke="#3178C6" stroke-width="0.8"/>
+  <text x="572" y="307" text-anchor="middle" fill="#3178C6" font-size="7.5" font-weight="700">TS</text>
 
-  <rect x="322" y="338" width="258" height="32" rx="7" fill="#1e293b" stroke="#475569" stroke-width="0.75"/>
-  <text x="451" y="358" text-anchor="middle" fill="#94a3b8" font-size="10">Destination Filter / Transformer</text>
+  <!-- Arrow 3→4 -->
+  <line x1="401" y1="317" x2="401" y2="333" stroke="#818cf8" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow-track)"/>
 
-  <line x1="451" y1="370" x2="451" y2="380" stroke="#38bdf8" stroke-width="1" opacity="0.5" marker-end="url(#arrow)"/>
+  <!-- ── Stage 4: Filter ── TS ── -->
+  <circle cx="401" cy="346" r="11" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1.5"/>
+  <g transform="translate(401,346)">
+    <path d="M-5,-4 L5,-4 L1.5,0 L1.5,5 L-1.5,5 L-1.5,0 Z" fill="#a78bfa" opacity="0.7"/>
+  </g>
+  <text x="421" y="344" fill="#f8fafc" font-size="10" font-weight="600">Filter</text>
+  <text x="421" y="356" fill="#a78bfa" font-size="8">keep / drop</text>
+  <rect x="559" y="339" width="26" height="14" rx="4" fill="#1a2640" stroke="#3178C6" stroke-width="0.8"/>
+  <text x="572" y="349" text-anchor="middle" fill="#3178C6" font-size="7.5" font-weight="700">TS</text>
 
-  <rect x="322" y="384" width="258" height="32" rx="7" fill="#1e293b" stroke="#475569" stroke-width="0.75"/>
-  <text x="451" y="404" text-anchor="middle" fill="#94a3b8" font-size="10">Postprocessor</text>
+  <!-- Arrow 4→5 -->
+  <line x1="401" y1="359" x2="401" y2="375" stroke="#818cf8" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow-track)"/>
+
+  <!-- ── Stage 5: Transform ── TS (hero, larger) ── -->
+  <circle cx="401" cy="390" r="13" fill="#0c1a3d" stroke="#38bdf8" stroke-width="2" filter="url(#glow-sm)"/>
+  <g transform="translate(401,390)">
+    <path d="M-5,-2 L2,-2" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M0,-5 L3,-2 L0,1" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M5,2 L-2,2" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M0,5 L-3,2 L0,-1" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="423" y="386" fill="#f8fafc" font-size="10" font-weight="600">Transform</text>
+  <text x="423" y="398" fill="#38bdf8" font-size="8">transformer.ts → store</text>
+  <rect x="559" y="383" width="26" height="14" rx="4" fill="#1a2640" stroke="#3178C6" stroke-width="0.8"/>
+  <text x="572" y="393" text-anchor="middle" fill="#3178C6" font-size="7.5" font-weight="700">TS</text>
+
+  <!-- Arrow 5→6 -->
+  <line x1="401" y1="405" x2="401" y2="419" stroke="#818cf8" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow-track)"/>
+
+  <!-- ── Stage 6: Custom (future, dashed) ── -->
+  <circle cx="401" cy="432" r="11" fill="none" stroke="#475569" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <g transform="translate(401,432)">
+    <line x1="0" y1="-4" x2="0" y2="4" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="-4" y1="0" x2="4" y2="0" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+  <text x="421" y="430" fill="#94a3b8" font-size="10">Custom</text>
+  <text x="421" y="442" fill="#475569" font-size="8">pluggable (future)</text>
+  <rect x="551" y="425" width="36" height="14" rx="4" fill="none" stroke="#475569" stroke-width="0.8" stroke-dasharray="2,2"/>
+  <text x="569" y="435" text-anchor="middle" fill="#475569" font-size="7">Go/TS</text>
+
+  <!-- Arrow 6→7 -->
+  <line x1="401" y1="445" x2="401" y2="455" stroke="#818cf8" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow-track)"/>
+
+  <!-- ── Stage 7: Route ── Go ── -->
+  <circle cx="401" cy="468" r="11" fill="#422006" stroke="#f59e0b" stroke-width="1.5"/>
+  <g transform="translate(401,468)">
+    <line x1="0" y1="4" x2="0" y2="-1" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="0" y1="-1" x2="-4" y2="-5" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="0" y1="-1" x2="4" y2="-5" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+  <text x="421" y="466" fill="#f8fafc" font-size="10" font-weight="600">Route</text>
+  <text x="421" y="478" fill="#fbbf24" font-size="8">per-destination</text>
+  <rect x="559" y="461" width="26" height="14" rx="4" fill="#0a3049" stroke="#00ADD8" stroke-width="0.8"/>
+  <text x="572" y="471" text-anchor="middle" fill="#00ADD8" font-size="7.5" font-weight="700">Go</text>
+
+  <!-- Arrow 7→8 -->
+  <line x1="401" y1="481" x2="401" y2="489" stroke="#818cf8" stroke-width="1.2" opacity="0.5" marker-end="url(#arrow-track)"/>
+
+  <!-- ── Stage 8: Egress ── Go ── -->
+  <circle cx="401" cy="502" r="11" fill="#14532d" stroke="#22c55e" stroke-width="1.5"/>
+  <g transform="translate(401,502)">
+    <path d="M0,5 L4,-1 L1.5,-1 L1.5,-5 L-1.5,-5 L-1.5,-1 L-4,-1 Z" fill="#4ade80"/>
+  </g>
+  <text x="421" y="500" fill="#f8fafc" font-size="10" font-weight="600">Egress</text>
+  <text x="421" y="512" fill="#4ade80" font-size="8">store sent &amp; response</text>
+  <rect x="559" y="495" width="26" height="14" rx="4" fill="#0a3049" stroke="#00ADD8" stroke-width="0.8"/>
+  <text x="572" y="505" text-anchor="middle" fill="#00ADD8" font-size="7.5" font-weight="700">Go</text>
 
   <!-- Arrow: Pipeline → Destinations -->
-  <line x1="596" y1="288" x2="616" y2="288" stroke="#38bdf8" stroke-width="1.5" opacity="0.6" marker-end="url(#arrow)"/>
+  <line x1="595" y1="290" x2="615" y2="290" stroke="#38bdf8" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
 
-  <!-- === DESTINATION CONNECTORS === -->
-  <rect x="622" y="160" width="130" height="256" rx="12" fill="#1a0f04" stroke="#f59e0b" stroke-width="1" opacity="0.9"/>
-  <text x="687" y="184" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="700">Destinations</text>
-  <rect x="634" y="196" width="106" height="22" rx="5" fill="#422006" opacity="0.7"/>
-  <text x="687" y="211" text-anchor="middle" fill="#fde68a" font-size="9">HTTP / REST</text>
-  <rect x="634" y="224" width="106" height="22" rx="5" fill="#422006" opacity="0.7"/>
-  <text x="687" y="239" text-anchor="middle" fill="#fde68a" font-size="9">TCP / MLLP</text>
-  <rect x="634" y="252" width="106" height="22" rx="5" fill="#422006" opacity="0.7"/>
-  <text x="687" y="267" text-anchor="middle" fill="#fde68a" font-size="9">FHIR R4</text>
-  <rect x="634" y="280" width="106" height="22" rx="5" fill="#422006" opacity="0.7"/>
-  <text x="687" y="295" text-anchor="middle" fill="#fde68a" font-size="9">Kafka</text>
-  <rect x="634" y="308" width="106" height="22" rx="5" fill="#422006" opacity="0.7"/>
-  <text x="687" y="323" text-anchor="middle" fill="#fde68a" font-size="9">Database</text>
-  <rect x="634" y="336" width="106" height="22" rx="5" fill="#422006" opacity="0.7"/>
-  <text x="687" y="351" text-anchor="middle" fill="#fde68a" font-size="9">File / SFTP</text>
-  <rect x="634" y="364" width="106" height="22" rx="5" fill="#422006" opacity="0.7"/>
-  <text x="687" y="379" text-anchor="middle" fill="#fde68a" font-size="9">DICOM / SMTP</text>
-  <rect x="634" y="392" width="106" height="22" rx="5" fill="#422006" opacity="0.7"/>
-  <text x="687" y="407" text-anchor="middle" fill="#fde68a" font-size="9">JMS / Direct / Log</text>
+  <!-- ============================================================ -->
+  <!--  Destinations                                                 -->
+  <!-- ============================================================ -->
+  <rect x="621" y="158" width="88" height="252" rx="10" fill="#1a0f04" stroke="#f59e0b" stroke-width="1"/>
+  <text x="665" y="180" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="700">Destinations</text>
+  <rect x="631" y="192" width="68" height="20" rx="10" fill="#422006"/>
+  <text x="665" y="206" text-anchor="middle" fill="#fde68a" font-size="9">HTTP</text>
+  <rect x="631" y="218" width="68" height="20" rx="10" fill="#422006"/>
+  <text x="665" y="232" text-anchor="middle" fill="#fde68a" font-size="9">TCP/MLLP</text>
+  <rect x="631" y="244" width="68" height="20" rx="10" fill="#422006"/>
+  <text x="665" y="258" text-anchor="middle" fill="#fde68a" font-size="9">FHIR R4</text>
+  <rect x="631" y="270" width="68" height="20" rx="10" fill="#422006"/>
+  <text x="665" y="284" text-anchor="middle" fill="#fde68a" font-size="9">Kafka</text>
+  <rect x="631" y="296" width="68" height="20" rx="10" fill="#422006"/>
+  <text x="665" y="310" text-anchor="middle" fill="#fde68a" font-size="9">Database</text>
+  <rect x="631" y="322" width="68" height="20" rx="10" fill="#422006"/>
+  <text x="665" y="336" text-anchor="middle" fill="#fde68a" font-size="9">File/SFTP</text>
+  <rect x="631" y="348" width="68" height="20" rx="10" fill="#422006"/>
+  <text x="665" y="362" text-anchor="middle" fill="#fde68a" font-size="9">DICOM</text>
+  <rect x="631" y="374" width="68" height="20" rx="10" fill="#422006"/>
+  <text x="665" y="388" text-anchor="middle" fill="#fde68a" font-size="9">SMTP/Log</text>
 
-  <!-- Arrow: Destinations → External -->
-  <line x1="752" y1="288" x2="782" y2="288" stroke="#38bdf8" stroke-width="1.5" opacity="0.6" marker-end="url(#arrow)"/>
+  <line x1="709" y1="290" x2="752" y2="290" stroke="#38bdf8" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
 
-  <!-- === RIGHT: EXTERNAL DESTINATIONS === -->
-  <rect x="788" y="218" width="88" height="140" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="832" y="244" text-anchor="middle" fill="#f8fafc" font-size="10" font-weight="600">Healthcare</text>
-  <text x="832" y="258" text-anchor="middle" fill="#f8fafc" font-size="10" font-weight="600">Systems</text>
-  <text x="832" y="282" text-anchor="middle" fill="#64748b" font-size="9">EHR</text>
-  <text x="832" y="296" text-anchor="middle" fill="#64748b" font-size="9">HIE</text>
-  <text x="832" y="310" text-anchor="middle" fill="#64748b" font-size="9">FHIR Server</text>
-  <text x="832" y="324" text-anchor="middle" fill="#64748b" font-size="9">Data Lake</text>
-  <text x="832" y="338" text-anchor="middle" fill="#64748b" font-size="9">Archive</text>
+  <!-- ============================================================ -->
+  <!--  RIGHT: External Healthcare Systems (OUTSIDE engine)          -->
+  <!-- ============================================================ -->
+  <rect x="760" y="262" width="86" height="56" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="803" y="280" text-anchor="middle" fill="#94a3b8" font-size="8" font-weight="600">Healthcare</text>
+  <text x="803" y="292" text-anchor="middle" fill="#94a3b8" font-size="8" font-weight="600">Systems</text>
+  <text x="803" y="306" text-anchor="middle" fill="#64748b" font-size="7">EHR, HIE, FHIR,</text>
+  <text x="803" y="314" text-anchor="middle" fill="#64748b" font-size="7">Data Lake, Archive</text>
 
-  <!-- === BOTTOM ROW: Supporting services === -->
+  <!-- ============================================================ -->
+  <!--  BOTTOM: Supporting services                                  -->
+  <!-- ============================================================ -->
 
-  <!-- Dashboard -->
-  <rect x="140" y="432" width="145" height="44" rx="9" fill="#1e293b" stroke="#e879f9" stroke-width="1"/>
-  <text x="212" y="449" text-anchor="middle" fill="#e879f9" font-size="10" font-weight="700">Web Dashboard</text>
-  <text x="212" y="465" text-anchor="middle" fill="#64748b" font-size="9">:3000 · Channels · Messages</text>
+  <rect x="40" y="544" width="165" height="44" rx="9" fill="#1e293b" stroke="#2dd4bf" stroke-width="1"/>
+  <circle cx="60" cy="566" r="10" fill="#042f2e" stroke="#2dd4bf" stroke-width="0.8"/>
+  <text x="60" y="570" text-anchor="middle" fill="#2dd4bf" font-size="9">⊞</text>
+  <text x="78" y="562" fill="#2dd4bf" font-size="10" font-weight="700">Dashboard</text>
+  <text x="78" y="576" fill="#64748b" font-size="8">:3000 · Channels · Msgs</text>
 
-  <!-- Hot Reload -->
-  <rect x="300" y="432" width="145" height="44" rx="9" fill="#1e293b" stroke="#38bdf8" stroke-width="1"/>
-  <text x="372" y="449" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="700">Hot Reload</text>
-  <text x="372" y="465" text-anchor="middle" fill="#64748b" font-size="9">fsnotify · YAML · TS</text>
+  <rect x="218" y="544" width="165" height="44" rx="9" fill="#1e293b" stroke="#38bdf8" stroke-width="1"/>
+  <circle cx="238" cy="566" r="10" fill="#0c1a3d" stroke="#38bdf8" stroke-width="0.8"/>
+  <text x="238" y="570" text-anchor="middle" fill="#38bdf8" font-size="9">↻</text>
+  <text x="256" y="562" fill="#38bdf8" font-size="10" font-weight="700">Hot Reload</text>
+  <text x="256" y="576" fill="#64748b" font-size="8">fsnotify · YAML · TS</text>
 
-  <!-- Message Store -->
-  <rect x="460" y="432" width="145" height="44" rx="9" fill="#1e293b" stroke="#34d399" stroke-width="1"/>
-  <text x="532" y="449" text-anchor="middle" fill="#34d399" font-size="10" font-weight="700">Message Store</text>
-  <text x="532" y="465" text-anchor="middle" fill="#64748b" font-size="9">Memory · Postgres · S3</text>
+  <rect x="396" y="544" width="165" height="44" rx="9" fill="#1e293b" stroke="#34d399" stroke-width="1"/>
+  <circle cx="416" cy="566" r="10" fill="#14532d" stroke="#34d399" stroke-width="0.8"/>
+  <text x="416" y="570" text-anchor="middle" fill="#34d399" font-size="9">⛁</text>
+  <text x="434" y="562" fill="#34d399" font-size="10" font-weight="700">Message Store</text>
+  <text x="434" y="576" fill="#64748b" font-size="8">Memory · Postgres · S3</text>
 
-  <!-- Node.js Workers -->
-  <rect x="620" y="432" width="145" height="44" rx="9" fill="#1e293b" stroke="#fbbf24" stroke-width="1"/>
-  <text x="692" y="449" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="700">Node.js Workers</text>
-  <text x="692" y="465" text-anchor="middle" fill="#64748b" font-size="9">TS execution · Worker pool</text>
+  <rect x="574" y="544" width="165" height="44" rx="9" fill="#1e293b" stroke="#fbbf24" stroke-width="1"/>
+  <circle cx="594" cy="566" r="10" fill="#422006" stroke="#fbbf24" stroke-width="0.8"/>
+  <text x="594" y="570" text-anchor="middle" fill="#fbbf24" font-size="9">⚙</text>
+  <text x="612" y="562" fill="#fbbf24" font-size="10" font-weight="700">Node.js Workers</text>
+  <text x="612" y="576" fill="#64748b" font-size="8">TS exec · Worker pool</text>
 
-  <!-- === BOTTOM: Config layer === -->
-  <rect x="140" y="492" width="150" height="34" rx="7" fill="#0f172a" stroke="#475569" stroke-width="0.75"/>
-  <text x="215" y="513" text-anchor="middle" fill="#64748b" font-size="9" font-family="'SF Mono', 'Fira Code', monospace">channel.yaml</text>
+  <rect x="752" y="544" width="165" height="44" rx="9" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+  <circle cx="772" cy="566" r="10" fill="#1e293b" stroke="#475569" stroke-width="0.8"/>
+  <text x="772" y="570" text-anchor="middle" fill="#94a3b8" font-size="9">♻</text>
+  <text x="790" y="562" fill="#94a3b8" font-size="10" font-weight="700">Retry / DLQ</text>
+  <text x="790" y="576" fill="#64748b" font-size="8">Queues · Reprocess</text>
 
-  <rect x="306" y="492" width="150" height="34" rx="7" fill="#0f172a" stroke="#475569" stroke-width="0.75"/>
-  <text x="381" y="513" text-anchor="middle" fill="#64748b" font-size="9" font-family="'SF Mono', 'Fira Code', monospace">transformer.ts</text>
+  <!-- ============================================================ -->
+  <!--  CONFIG LAYER                                                 -->
+  <!-- ============================================================ -->
+  <rect x="40" y="604" width="140" height="30" rx="7" fill="#0f172a" stroke="#475569" stroke-width="0.75"/>
+  <text x="110" y="623" text-anchor="middle" fill="#64748b" font-size="9" font-family="'SF Mono', 'Fira Code', monospace">channel.yaml</text>
 
-  <rect x="472" y="492" width="150" height="34" rx="7" fill="#0f172a" stroke="#475569" stroke-width="0.75"/>
-  <text x="547" y="513" text-anchor="middle" fill="#64748b" font-size="9" font-family="'SF Mono', 'Fira Code', monospace">intu.yaml</text>
+  <rect x="194" y="604" width="140" height="30" rx="7" fill="#0f172a" stroke="#475569" stroke-width="0.75"/>
+  <text x="264" y="623" text-anchor="middle" fill="#64748b" font-size="9" font-family="'SF Mono', 'Fira Code', monospace">transformer.ts</text>
 
-  <rect x="638" y="492" width="150" height="34" rx="7" fill="#0f172a" stroke="#475569" stroke-width="0.75"/>
-  <text x="713" y="513" text-anchor="middle" fill="#64748b" font-size="9" font-family="'SF Mono', 'Fira Code', monospace">.env · profiles</text>
+  <rect x="348" y="604" width="140" height="30" rx="7" fill="#0f172a" stroke="#475569" stroke-width="0.75"/>
+  <text x="418" y="623" text-anchor="middle" fill="#64748b" font-size="9" font-family="'SF Mono', 'Fira Code', monospace">validator.ts</text>
+
+  <rect x="502" y="604" width="140" height="30" rx="7" fill="#0f172a" stroke="#475569" stroke-width="0.75"/>
+  <text x="572" y="623" text-anchor="middle" fill="#64748b" font-size="9" font-family="'SF Mono', 'Fira Code', monospace">intu.yaml</text>
+
+  <rect x="656" y="604" width="140" height="30" rx="7" fill="#0f172a" stroke="#475569" stroke-width="0.75"/>
+  <text x="726" y="623" text-anchor="middle" fill="#64748b" font-size="9" font-family="'SF Mono', 'Fira Code', monospace">intu.d.ts</text>
+
+  <rect x="810" y="604" width="110" height="30" rx="7" fill="#0f172a" stroke="#475569" stroke-width="0.75"/>
+  <text x="865" y="623" text-anchor="middle" fill="#64748b" font-size="9" font-family="'SF Mono', 'Fira Code', monospace">.env</text>
 
   <!-- Git label -->
-  <text x="480" y="537" text-anchor="middle" fill="#475569" font-size="9">All config stored in Git — version-controlled, reviewable, AI-friendly</text>
+  <text x="480" y="656" text-anchor="middle" fill="#475569" font-size="9">All config in Git — version-controlled, reviewable, AI-friendly</text>
+  <text x="480" y="676" text-anchor="middle" fill="#334155" font-size="8">Healthcare interoperability, simplified.</text>
+
+  <!-- Decorative dots -->
+  <g opacity="0.04" fill="#94a3b8">
+    <circle cx="20" cy="545" r="1"/><circle cx="40" cy="545" r="1"/>
+    <circle cx="920" cy="545" r="1"/><circle cx="940" cy="545" r="1"/>
+  </g>
 </svg>
