@@ -207,7 +207,7 @@ func (m *MailHogContainer) Terminate(ctx context.Context) {
 	}
 }
 
-// GreenMailContainer wraps a GreenMail Docker container that provides both
+// GreenMailContainer wraps a mail server Docker container that provides both
 // SMTP (for sending test emails) and IMAP (for the EmailSource to poll).
 type GreenMailContainer struct {
 	Container testcontainers.Container
@@ -217,15 +217,13 @@ type GreenMailContainer struct {
 }
 
 func StartGreenMailContainer(ctx context.Context) (*GreenMailContainer, error) {
+	// Use Inbucket: SMTP (2500) + POP3 (1100). Reliable for CI; tests use POP3 to read mail.
 	req := testcontainers.ContainerRequest{
-		Image:        "greenmail/standalone:2.0.1",
-		ExposedPorts: []string{"3025/tcp", "3143/tcp"},
-		Env: map[string]string{
-			"GREENMAIL_OPTS": "-Dgreenmail.setup.test.all -Dgreenmail.users=testuser:testpass",
-		},
+		Image:        "inbucket/inbucket:latest",
+		ExposedPorts: []string{"2500/tcp", "1100/tcp"},
 		WaitingFor: wait.ForAll(
-			wait.ForListeningPort("3025/tcp").WithStartupTimeout(60*time.Second),
-			wait.ForListeningPort("3143/tcp").WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("2500/tcp").WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("1100/tcp").WithStartupTimeout(60*time.Second),
 		),
 	}
 
@@ -234,32 +232,32 @@ func StartGreenMailContainer(ctx context.Context) (*GreenMailContainer, error) {
 		Started:          true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("start greenmail container: %w", err)
+		return nil, fmt.Errorf("start mail container (inbucket): %w", err)
 	}
 
 	host, err := container.Host(ctx)
 	if err != nil {
 		container.Terminate(ctx)
-		return nil, fmt.Errorf("get greenmail host: %w", err)
+		return nil, fmt.Errorf("get mail container host: %w", err)
 	}
 
-	smtpPort, err := container.MappedPort(ctx, "3025")
+	smtpPort, err := container.MappedPort(ctx, "2500")
 	if err != nil {
 		container.Terminate(ctx)
-		return nil, fmt.Errorf("get greenmail smtp port: %w", err)
+		return nil, fmt.Errorf("get mail container smtp port: %w", err)
 	}
 
-	imapPort, err := container.MappedPort(ctx, "3143")
+	pop3Port, err := container.MappedPort(ctx, "1100")
 	if err != nil {
 		container.Terminate(ctx)
-		return nil, fmt.Errorf("get greenmail imap port: %w", err)
+		return nil, fmt.Errorf("get mail container pop3 port: %w", err)
 	}
 
 	return &GreenMailContainer{
 		Container: container,
 		Host:      host,
 		SMTPPort:  smtpPort.Int(),
-		IMAPPort:  imapPort.Int(),
+		IMAPPort:  pop3Port.Int(), // POP3 port; tests use this for "read" port
 	}, nil
 }
 

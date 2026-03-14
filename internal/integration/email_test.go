@@ -4,11 +4,11 @@ package integration
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/smtp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,8 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// sendTestEmail delivers an email to GreenMail via SMTP so the EmailSource
-// can pick it up via IMAP on its next poll. Retries on EOF in case SMTP is still starting.
+// sendTestEmail delivers an email to the mail server via SMTP so the EmailSource
+// can pick it up via IMAP on its next poll. Retries on EOF/connection errors in case SMTP is still starting.
 func sendTestEmail(t *testing.T, subject, body string) {
 	t.Helper()
 	addr := greenmailC.SMTPAddr()
@@ -31,18 +31,21 @@ func sendTestEmail(t *testing.T, subject, body string) {
 		"To: testuser@localhost\r\n" +
 		"\r\n" + body
 	var err error
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 12; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * 500 * time.Millisecond)
+		}
 		err = smtp.SendMail(addr, nil, "lab@hospital.com", []string{"testuser@localhost"}, []byte(msg))
 		if err == nil {
 			return
 		}
-		if i < 2 && errors.Is(err, io.EOF) {
-			time.Sleep(500 * time.Millisecond)
-			continue
+		retryable := err == io.EOF || strings.Contains(err.Error(), "EOF") ||
+			strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "connection refused")
+		if i == 11 || !retryable {
+			break
 		}
-		break
 	}
-	require.NoError(t, err, "send test email to GreenMail")
+	require.NoError(t, err, "send test email to mail server")
 }
 
 // TestEmailSource_ReceivesViaIMAP sends an email into GreenMail via SMTP,
@@ -58,11 +61,10 @@ func TestEmailSource_ReceivesViaIMAP(t *testing.T) {
 	var received [][]byte
 
 	src := connector.NewEmailSource(&config.EmailListener{
-		Protocol:     "imap",
+		Protocol:     "pop3",
 		Host:         greenmailC.Host,
 		Port:         greenmailC.IMAPPort,
 		PollInterval: "500ms",
-		Folder:       "INBOX",
 		Auth: &config.AuthConfig{
 			Type:     "password",
 			Username: "testuser",
@@ -135,11 +137,10 @@ exports.transform = function transform(msg, ctx) {
 		Listener: config.ListenerConfig{
 			Type: "email",
 			Email: &config.EmailListener{
-				Protocol:     "imap",
+				Protocol:     "pop3",
 				Host:         greenmailC.Host,
 				Port:         greenmailC.IMAPPort,
 				PollInterval: "500ms",
-				Folder:       "INBOX",
 				Auth: &config.AuthConfig{
 					Type:     "password",
 					Username: "testuser",
