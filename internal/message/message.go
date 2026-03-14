@@ -164,6 +164,10 @@ func (m *Message) CloneWithRaw(raw []byte) *Message {
 	return &c
 }
 
+// IntuJSONVersion is the envelope format version stamped into every
+// serialized IntuMessage. Consumers can use it for forward compatibility.
+const IntuJSONVersion = "1"
+
 // ToIntuJSON serializes the Message as an IntuMessage JSON envelope.
 // If Raw is valid UTF-8 the body is stored as a string; otherwise it is
 // base64-encoded to avoid data corruption in JSON.
@@ -178,9 +182,21 @@ func (m *Message) ToIntuJSON() ([]byte, error) {
 		}
 	}
 	im := map[string]any{
-		"body":        body,
-		"transport":   m.Transport,
-		"contentType": string(m.ContentType),
+		"version":       IntuJSONVersion,
+		"id":            m.ID,
+		"correlationId": m.CorrelationID,
+		"channelId":     m.ChannelID,
+		"timestamp":     m.Timestamp.Format(time.RFC3339Nano),
+		"body":          body,
+		"transport":     m.Transport,
+		"contentType":   string(m.ContentType),
+	}
+
+	if m.SourceCharset != "" {
+		im["sourceCharset"] = m.SourceCharset
+	}
+	if len(m.Metadata) > 0 {
+		im["metadata"] = m.Metadata
 	}
 
 	if m.HTTP != nil {
@@ -244,8 +260,9 @@ func (m *Message) ToIntuJSON() ([]byte, error) {
 }
 
 // FromIntuJSON reconstructs a Message from IntuMessage JSON stored in content.
-// Returns the Message with Raw set to the body, transport metadata restored.
-// Falls back to treating data as a raw payload if it is not valid IntuMessage JSON.
+// Identity fields (id, correlationId, channelId, timestamp) are restored when
+// present, making export/import/replay fully round-trippable. Falls back to
+// generating fresh identity when the envelope predates version 1.
 func FromIntuJSON(data []byte, channelID string) (*Message, error) {
 	var im map[string]any
 	if err := json.Unmarshal(data, &im); err != nil {
@@ -265,6 +282,29 @@ func FromIntuJSON(data []byte, channelID string) (*Message, error) {
 		}
 	}
 	msg := New(channelID, raw)
+
+	if id, ok := im["id"].(string); ok && id != "" {
+		msg.ID = id
+	}
+	if cid, ok := im["correlationId"].(string); ok && cid != "" {
+		msg.CorrelationID = cid
+	}
+	if ch, ok := im["channelId"].(string); ok && ch != "" {
+		msg.ChannelID = ch
+	}
+	if ts, ok := im["timestamp"].(string); ok && ts != "" {
+		if parsed, err := time.Parse(time.RFC3339Nano, ts); err == nil {
+			msg.Timestamp = parsed
+		}
+	}
+	if sc, ok := im["sourceCharset"].(string); ok {
+		msg.SourceCharset = sc
+	}
+	if md, ok := im["metadata"].(map[string]any); ok {
+		for k, v := range md {
+			msg.Metadata[k] = v
+		}
+	}
 
 	if t, ok := im["transport"].(string); ok {
 		msg.Transport = t
@@ -299,6 +339,25 @@ func FromIntuJSON(data []byte, channelID string) (*Message, error) {
 	}
 
 	return msg, nil
+}
+
+// Rebuild reconstructs a Message from a stored MessageRecord. It uses
+// FromIntuJSON when the content is valid IntuMessage JSON, falling back to
+// treating it as raw bytes. CorrelationID is always restored from the record.
+// This is the canonical reprocess path used by both CLI and dashboard.
+func Rebuild(id, correlationID, channelID string, content []byte, ts time.Time) *Message {
+	msg, err := FromIntuJSON(content, channelID)
+	if err != nil {
+		msg = New(channelID, content)
+	}
+	msg.CorrelationID = correlationID
+	if msg.CorrelationID == "" {
+		msg.CorrelationID = id
+	}
+	msg.Metadata["reprocessed"] = true
+	msg.Metadata["original_message_id"] = id
+	msg.Metadata["original_timestamp"] = ts.Format(time.RFC3339)
+	return msg
 }
 
 // ResponseToIntuJSON converts a destination Response into IntuMessage JSON.

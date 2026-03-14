@@ -34,6 +34,7 @@ type Pipeline struct {
 	connectorMap  *SyncMap
 	splitter      datatype.BatchSplitter
 	resolvedDests map[string]config.Destination
+	plugins       *PluginRegistry
 }
 
 func NewPipeline(channelDir, projectDir, channelID string, cfg *config.ChannelConfig, runner *NodeRunner, logger *slog.Logger) *Pipeline {
@@ -57,6 +58,17 @@ func NewPipeline(channelDir, projectDir, channelID string, cfg *config.ChannelCo
 		}
 	}
 
+	plugins := NewPluginRegistry()
+	for _, pc := range cfg.Plugins {
+		sp, err := NewScriptPlugin(pc, channelDir, projectDir, runner, logger)
+		if err != nil {
+			logger.Warn("invalid plugin config, skipping", "plugin", pc.Name, "error", err)
+			continue
+		}
+		plugins.Register(sp)
+		logger.Debug("plugin registered", "plugin", pc.Name, "phase", pc.Phase)
+	}
+
 	return &Pipeline{
 		channelDir: channelDir,
 		projectDir: projectDir,
@@ -66,6 +78,7 @@ func NewPipeline(channelDir, projectDir, channelID string, cfg *config.ChannelCo
 		logger:     logger,
 		parser:     parser,
 		splitter:   splitter,
+		plugins:    plugins,
 	}
 }
 
@@ -218,11 +231,21 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 	current := parsed
 	intuMsg := p.buildIntuMessage(msg, current)
 
+	if p.plugins.HasPlugins(PhaseBeforeValidation) {
+		msg, err = p.plugins.Execute(ctx, PhaseBeforeValidation, msg, p.logger)
+		if err != nil {
+			return nil, fmt.Errorf("plugin before_validation: %w", err)
+		}
+		parsed, _ = p.parser.Parse(msg.Raw)
+		current = parsed
+		intuMsg = p.buildIntuMessage(msg, current)
+	}
+
 	if validatorFile := p.resolveValidator(); validatorFile != "" {
 		_, validatorSpan := tracer.Start(ctx, "pipeline.validate",
 			trace.WithAttributes(attribute.String("script", validatorFile)),
 		)
-		out, err := p.callScript("validate", validatorFile, intuMsg, p.buildPipelineCtx(msg))
+		out, err := p.callScript("validate", validatorFile, intuMsg, p.buildPipelineCtx(msg, "validator"))
 		if err != nil {
 			validatorSpan.SetStatus(codes.Error, err.Error())
 			validatorSpan.End()
@@ -235,11 +258,21 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 		}
 	}
 
+	if p.plugins.HasPlugins(PhaseAfterValidation) {
+		msg, err = p.plugins.Execute(ctx, PhaseAfterValidation, msg, p.logger)
+		if err != nil {
+			return nil, fmt.Errorf("plugin after_validation: %w", err)
+		}
+		parsed, _ = p.parser.Parse(msg.Raw)
+		current = parsed
+		intuMsg = p.buildIntuMessage(msg, current)
+	}
+
 	if p.config.Pipeline != nil && p.config.Pipeline.SourceFilter != "" {
 		_, filterSpan := tracer.Start(ctx, "pipeline.source_filter",
 			trace.WithAttributes(attribute.String("script", p.config.Pipeline.SourceFilter)),
 		)
-		out, err := p.callScript("filter", p.config.Pipeline.SourceFilter, intuMsg, p.buildPipelineCtx(msg))
+		out, err := p.callScript("filter", p.config.Pipeline.SourceFilter, intuMsg, p.buildPipelineCtx(msg, "source_filter"))
 		if err != nil {
 			filterSpan.SetStatus(codes.Error, err.Error())
 			filterSpan.End()
@@ -252,13 +285,23 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 		}
 	}
 
+	if p.plugins.HasPlugins(PhaseBeforeTransform) {
+		msg, err = p.plugins.Execute(ctx, PhaseBeforeTransform, msg, p.logger)
+		if err != nil {
+			return nil, fmt.Errorf("plugin before_transform: %w", err)
+		}
+		parsed, _ = p.parser.Parse(msg.Raw)
+		current = parsed
+		intuMsg = p.buildIntuMessage(msg, current)
+	}
+
 	routeTo := []string{}
 	transformerFile := p.resolveTransformer()
 	if transformerFile != "" {
 		_, transformSpan := tracer.Start(ctx, "pipeline.transform",
 			trace.WithAttributes(attribute.String("script", transformerFile)),
 		)
-		tctx := p.buildTransformCtx(msg)
+		tctx := p.buildTransformCtx(msg, "transformer")
 		out, err := p.callScript("transform", transformerFile, intuMsg, tctx)
 		if err != nil {
 			transformSpan.SetStatus(codes.Error, err.Error())
@@ -278,6 +321,14 @@ func (p *Pipeline) executeSingle(ctx context.Context, msg *message.Message, raw 
 				if r, exists := m["_routeTo"]; exists {
 					routeTo = toStringSlice(r)
 				}
+			}
+		}
+
+		if p.plugins.HasPlugins(PhaseAfterTransform) {
+			outMsg.Msg.Raw = p.toBytes(outMsg.Output)
+			outMsg.Msg, err = p.plugins.Execute(ctx, PhaseAfterTransform, outMsg.Msg, p.logger)
+			if err != nil {
+				return nil, fmt.Errorf("plugin after_transform: %w", err)
 			}
 		}
 
@@ -315,15 +366,23 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 	)
 	defer span.End()
 
+	if p.plugins.HasPlugins(PhaseBeforeDestination) {
+		var err error
+		msg, err = p.plugins.Execute(ctx, PhaseBeforeDestination, msg, p.logger)
+		if err != nil {
+			return nil, false, fmt.Errorf("plugin before_destination: %w", err)
+		}
+	}
+
 	current := transformed
 	intuMsg := p.buildDestIntuMessage(current, destName, dest)
-	destCtx := p.buildDestCtx(msg, destName, sourceIntuMsg)
 
 	if dest.Filter != "" {
+		filterCtx := p.buildDestCtx(msg, destName, sourceIntuMsg, "destination_filter")
 		_, filterSpan := tracer.Start(ctx, "pipeline.destination.filter",
 			trace.WithAttributes(attribute.String("script", dest.Filter)),
 		)
-		out, err := p.callScript("filter", dest.Filter, intuMsg, destCtx)
+		out, err := p.callScript("filter", dest.Filter, intuMsg, filterCtx)
 		if err != nil {
 			filterSpan.SetStatus(codes.Error, err.Error())
 			filterSpan.End()
@@ -341,10 +400,11 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 
 	destTransformer := resolveDestTransformer(dest)
 	if destTransformer != "" {
+		destTransformCtx := p.buildDestCtx(msg, destName, sourceIntuMsg, "destination_transformer")
 		_, transformSpan := tracer.Start(ctx, "pipeline.destination.transform",
 			trace.WithAttributes(attribute.String("script", destTransformer)),
 		)
-		out, err := p.callScript("transform", destTransformer, intuMsg, destCtx)
+		out, err := p.callScript("transform", destTransformer, intuMsg, destTransformCtx)
 		if err != nil {
 			transformSpan.SetStatus(codes.Error, err.Error())
 			transformSpan.End()
@@ -357,6 +417,12 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 		outMsg := outResult.Msg
 		outMsg.Transport = destType
 		outMsg.Raw = p.toBytes(current)
+		if p.plugins.HasPlugins(PhaseAfterDestination) {
+			outMsg, err = p.plugins.Execute(ctx, PhaseAfterDestination, outMsg, p.logger)
+			if err != nil {
+				return nil, false, fmt.Errorf("plugin after_destination: %w", err)
+			}
+		}
 		return outMsg, false, nil
 	}
 
@@ -364,6 +430,14 @@ func (p *Pipeline) ExecuteDestinationPipeline(ctx context.Context, msg *message.
 	outMsg := cloneMessageShell(msg)
 	outMsg.Raw = outBytes
 	outMsg.Transport = destType
+
+	if p.plugins.HasPlugins(PhaseAfterDestination) {
+		var err error
+		outMsg, err = p.plugins.Execute(ctx, PhaseAfterDestination, outMsg, p.logger)
+		if err != nil {
+			return nil, false, fmt.Errorf("plugin after_destination: %w", err)
+		}
+	}
 
 	return outMsg, false, nil
 }
@@ -389,7 +463,7 @@ func (p *Pipeline) ExecuteResponseTransformer(ctx context.Context, msg *message.
 		respData["error"] = resp.Error.Error()
 	}
 
-	_, err := p.callScript("transformResponse", respTransformer, respData, p.buildDestCtx(msg, dest.Name, nil))
+	_, err := p.callScript("transformResponse", respTransformer, respData, p.buildDestCtx(msg, dest.Name, nil, "response_transformer"))
 	return err
 }
 
@@ -410,7 +484,7 @@ func (p *Pipeline) ExecutePostprocessor(ctx context.Context, msg *message.Messag
 		resultsData = append(resultsData, rd)
 	}
 
-	_, err := p.callScript("postprocess", p.config.Pipeline.Postprocessor, transformed, resultsData, p.buildPipelineCtx(msg))
+	_, err := p.callScript("postprocess", p.config.Pipeline.Postprocessor, transformed, resultsData, p.buildPipelineCtx(msg, "postprocessor"))
 	return err
 }
 
@@ -472,12 +546,13 @@ func (p *Pipeline) resolveScriptPath(file string) string {
 	return filepath.Join(p.channelDir, file)
 }
 
-func (p *Pipeline) buildPipelineCtx(msg *message.Message) map[string]any {
+func (p *Pipeline) buildPipelineCtx(msg *message.Message, stage string) map[string]any {
 	ctx := map[string]any{
 		"channelId":     p.channelID,
 		"correlationId": msg.CorrelationID,
 		"messageId":     msg.ID,
 		"timestamp":     msg.Timestamp.Format(time.RFC3339Nano),
+		"stage":         stage,
 	}
 
 	if p.maps != nil {
@@ -492,8 +567,8 @@ func (p *Pipeline) buildPipelineCtx(msg *message.Message) map[string]any {
 	return ctx
 }
 
-func (p *Pipeline) buildTransformCtx(msg *message.Message) map[string]any {
-	ctx := p.buildPipelineCtx(msg)
+func (p *Pipeline) buildTransformCtx(msg *message.Message, stage string) map[string]any {
+	ctx := p.buildPipelineCtx(msg, stage)
 	if p.config.DataTypes != nil {
 		ctx["inboundDataType"] = p.config.DataTypes.Inbound
 		ctx["outboundDataType"] = p.config.DataTypes.Outbound
@@ -501,8 +576,8 @@ func (p *Pipeline) buildTransformCtx(msg *message.Message) map[string]any {
 	return ctx
 }
 
-func (p *Pipeline) buildDestCtx(msg *message.Message, destName string, sourceIntuMsg map[string]any) map[string]any {
-	ctx := p.buildPipelineCtx(msg)
+func (p *Pipeline) buildDestCtx(msg *message.Message, destName string, sourceIntuMsg map[string]any, stage string) map[string]any {
+	ctx := p.buildPipelineCtx(msg, stage)
 	ctx["destinationName"] = destName
 	if sourceIntuMsg != nil {
 		ctx["sourceMessage"] = sourceIntuMsg
@@ -516,6 +591,13 @@ func (p *Pipeline) buildIntuMessage(msg *message.Message, parsed any) map[string
 		"body":        parsed,
 		"transport":   msg.Transport,
 		"contentType": string(msg.ContentType),
+	}
+
+	if msg.SourceCharset != "" {
+		im["sourceCharset"] = msg.SourceCharset
+	}
+	if len(msg.Metadata) > 0 {
+		im["metadata"] = msg.Metadata
 	}
 
 	if msg.HTTP != nil {
@@ -785,6 +867,17 @@ func (p *Pipeline) parseIntuResult(result any, original *message.Message) *intuR
 	if dbData, ok := m["database"].(map[string]any); ok {
 		out.Database = parseDatabaseMeta(dbData)
 	}
+	if sc, ok := m["sourceCharset"].(string); ok {
+		out.SourceCharset = sc
+	}
+	if md, ok := m["metadata"].(map[string]any); ok {
+		if out.Metadata == nil {
+			out.Metadata = make(map[string]any)
+		}
+		for k, v := range md {
+			out.Metadata[k] = v
+		}
+	}
 
 	return &intuResult{Output: body, Msg: out}
 }
@@ -796,6 +889,7 @@ func cloneMessageShell(m *message.Message) *message.Message {
 		ChannelID:     m.ChannelID,
 		Transport:     m.Transport,
 		ContentType:   m.ContentType,
+		SourceCharset: m.SourceCharset,
 		HTTP:          m.HTTP,
 		File:          m.File,
 		FTP:           m.FTP,

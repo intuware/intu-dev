@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://intu.dev/schema/intumessage.schema.json",
+  "title": "IntuMessage",
+  "description": "Canonical .intuJSON envelope format for intu messages. Used for storage, export/import, and replay.",
+  "type": "object",
+  "required": ["version", "body", "transport", "contentType"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Envelope format version.",
+      "const": "1"
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique message identifier (UUID)."
+    },
+    "correlationId": {
+      "type": "string",
+      "description": "Correlation identifier linking related messages across pipeline stages."
+    },
+    "channelId": {
+      "type": "string",
+      "description": "Channel that processed this message."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Message creation timestamp in RFC 3339 format."
+    },
+    "body": {
+      "description": "Message payload. A UTF-8 string, or an object with base64+size for binary data.",
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["base64"],
+          "properties": {
+            "base64": { "type": "string", "description": "Base64-encoded binary payload." },
+            "size": { "type": "integer", "description": "Original byte length." }
+          }
+        }
+      ]
+    },
+    "transport": {
+      "type": "string",
+      "description": "Source transport protocol (http, tcp, kafka, file, sftp, smtp, dicom, database, channel, fhir)."
+    },
+    "contentType": {
+      "type": "string",
+      "description": "Data type of the body (raw, json, xml, csv, hl7v2, fhir_r4, x12, dicom, binary, ccda, delimited)."
+    },
+    "sourceCharset": {
+      "type": "string",
+      "description": "Original character encoding of the source data (e.g. iso-8859-1, utf-16le). Empty or absent means UTF-8."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Arbitrary key-value metadata set by source connectors or pipeline stages.",
+      "additionalProperties": true
+    },
+    "http": {
+      "$ref": "#/definitions/httpMeta"
+    },
+    "file": {
+      "$ref": "#/definitions/fileMeta"
+    },
+    "ftp": {
+      "$ref": "#/definitions/fileMeta"
+    },
+    "kafka": {
+      "$ref": "#/definitions/kafkaMeta"
+    },
+    "tcp": {
+      "$ref": "#/definitions/tcpMeta"
+    },
+    "smtp": {
+      "$ref": "#/definitions/smtpMeta"
+    },
+    "dicom": {
+      "$ref": "#/definitions/dicomMeta"
+    },
+    "database": {
+      "$ref": "#/definitions/databaseMeta"
+    }
+  },
+  "definitions": {
+    "httpMeta": {
+      "type": "object",
+      "properties": {
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "queryParams": { "type": "object", "additionalProperties": { "type": "string" } },
+        "pathParams": { "type": "object", "additionalProperties": { "type": "string" } },
+        "method": { "type": "string" },
+        "statusCode": { "type": "integer" }
+      }
+    },
+    "fileMeta": {
+      "type": "object",
+      "properties": {
+        "filename": { "type": "string" },
+        "directory": { "type": "string" }
+      }
+    },
+    "kafkaMeta": {
+      "type": "object",
+      "properties": {
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "topic": { "type": "string" },
+        "key": { "type": "string" },
+        "partition": { "type": "integer" },
+        "offset": { "type": "integer" }
+      }
+    },
+    "tcpMeta": {
+      "type": "object",
+      "properties": {
+        "remoteAddr": { "type": "string" }
+      }
+    },
+    "smtpMeta": {
+      "type": "object",
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "array", "items": { "type": "string" } },
+        "subject": { "type": "string" },
+        "cc": { "type": "array", "items": { "type": "string" } },
+        "bcc": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "dicomMeta": {
+      "type": "object",
+      "properties": {
+        "callingAE": { "type": "string" },
+        "calledAE": { "type": "string" }
+      }
+    },
+    "databaseMeta": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string" },
+        "params": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

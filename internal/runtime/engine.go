@@ -470,6 +470,9 @@ func (e *DefaultEngine) preloadChannelScripts(channelDir string, cfg *config.Cha
 			preload(d.ResponseTransformer.Entrypoint)
 		}
 	}
+	for _, p := range cfg.Plugins {
+		preload(p.Entrypoint)
+	}
 }
 
 func (e *DefaultEngine) InitRuntime(ctx context.Context) error {

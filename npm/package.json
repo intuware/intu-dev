@@ -8,8 +8,10 @@
   "files": [
     "bin",
     "platform",
+    "types",
     "README.md"
   ],
+  "types": "./types/intu.d.ts",
   "scripts": {
     "build": "node build.js",
     "prepublishOnly": "npm run build"

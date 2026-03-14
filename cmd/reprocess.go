@@ -219,17 +219,5 @@ func newReprocessBatchCmd() *cobra.Command {
 }
 
 func rebuildMessage(record *storage.MessageRecord) *message.Message {
-	msg, err := message.FromIntuJSON(record.Content, record.ChannelID)
-	if err != nil {
-		msg = message.New(record.ChannelID, record.Content)
-	}
-	msg.CorrelationID = record.CorrelationID
-	if msg.CorrelationID == "" {
-		msg.CorrelationID = record.ID
-	}
-	msg.Metadata["reprocessed"] = true
-	msg.Metadata["original_message_id"] = record.ID
-	msg.Metadata["original_timestamp"] = record.Timestamp.Format(time.RFC3339)
-
-	return msg
+	return message.Rebuild(record.ID, record.CorrelationID, record.ChannelID, record.Content, record.Timestamp)
 }
