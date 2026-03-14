@@ -88,6 +88,8 @@
                 The first argument is an <code>IntuMessage</code> envelope. The <code>body</code> field contains
                 the parsed payload (typed as <code>unknown</code>, cast as needed). Protocol-specific metadata
                 is available in optional nested objects like <code>msg.http</code>, <code>msg.file</code>, etc.
+                See the full <a href="intumessage.html">IntuMessage specification</a> for the Go struct,
+                serialization format, lifecycle, and design principles.
             </p>
 
             <table class="docs-table">
@@ -138,6 +140,21 @@
                         <td><code>tcp</code></td>
                         <td><code>IntuTCP?</code></td>
                         <td>TCP metadata: <code>remoteAddr</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>smtp</code></td>
+                        <td><code>IntuSMTP?</code></td>
+                        <td>SMTP metadata: <code>from</code>, <code>to</code>, <code>subject</code>, <code>cc</code>, <code>bcc</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>dicom</code></td>
+                        <td><code>IntuDICOM?</code></td>
+                        <td>DICOM metadata: <code>callingAE</code>, <code>calledAE</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>database</code></td>
+                        <td><code>IntuDatabase?</code></td>
+                        <td>Database metadata: <code>query</code>, <code>params</code></td>
                     </tr>
                 </tbody>
             </table>

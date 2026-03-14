@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntuMessage - intu docs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <main class="docs-main">
+        <div class="docs-content">
+            <div class="breadcrumb">
+                <a href="index.html">Docs</a>
+                <span class="sep">/</span>
+                <span class="current">IntuMessage</span>
+            </div>
+
+            <h1><span class="gradient-text">IntuMessage</span></h1>
+            <p class="subtitle">The universal message envelope that flows through every pipeline stage</p>
+
+            <h2>Overview</h2>
+            <p>
+                <strong>IntuMessage</strong> is the foundational data structure of intu. It is a thin,
+                immutable-intent envelope that wraps raw message data together with transport-specific
+                metadata. Every byte that enters a channel through a source connector is immediately
+                wrapped in an IntuMessage, and every pipeline stage &mdash; from preprocessor through
+                postprocessor &mdash; receives and returns an IntuMessage.
+            </p>
+            <p>
+                The design follows three principles:
+            </p>
+            <ul>
+                <li><strong>Stage-agnostic</strong> &mdash; IntuMessage does not store which pipeline stage it is in. Stage tracking belongs to the pipeline context (<code>IntuContext</code>).</li>
+                <li><strong>Transport-aware</strong> &mdash; IntuMessage carries the transport method (source or destination protocol) and protocol-specific metadata so transformers can inspect and modify routing information.</li>
+                <li><strong>Encoding-preserving</strong> &mdash; The raw body preserves the original source encoding. A <code>sourceCharset</code> field records the original character set so downstream stages can make informed decisions about encoding.</li>
+            </ul>
+
+            <div class="callout callout-info">
+                <strong>Pipeline as Code</strong>
+                The entire &ldquo;pipeline as code&rdquo; vision depends on a clear, stable IntuMessage contract.
+                All pipeline transforms and transports operate on IntuMessage exclusively. Future plugin
+                stages will follow the same contract: <code>Plugin(stage, process(IntuMessage))</code>.
+            </div>
+
+            <h2>Go Struct</h2>
+            <p>
+                IntuMessage is defined in <code>internal/message/message.go</code>. This is the
+                canonical, server-side representation constructed the moment a source connector
+                finishes receiving data.
+            </p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">go</span></div>
+                <pre><code>type Message struct {
+    ID            string            // UUID, assigned at creation
+    CorrelationID string            // Trace ID across systems (defaults to ID)
+    ChannelID     string            // Owning channel, set by runtime
+    Raw           []byte            // Original message body bytes
+    Transport     string            // Source protocol: "http", "kafka", "file", etc.
+    ContentType   ContentType       // Declared data format: "json", "hl7v2", "fhir_r4", etc.
+    SourceCharset string            // Original charset (e.g. "iso-8859-1"); empty = UTF-8
+    HTTP          *HTTPMeta         // HTTP-specific metadata
+    File          *FileMeta         // File-specific metadata
+    FTP           *FTPMeta          // FTP/SFTP-specific metadata
+    Kafka         *KafkaMeta        // Kafka-specific metadata
+    TCP           *TCPMeta          // TCP-specific metadata
+    SMTP          *SMTPMeta         // SMTP-specific metadata
+    DICOM         *DICOMMeta        // DICOM-specific metadata
+    Database      *DatabaseMeta     // Database-specific metadata
+    Metadata      map[string]any    // Arbitrary key-value metadata
+    Timestamp     time.Time         // Time the message was received
+}</code></pre>
+            </div>
+
+            <h3>Transport Metadata</h3>
+            <p>
+                Each protocol has a dedicated metadata struct. Only the struct matching
+                <code>Transport</code> is populated &mdash; the rest are <code>nil</code>.
+            </p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Transport</th>
+                        <th>Metadata Struct</th>
+                        <th>Key Fields</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>http</code></td>
+                        <td><code>HTTPMeta</code></td>
+                        <td><code>Headers</code>, <code>QueryParams</code>, <code>PathParams</code>, <code>Method</code>, <code>StatusCode</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>file</code></td>
+                        <td><code>FileMeta</code></td>
+                        <td><code>Filename</code>, <code>Directory</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>ftp</code> / <code>sftp</code></td>
+                        <td><code>FTPMeta</code></td>
+                        <td><code>Filename</code>, <code>Directory</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>kafka</code></td>
+                        <td><code>KafkaMeta</code></td>
+                        <td><code>Headers</code>, <code>Topic</code>, <code>Key</code>, <code>Partition</code>, <code>Offset</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>tcp</code></td>
+                        <td><code>TCPMeta</code></td>
+                        <td><code>RemoteAddr</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>smtp</code> / <code>email</code></td>
+                        <td><code>SMTPMeta</code></td>
+                        <td><code>From</code>, <code>To</code>, <code>Subject</code>, <code>CC</code>, <code>BCC</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>dicom</code></td>
+                        <td><code>DICOMMeta</code></td>
+                        <td><code>CallingAE</code>, <code>CalledAE</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>database</code></td>
+                        <td><code>DatabaseMeta</code></td>
+                        <td><code>Query</code>, <code>Params</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Content Types</h3>
+            <p>The <code>ContentType</code> field declares the data format of the body:</p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Value</th>
+                        <th>Format</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>raw</code></td><td>Unstructured text/bytes (default)</td></tr>
+                    <tr><td><code>json</code></td><td>JSON</td></tr>
+                    <tr><td><code>xml</code></td><td>XML</td></tr>
+                    <tr><td><code>csv</code></td><td>CSV / Delimited</td></tr>
+                    <tr><td><code>hl7v2</code></td><td>HL7 v2.x pipe-delimited</td></tr>
+                    <tr><td><code>hl7v3</code></td><td>HL7 v3 / CDA</td></tr>
+                    <tr><td><code>fhir_r4</code></td><td>FHIR R4 JSON</td></tr>
+                    <tr><td><code>x12</code></td><td>X12 EDI</td></tr>
+                    <tr><td><code>ccda</code></td><td>C-CDA XML</td></tr>
+                    <tr><td><code>dicom</code></td><td>DICOM binary</td></tr>
+                    <tr><td><code>binary</code></td><td>Opaque binary</td></tr>
+                    <tr><td><code>delimited</code></td><td>Custom-delimited text</td></tr>
+                </tbody>
+            </table>
+
+            <h2>TypeScript Interface</h2>
+            <p>
+                When IntuMessage crosses the Go &harr; TypeScript boundary, it is serialized as JSON.
+                Every scaffolded project includes <code>src/types/intu.d.ts</code> with globally-available
+                type declarations. Transformers, validators, and filters all receive an <code>IntuMessage</code>
+                as their first argument.
+            </p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>interface IntuMessage {
+  body: unknown;
+  transport?: string;
+  contentType?: string;
+
+  http?: IntuHTTP;
+  file?: IntuFile;
+  ftp?: IntuFTP;
+  kafka?: IntuKafka;
+  tcp?: IntuTCP;
+  smtp?: IntuSMTP;
+  dicom?: IntuDICOM;
+  database?: IntuDatabase;
+}</code></pre>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>Body Type</strong>
+                In the pipeline, <code>body</code> is the <strong>parsed</strong> payload (e.g. a JSON object
+                if the inbound data type is <code>json</code>). In <code>.intuJSON</code> storage format,
+                <code>body</code> is the raw string (or base64-encoded object for binary).
+            </div>
+
+            <h2>Lifecycle</h2>
+            <p>
+                IntuMessage is created once and flows through the entire pipeline. Different views of the
+                same message are used at different stages, but the identity (ID, CorrelationID) remains
+                constant within a single processing run.
+            </p>
+
+            <h3>1. Construction (Source Connector)</h3>
+            <p>
+                When a source connector finishes receiving data, it creates an IntuMessage with
+                <code>message.New(channelID, rawBytes)</code>. This assigns a UUID, sets the
+                timestamp, and initializes the metadata map. The connector then stamps
+                <code>Transport</code> and the matching protocol metadata.
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">go</span></div>
+                <pre><code>// HTTP source example
+msg := message.New("", body)
+msg.Transport = "http"
+msg.SourceCharset = encoding.ExtractCharset(r.Header.Get("Content-Type"))
+http := msg.EnsureHTTP()
+http.Headers = extractHeaders(r)
+http.Method = r.Method</code></pre>
+            </div>
+
+            <h3>2. Channel Assignment</h3>
+            <p>
+                The channel runtime sets <code>msg.ChannelID</code> before any pipeline processing
+                begins. The message is then stored as <code>"received"</code> if storage mode permits.
+            </p>
+
+            <h3>3. Pipeline Processing (Go &rarr; TypeScript &rarr; Go)</h3>
+            <p>
+                The pipeline converts the Go <code>Message</code> struct into a <code>map[string]any</code>
+                via <code>buildIntuMessage()</code>, which is then JSON-serialized and sent to the Node.js
+                worker process. TypeScript functions receive it as an <code>IntuMessage</code> object and
+                return a (possibly modified) <code>IntuMessage</code>. The pipeline then parses the result
+                back into a Go <code>Message</code> via <code>parseIntuResult()</code>.
+            </p>
+            <p>
+                This round-trip is designed to be lossless for the fields that transformers can
+                read and modify: <code>body</code>, <code>transport</code>, <code>contentType</code>,
+                and all transport metadata.
+            </p>
+
+            <h3>4. Destination Pipeline</h3>
+            <p>
+                For each destination, a separate <code>buildDestIntuMessage()</code> constructs
+                a destination-oriented IntuMessage where transport metadata reflects the
+                <strong>outbound</strong> protocol (from destination config) rather than the
+                inbound source. Destination transformers see the outbound transport context.
+            </p>
+
+            <h3>5. Storage</h3>
+            <p>
+                At each pipeline milestone (<code>received</code>, <code>transformed</code>,
+                <code>filtered</code>, <code>sent</code>, <code>error</code>, <code>response</code>),
+                the message may be stored via <code>ToIntuJSON()</code>. Storage behavior depends on mode:
+            </p>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Mode</th>
+                        <th>Behavior</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>none</code></td>
+                        <td>No storage at all</td>
+                    </tr>
+                    <tr>
+                        <td><code>status</code></td>
+                        <td>Stores record metadata (ID, stage, status, timestamp) but NOT the message body</td>
+                    </tr>
+                    <tr>
+                        <td><code>full</code></td>
+                        <td>Stores the complete IntuMessage JSON envelope including body</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>6. Reprocess / Replay</h3>
+            <p>
+                Stored messages can be replayed via the CLI (<code>intu reprocess</code>) or the dashboard.
+                The CLI path uses <code>FromIntuJSON()</code> to reconstruct a full <code>Message</code>
+                from the stored envelope, preserving transport metadata. The message gets a new ID
+                and is re-run through the full pipeline with
+                <code>metadata["reprocessed"] = true</code> and <code>metadata["original_message_id"]</code>
+                set for traceability.
+            </p>
+
+            <h2>IntuJSON Format</h2>
+            <p>
+                <code>.intuJSON</code> is the canonical serialization format for IntuMessage. It is used for
+                persistent storage, message export, and reprocessing. The format is produced by
+                <code>Message.ToIntuJSON()</code> and consumed by <code>message.FromIntuJSON()</code>.
+            </p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                <pre><code>{
+  "body": "MSH|^~\\&|SENDER|FAC|RECEIVER|FAC|...",
+  "transport": "tcp",
+  "contentType": "hl7v2",
+  "tcp": {
+    "remoteAddr": "10.0.1.50:4321"
+  }
+}</code></pre>
+            </div>
+
+            <h3>Binary Body Encoding</h3>
+            <p>
+                If the raw body is valid UTF-8, it is stored as a plain JSON string. Otherwise,
+                it is base64-encoded to prevent data corruption:
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                <pre><code>{
+  "body": {
+    "base64": "SGVsbG8gV29ybGQ=",
+    "size": 11
+  },
+  "transport": "dicom",
+  "contentType": "binary"
+}</code></pre>
+            </div>
+
+            <h2>Go &harr; TypeScript Serialization</h2>
+            <p>
+                The pipeline boundary between Go and TypeScript is a JSON bridge over stdin/stdout
+                to Node.js worker processes. IntuMessage is converted between the two runtimes as follows:
+            </p>
+
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Direction</th>
+                        <th>Method</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Go &rarr; TS</td>
+                        <td><code>buildIntuMessage()</code></td>
+                        <td>Builds <code>map[string]any</code> from <code>Message</code>. Body is the <strong>parsed</strong> payload (not raw bytes). JSON-serialized via <code>encoding/json</code>.</td>
+                    </tr>
+                    <tr>
+                        <td>TS &rarr; Go</td>
+                        <td><code>parseIntuResult()</code></td>
+                        <td>Parses the transformer's return <code>map[string]any</code> back into body + <code>Message</code> fields. Restores <code>contentType</code>, <code>transport</code>, and all transport metadata.</td>
+                    </tr>
+                    <tr>
+                        <td>Go &rarr; Storage</td>
+                        <td><code>ToIntuJSON()</code></td>
+                        <td>Serializes the <strong>raw bytes</strong> as body (string or base64). Includes transport and protocol metadata.</td>
+                    </tr>
+                    <tr>
+                        <td>Storage &rarr; Go</td>
+                        <td><code>FromIntuJSON()</code></td>
+                        <td>Reconstructs <code>Message</code> from stored JSON. Restores raw bytes, transport, and protocol metadata.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>IntuContext</h2>
+            <p>
+                Pipeline context is passed alongside IntuMessage as a separate <code>IntuContext</code>
+                object. It carries channel identity, message identity, data type hints, and shared map
+                variables. IntuContext is intentionally separate from IntuMessage to keep the message
+                stage-agnostic.
+            </p>
+
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">typescript</span></div>
+                <pre><code>interface IntuContext {
+  channelId: string;
+  correlationId: string;
+  messageId: string;
+  timestamp: string;           // ISO 8601 / RFC 3339
+  inboundDataType?: string;    // from channel data_types.inbound
+  outboundDataType?: string;   // from channel data_types.outbound
+  destinationName?: string;    // set in destination pipeline stages
+  sourceMessage?: IntuMessage; // original source IntuMessage (in dest stages)
+  globalMap: IntuMap;
+  channelMap: IntuMap;
+  responseMap: IntuMap;
+  connectorMap?: IntuMap;
+}</code></pre>
+            </div>
+
+            <h2>Structure Audit</h2>
+            <p>
+                This section documents gaps between the current implementation and the product vision
+                for IntuMessage. Each finding includes severity, impact, and a recommended fix.
+            </p>
+
+            <h3>GAP-1: Two IntuMessage JSON Shapes</h3>
+            <div class="callout callout-warning">
+                <strong>Severity: High</strong>
+                The pipeline serialization (<code>buildIntuMessage</code>) and storage serialization
+                (<code>ToIntuJSON</code>) produce structurally different JSON for the same message.
+                Pipeline body is parsed data; storage body is raw string/base64.
+                Neither shape includes <code>sourceCharset</code> or the generic <code>metadata</code> map.
+            </div>
+            <p>
+                <strong>Impact:</strong> Confusing contract &mdash; "IntuMessage" means different things depending on
+                context. Transformers cannot access <code>sourceCharset</code> or custom metadata set by
+                source connectors. Storage envelope is incomplete for faithful reconstruction.
+            </p>
+            <p>
+                <strong>Recommendation:</strong> Unify the shapes. Add <code>sourceCharset</code> and
+                <code>metadata</code> to both serialization paths. The body type difference (parsed vs raw) is
+                intentional but should be explicitly documented as "pipeline form" vs "storage form".
+            </p>
+
+            <h3>GAP-2: SourceCharset Missing from Pipeline IntuMessage</h3>
+            <div class="callout callout-warning">
+                <strong>Severity: High</strong>
+                <code>msg.SourceCharset</code> is set by source connectors (e.g. HTTP extracts charset from
+                Content-Type) but is not included in the <code>map[string]any</code> passed to TypeScript.
+                The TypeScript <code>IntuMessage</code> interface has no <code>sourceCharset</code> field.
+            </div>
+            <p>
+                <strong>Impact:</strong> Transformers processing multi-encoding healthcare data
+                (common with HL7v2 from legacy systems sending ISO-8859-1 or Windows-1252) cannot
+                determine the original encoding. This breaks the vision of IntuMessage as the sole
+                data carrier.
+            </p>
+            <p>
+                <strong>Recommendation:</strong> Add <code>sourceCharset</code> to
+                <code>buildIntuMessage()</code>, <code>ToIntuJSON()</code>, <code>FromIntuJSON()</code>,
+                and the TypeScript <code>IntuMessage</code> interface.
+            </p>
+
+            <h3>GAP-3: Metadata Map Missing from Pipeline IntuMessage</h3>
+            <div class="callout callout-warning">
+                <strong>Severity: High</strong>
+                Sources set custom metadata (e.g. <code>metadata["filename"]</code> from the file source,
+                <code>metadata["reprocessed"]</code> from reprocessing). This <code>Metadata</code> map
+                is NOT included in <code>buildIntuMessage()</code>.
+            </div>
+            <p>
+                <strong>Impact:</strong> TypeScript transformers cannot access connector-set metadata.
+                Custom metadata set during preprocessing is invisible to downstream stages. This severely
+                limits the usefulness of the metadata map and blocks the plugin extensibility vision.
+            </p>
+            <p>
+                <strong>Recommendation:</strong> Add <code>metadata</code> to both pipeline and storage
+                IntuMessage serialization. Include it in the TypeScript interface as
+                <code>metadata?: Record&lt;string, unknown&gt;</code>.
+            </p>
+
+            <h3>GAP-4: ToIntuJSON() Does Not Round-Trip Identity Fields</h3>
+            <div class="callout callout-warning">
+                <strong>Severity: High</strong>
+                <code>ToIntuJSON()</code> does not include <code>id</code>, <code>correlationId</code>,
+                <code>timestamp</code>, <code>channelId</code>, or <code>sourceCharset</code>.
+                <code>FromIntuJSON()</code> calls <code>message.New()</code> which generates fresh
+                UUID and timestamp. A round-trip through <code>ToIntuJSON() &rarr; FromIntuJSON()</code>
+                produces a message with different identity.
+            </div>
+            <p>
+                <strong>Impact:</strong> Export and re-import of messages is lossy. The product vision
+                requires that <em>"import, export, replay IntuMessage should be smooth and produce 100%
+                predictable outcome"</em>. Currently, only the CLI reprocess path compensates by
+                restoring <code>CorrelationID</code> from the <code>MessageRecord</code> wrapper.
+            </p>
+            <p>
+                <strong>Recommendation:</strong> Include <code>id</code>, <code>correlationId</code>,
+                <code>timestamp</code>, <code>channelId</code>, <code>sourceCharset</code>, and
+                <code>metadata</code> in <code>ToIntuJSON()</code>. Update <code>FromIntuJSON()</code>
+                to restore these fields instead of generating new ones. This makes <code>.intuJSON</code>
+                a fully self-contained, portable envelope.
+            </p>
+
+            <h3>GAP-5: Dashboard Reprocess Path Inconsistency</h3>
+            <div class="callout callout-info">
+                <strong>Severity: Medium</strong>
+                The CLI reprocess path (<code>cmd/reprocess.go</code>) uses <code>FromIntuJSON()</code>
+                to rebuild messages, preserving transport metadata. The dashboard reprocess path
+                (<code>cmd/serve.go</code> callback) constructs <code>message.New(channelID, rawContent)</code>
+                directly, losing transport metadata.
+            </div>
+            <p>
+                <strong>Impact:</strong> Messages replayed via the dashboard may behave differently
+                than those replayed via the CLI, breaking the predictability guarantee.
+            </p>
+            <p>
+                <strong>Recommendation:</strong> Unify both reprocess paths to use
+                <code>FromIntuJSON()</code>. Extract the shared logic into a
+                <code>message.Rebuild()</code> or similar function.
+            </p>
+
+            <h3>GAP-6: No Formal .intuJSON Specification</h3>
+            <div class="callout callout-info">
+                <strong>Severity: Medium</strong>
+                There is no JSON schema, file extension convention, or version field for the IntuMessage
+                JSON envelope. The format exists only as Go code in <code>ToIntuJSON()</code> /
+                <code>FromIntuJSON()</code>.
+            </div>
+            <p>
+                <strong>Impact:</strong> No forward/backward compatibility guarantees. External tools
+                cannot validate <code>.intuJSON</code> files. Plugin authors have no formal specification
+                to code against.
+            </p>
+            <p>
+                <strong>Recommendation:</strong> Add a <code>version</code> field (e.g.
+                <code>"version": "1"</code>) to the envelope. Create a JSON schema at
+                <code>docs/schema/intumessage.schema.json</code>. Define <code>.intuJSON</code> as the
+                canonical file extension for exported messages.
+            </p>
+
+            <h3>GAP-7: No Plugin Interface for Custom Pipeline Stages</h3>
+            <div class="callout callout-info">
+                <strong>Severity: Medium (Future)</strong>
+                Pipeline stages are hard-coded in <code>pipeline.go</code>. There is no middleware chain
+                or registration mechanism for custom stages between listener and destination.
+            </div>
+            <p>
+                <strong>Impact:</strong> The vision of
+                <code>Plugin(stage, process(IntuMessage))</code> cannot be realized without a plugin
+                host interface. Custom processing (audit logging, enrichment, compliance checks) must
+                currently be embedded in transformers rather than composed as independent stages.
+            </p>
+            <p>
+                <strong>Recommendation:</strong> Design a <code>PipelineStage</code> interface in Go:
+            </p>
+            <div class="code-block">
+                <div class="code-block-header"><span class="code-block-lang">go</span></div>
+                <pre><code>type PipelineStage interface {
+    Name() string
+    Phase() Phase  // BeforeValidation, AfterTransform, BeforeDestination, etc.
+    Process(ctx context.Context, msg *message.Message) (*message.Message, error)
+}</code></pre>
+            </div>
+            <p>
+                Register stages via channel YAML or a plugin config block. Execute them
+                at the declared phase in the pipeline loop. This requires adding an explicit
+                <code>stage</code> field to <code>IntuContext</code> so plugins know where they are.
+            </p>
+
+            <h3>GAP-8: Context Missing Explicit Stage Field</h3>
+            <div class="callout callout-info">
+                <strong>Severity: Medium</strong>
+                <code>buildPipelineCtx()</code> does not include a <code>stage</code> field. The current
+                stage is implicit based on which pipeline function is called.
+            </div>
+            <p>
+                <strong>Impact:</strong> Reusable TypeScript modules that behave differently per stage
+                cannot introspect their execution context. Plugin support requires stage awareness.
+            </p>
+            <p>
+                <strong>Recommendation:</strong> Add <code>stage?: string</code> to <code>IntuContext</code>.
+                Set it in each pipeline step: <code>"preprocessor"</code>, <code>"validator"</code>,
+                <code>"source_filter"</code>, <code>"transformer"</code>, <code>"destination_filter"</code>,
+                <code>"destination_transformer"</code>, <code>"response_transformer"</code>,
+                <code>"postprocessor"</code>.
+            </p>
+
+            <h3>GAP-9: Redis Queue Uses Separate Serialization</h3>
+            <div class="callout callout-tip">
+                <strong>Severity: Low</strong>
+                <code>redisQueueItem</code> in <code>internal/retry/redis_queue.go</code> mirrors
+                <code>message.Message</code> field-by-field with JSON struct tags. This is a separate
+                serialization path that must be kept in manual sync.
+            </div>
+            <p>
+                <strong>Impact:</strong> If fields are added to <code>Message</code> (e.g.
+                <code>sourceCharset</code>, <code>metadata</code>), the Redis queue struct must be
+                updated separately or data is lost during retry.
+            </p>
+            <p>
+                <strong>Recommendation:</strong> Replace <code>redisQueueItem</code> with
+                <code>ToIntuJSON()</code> / <code>FromIntuJSON()</code> for Redis serialization,
+                once GAP-4 is resolved and the envelope includes identity fields.
+            </p>
+
+            <h3>GAP-10: Transformers Docs Incomplete</h3>
+            <div class="callout callout-tip">
+                <strong>Severity: Low</strong>
+                The <a href="transformers.html">Transformers</a> documentation table lists HTTP, File, FTP,
+                Kafka, and TCP transport metadata but omits SMTP, DICOM, and Database.
+            </div>
+            <p>
+                <strong>Recommendation:</strong> Add the missing transport metadata entries to the
+                Transformers page IntuMessage table.
+            </p>
+
+            <h2>Next-Step Plan</h2>
+            <p>
+                The following plan addresses the gaps above in priority order. Each step is
+                independently shippable and backward-compatible.
+            </p>
+
+            <h3>Phase 1: Envelope Completeness (High Priority)</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Task</th>
+                        <th>Addresses</th>
+                        <th>Files</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1.1</td>
+                        <td>Add <code>sourceCharset</code> and <code>metadata</code> to <code>buildIntuMessage()</code></td>
+                        <td>GAP-2, GAP-3</td>
+                        <td><code>internal/runtime/pipeline.go</code></td>
+                    </tr>
+                    <tr>
+                        <td>1.2</td>
+                        <td>Add <code>sourceCharset</code> and <code>metadata</code> to <code>ToIntuJSON()</code> / <code>FromIntuJSON()</code></td>
+                        <td>GAP-1, GAP-2, GAP-3</td>
+                        <td><code>internal/message/message.go</code></td>
+                    </tr>
+                    <tr>
+                        <td>1.3</td>
+                        <td>Add <code>id</code>, <code>correlationId</code>, <code>timestamp</code>, <code>channelId</code> to <code>ToIntuJSON()</code>; restore in <code>FromIntuJSON()</code></td>
+                        <td>GAP-4</td>
+                        <td><code>internal/message/message.go</code></td>
+                    </tr>
+                    <tr>
+                        <td>1.4</td>
+                        <td>Update TypeScript <code>IntuMessage</code> interface: add <code>sourceCharset?</code> and <code>metadata?</code></td>
+                        <td>GAP-2, GAP-3</td>
+                        <td><code>internal/bootstrap/templates.go</code></td>
+                    </tr>
+                    <tr>
+                        <td>1.5</td>
+                        <td>Add <code>metadata</code> to <code>parseIntuResult()</code> round-trip</td>
+                        <td>GAP-3</td>
+                        <td><code>internal/runtime/pipeline.go</code></td>
+                    </tr>
+                    <tr>
+                        <td>1.6</td>
+                        <td>Update tests for round-trip fidelity</td>
+                        <td>GAP-1, GAP-4</td>
+                        <td><code>internal/message/</code>, <code>internal/runtime/</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Phase 2: Consistency &amp; Specification (Medium Priority)</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Task</th>
+                        <th>Addresses</th>
+                        <th>Files</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>2.1</td>
+                        <td>Unify dashboard reprocess path to use <code>FromIntuJSON()</code></td>
+                        <td>GAP-5</td>
+                        <td><code>cmd/serve.go</code>, <code>internal/dashboard/server.go</code></td>
+                    </tr>
+                    <tr>
+                        <td>2.2</td>
+                        <td>Add <code>version</code> field to <code>.intuJSON</code> envelope</td>
+                        <td>GAP-6</td>
+                        <td><code>internal/message/message.go</code></td>
+                    </tr>
+                    <tr>
+                        <td>2.3</td>
+                        <td>Create <code>docs/schema/intumessage.schema.json</code></td>
+                        <td>GAP-6</td>
+                        <td><code>docs/schema/</code></td>
+                    </tr>
+                    <tr>
+                        <td>2.4</td>
+                        <td>Add <code>stage</code> field to <code>IntuContext</code> and set it in each pipeline step</td>
+                        <td>GAP-8</td>
+                        <td><code>internal/runtime/pipeline.go</code>, <code>internal/bootstrap/templates.go</code></td>
+                    </tr>
+                    <tr>
+                        <td>2.5</td>
+                        <td>Replace <code>redisQueueItem</code> with <code>ToIntuJSON</code> / <code>FromIntuJSON</code></td>
+                        <td>GAP-9</td>
+                        <td><code>internal/retry/redis_queue.go</code></td>
+                    </tr>
+                    <tr>
+                        <td>2.6</td>
+                        <td>Add missing transport types to Transformers docs</td>
+                        <td>GAP-10</td>
+                        <td><code>docs/documentation/transformers.html</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Phase 3: Plugin Architecture (Future)</h3>
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Task</th>
+                        <th>Addresses</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>3.1</td>
+                        <td>Design <code>PipelineStage</code> Go interface with <code>Name()</code>, <code>Phase()</code>, <code>Process()</code></td>
+                        <td>GAP-7</td>
+                    </tr>
+                    <tr>
+                        <td>3.2</td>
+                        <td>Add plugin registration in channel YAML (<code>plugins:</code> block)</td>
+                        <td>GAP-7</td>
+                    </tr>
+                    <tr>
+                        <td>3.3</td>
+                        <td>Implement plugin execution loop in <code>Pipeline.Execute()</code></td>
+                        <td>GAP-7</td>
+                    </tr>
+                    <tr>
+                        <td>3.4</td>
+                        <td>Support TypeScript-based plugins via the Node.js runner</td>
+                        <td>GAP-7</td>
+                    </tr>
+                    <tr>
+                        <td>3.5</td>
+                        <td>Publish plugin SDK types in the <code>intu-dev</code> npm package</td>
+                        <td>GAP-7</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Design Principles</h2>
+            <p>
+                When modifying or extending IntuMessage, follow these guiding principles:
+            </p>
+            <ul>
+                <li><strong>Single carrier</strong> &mdash; All pipeline data must flow through IntuMessage. No side-channel state.</li>
+                <li><strong>Serialize once, deserialize once</strong> &mdash; Minimize the number of serialization formats. Prefer <code>.intuJSON</code> everywhere.</li>
+                <li><strong>Transport metadata is a union, not inheritance</strong> &mdash; Each protocol gets an optional struct. Only one is populated at a time. No polymorphism.</li>
+                <li><strong>Identity is sacred</strong> &mdash; ID and CorrelationID must survive serialization round-trips for traceability.</li>
+                <li><strong>Encoding fidelity</strong> &mdash; Raw bytes are never silently transcoded. The original charset is always recorded.</li>
+                <li><strong>Stage independence</strong> &mdash; IntuMessage must never assume which pipeline stage it is in. Stage context belongs in <code>IntuContext</code>.</li>
+                <li><strong>Plugin-ready</strong> &mdash; Every field that plugins might need must be accessible. Prefer inclusion over omission.</li>
+            </ul>
+
+            <div class="docs-footer">
+                <a href="transformers.html">&larr; Transformers</a>
+                <a href="schema.html">Schema Reference &rarr;</a>
+            </div>
+        </div>
+    </main>
+    <script>window.DOC_ROOT='.';window.DOCS_PAGE='intumessage';</script>
+    <script src="assets/nav.js"></script>
+</body>
+</html>
