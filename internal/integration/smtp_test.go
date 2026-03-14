@@ -24,6 +24,8 @@ func TestSMTPDest_SendsEmail(t *testing.T) {
 		t.Skip("MailHog container not available")
 	}
 
+	clearMailHog(t)
+
 	dest := connector.NewSMTPDest("smtp-dest", &config.SMTPDestMapConfig{
 		Host:    mailhogC.SMTPHost,
 		Port:    mailhogC.SMTPPort,

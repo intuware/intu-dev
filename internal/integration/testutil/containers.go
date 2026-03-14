@@ -223,7 +223,10 @@ func StartGreenMailContainer(ctx context.Context) (*GreenMailContainer, error) {
 		Env: map[string]string{
 			"GREENMAIL_OPTS": "-Dgreenmail.setup.test.all -Dgreenmail.users=testuser:testpass",
 		},
-		WaitingFor: wait.ForListeningPort("3143/tcp").WithStartupTimeout(60 * time.Second),
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort("3025/tcp").WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("3143/tcp").WithStartupTimeout(60*time.Second),
+		),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

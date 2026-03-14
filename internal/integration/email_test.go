@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +22,7 @@ import (
 )
 
 // sendTestEmail delivers an email to GreenMail via SMTP so the EmailSource
-// can pick it up via IMAP on its next poll.
+// can pick it up via IMAP on its next poll. Retries on EOF in case SMTP is still starting.
 func sendTestEmail(t *testing.T, subject, body string) {
 	t.Helper()
 	addr := greenmailC.SMTPAddr()
@@ -29,7 +30,18 @@ func sendTestEmail(t *testing.T, subject, body string) {
 		"From: lab@hospital.com\r\n" +
 		"To: testuser@localhost\r\n" +
 		"\r\n" + body
-	err := smtp.SendMail(addr, nil, "lab@hospital.com", []string{"testuser@localhost"}, []byte(msg))
+	var err error
+	for i := 0; i < 3; i++ {
+		err = smtp.SendMail(addr, nil, "lab@hospital.com", []string{"testuser@localhost"}, []byte(msg))
+		if err == nil {
+			return
+		}
+		if i < 2 && errors.Is(err, io.EOF) {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		break
+	}
 	require.NoError(t, err, "send test email to GreenMail")
 }
 
