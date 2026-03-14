@@ -24,6 +24,7 @@
         { title: 'IHE', href: '/sources/ihe.html', id: 'source-ihe' }
       ]
     },
+    { title: 'IntuMessage', href: '/intumessage.html', id: 'intumessage' },
     { title: 'Validators', href: '/validators.html', id: 'validators' },
     { title: 'Transformers', href: '/transformers.html', id: 'transformers' },
     {

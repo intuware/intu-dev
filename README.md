@@ -135,6 +135,26 @@ All commands accept `--log-level (debug|info|warn|error)` (default: `info`).
 | `intu message get <id> [--json]` | Get a specific message |
 | `intu dashboard [--dir] [--port]` | Launch dashboard standalone |
 
+## IntuMessage
+
+Every byte flowing through intu is wrapped in an **IntuMessage** — a universal envelope carrying the raw body, transport protocol, and protocol-specific metadata. IntuMessage is created in Go the moment a source connector finishes receiving data and flows unchanged through every pipeline stage.
+
+```
+┌─────────────────────────────────────────────────────┐
+│ IntuMessage                                         │
+│                                                     │
+│  body          raw payload (string or base64)       │
+│  transport     "http" | "kafka" | "file" | ...      │
+│  contentType   "json" | "hl7v2" | "fhir_r4" | ...  │
+│  http/kafka/   transport-specific metadata          │
+│  file/tcp/...  (only matching transport populated)  │
+│  sourceCharset original encoding (empty = UTF-8)    │
+│  metadata      arbitrary key-value pairs            │
+└─────────────────────────────────────────────────────┘
+```
+
+TypeScript transformers receive `IntuMessage` as their first argument and return a (possibly modified) `IntuMessage`. The contract is the same for validators, filters, preprocessors, and postprocessors. See the full [IntuMessage specification](https://intu.dev/documentation/intumessage.html) for the Go struct, TypeScript interface, serialization formats, and design principles.
+
 ## Sources & Destinations
 
 ### Sources
