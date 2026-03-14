@@ -680,6 +680,8 @@ interface IntuMessage {
   body: unknown;
   transport?: string;
   contentType?: string;
+  sourceCharset?: string;
+  metadata?: Record<string, unknown>;
 
   http?: IntuHTTP;
   file?: IntuFile;
@@ -696,6 +698,7 @@ interface IntuContext {
   correlationId: string;
   messageId: string;
   timestamp: string;
+  stage?: string;
   inboundDataType?: string;
   outboundDataType?: string;
   destinationName?: string;
@@ -704,6 +707,25 @@ interface IntuContext {
   channelMap: IntuMap;
   responseMap: IntuMap;
   connectorMap?: IntuMap;
+}
+
+/** Phase enumeration for pipeline plugin stages. */
+type IntuPluginPhase =
+  | "before_validation"
+  | "after_validation"
+  | "before_transform"
+  | "after_transform"
+  | "before_destination"
+  | "after_destination";
+
+/** Plugin process function signature for TypeScript-based pipeline plugins. */
+type IntuPluginProcessFn = (msg: IntuMessage, ctx: IntuContext) => IntuMessage | void;
+
+/** A pipeline plugin registered via the channel YAML plugins block. */
+interface IntuPlugin {
+  name: string;
+  phase: IntuPluginPhase;
+  process: IntuPluginProcessFn;
 }
 `
 

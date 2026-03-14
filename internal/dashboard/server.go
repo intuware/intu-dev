@@ -22,7 +22,7 @@ import (
 	"github.com/intuware/intu-dev/pkg/config"
 )
 
-type ReprocessFunc func(ctx context.Context, channelID string, rawContent []byte) error
+type ReprocessFunc func(ctx context.Context, record *storage.MessageRecord) error
 type ChannelActionFunc func(ctx context.Context, channelID string) error
 
 type Server struct {
@@ -497,7 +497,7 @@ func (s *Server) handleReprocess(w http.ResponseWriter, r *http.Request, msgID s
 		return
 	}
 
-	if err := s.reprocessFn(r.Context(), record.ChannelID, record.Content); err != nil {
+	if err := s.reprocessFn(r.Context(), record); err != nil {
 		s.logger.Error("reprocess failed via dashboard",
 			"originalID", msgID,
 			"channel", record.ChannelID,

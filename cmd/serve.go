@@ -259,10 +259,9 @@ func newServeCmd() *cobra.Command {
 
 				channelsDir := filepath.Join(dir, cfg.ChannelsDir)
 
-				reprocessFn := func(ctx context.Context, channelID string, rawContent []byte) error {
-					msg := message.New(channelID, rawContent)
-					msg.Metadata["reprocessed"] = true
-					return engine.ReprocessMessage(ctx, channelID, msg)
+				reprocessFn := func(ctx context.Context, record *storage.MessageRecord) error {
+					msg := message.Rebuild(record.ID, record.CorrelationID, record.ChannelID, record.Content, record.Timestamp)
+					return engine.ReprocessMessage(ctx, record.ChannelID, msg)
 				}
 
 				var rbac *auth.RBACManager

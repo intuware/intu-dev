@@ -2,7 +2,6 @@ package retry
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -24,24 +23,9 @@ type RedisDestinationQueue struct {
 	wg       sync.WaitGroup
 }
 
-type redisQueueItem struct {
-	ID            string                 `json:"id"`
-	CorrelationID string                 `json:"correlation_id"`
-	ChannelID     string                 `json:"channel_id"`
-	Raw           []byte                 `json:"raw"`
-	Transport     string                 `json:"transport,omitempty"`
-	ContentType   string                 `json:"content_type"`
-	HTTP          *message.HTTPMeta      `json:"http,omitempty"`
-	File          *message.FileMeta      `json:"file,omitempty"`
-	FTP           *message.FTPMeta       `json:"ftp,omitempty"`
-	Kafka         *message.KafkaMeta     `json:"kafka,omitempty"`
-	TCP           *message.TCPMeta       `json:"tcp,omitempty"`
-	SMTP          *message.SMTPMeta      `json:"smtp,omitempty"`
-	DICOM         *message.DICOMMeta     `json:"dicom,omitempty"`
-	Database      *message.DatabaseMeta  `json:"database,omitempty"`
-	Metadata      map[string]any         `json:"metadata"`
-	Timestamp     int64                  `json:"timestamp"`
-}
+// Redis queue items are serialized using the canonical IntuMessage JSON
+// envelope (ToIntuJSON / FromIntuJSON) so that adding fields to Message
+// automatically propagates without a separate struct to maintain.
 
 func NewRedisDestinationQueue(
 	client *redis.Client,
@@ -85,26 +69,7 @@ func NewRedisDestinationQueue(
 }
 
 func (q *RedisDestinationQueue) Enqueue(ctx context.Context, msg *message.Message) error {
-	item := redisQueueItem{
-		ID:            msg.ID,
-		CorrelationID: msg.CorrelationID,
-		ChannelID:     msg.ChannelID,
-		Raw:           msg.Raw,
-		Transport:     msg.Transport,
-		ContentType:   string(msg.ContentType),
-		HTTP:          msg.HTTP,
-		File:          msg.File,
-		FTP:           msg.FTP,
-		Kafka:         msg.Kafka,
-		TCP:           msg.TCP,
-		SMTP:          msg.SMTP,
-		DICOM:         msg.DICOM,
-		Database:      msg.Database,
-		Metadata:      msg.Metadata,
-		Timestamp:     msg.Timestamp.UnixMilli(),
-	}
-
-	data, err := json.Marshal(item)
+	data, err := msg.ToIntuJSON()
 	if err != nil {
 		return fmt.Errorf("marshal queue item: %w", err)
 	}
@@ -154,32 +119,13 @@ func (q *RedisDestinationQueue) worker(ctx context.Context) {
 			continue
 		}
 
-		var item redisQueueItem
-		if err := json.Unmarshal([]byte(result[1]), &item); err != nil {
+		msg, err := message.FromIntuJSON([]byte(result[1]), "")
+		if err != nil {
 			q.logger.Error("failed to unmarshal queue item",
 				"queue", q.name,
 				"error", err,
 			)
 			continue
-		}
-
-		msg := &message.Message{
-			ID:            item.ID,
-			CorrelationID: item.CorrelationID,
-			ChannelID:     item.ChannelID,
-			Raw:           item.Raw,
-			Transport:     item.Transport,
-			ContentType:   message.ContentType(item.ContentType),
-			HTTP:          item.HTTP,
-			File:          item.File,
-			FTP:           item.FTP,
-			Kafka:         item.Kafka,
-			TCP:           item.TCP,
-			SMTP:          item.SMTP,
-			DICOM:         item.DICOM,
-			Database:      item.Database,
-			Metadata:      item.Metadata,
-			Timestamp:     time.UnixMilli(item.Timestamp),
 		}
 
 		resp, err := q.send(ctx, msg)

@@ -36,10 +36,18 @@ type ChannelConfig struct {
 	Tracing        *TracingConfig        `yaml:"tracing,omitempty"`
 	Performance    *PerformanceConfig    `yaml:"performance,omitempty"`
 	Pruning        *ChannelPruningConfig `yaml:"pruning,omitempty"`
+	Plugins        []PluginConfig        `yaml:"plugins,omitempty"`
 	DependsOn      []string              `yaml:"depends_on,omitempty"`
 	StartupOrder   int                   `yaml:"startup_order,omitempty"`
 	CodeTemplates  []string              `yaml:"code_templates,omitempty"`
 	AutoResponse   *AutoResponseConfig   `yaml:"auto_response,omitempty"`
+}
+
+// PluginConfig declares a pipeline plugin registered via channel YAML.
+type PluginConfig struct {
+	Name       string `yaml:"name"`
+	Phase      string `yaml:"phase"`
+	Entrypoint string `yaml:"entrypoint"`
 }
 
 type AutoResponseConfig struct {

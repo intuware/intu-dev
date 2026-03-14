@@ -163,33 +163,33 @@ metadata but omitted SMTP, DICOM, and Database.
 
 Each phase is independently shippable and backward-compatible.
 
-### Phase 1: Envelope Completeness (High Priority)
+### Phase 1: Envelope Completeness (High Priority) ✅ IMPLEMENTED
 
-| #   | Task | Gaps | Files |
-|-----|------|------|-------|
-| 1.1 | Add `sourceCharset` and `metadata` to `buildIntuMessage()` | GAP-2, GAP-3 | `internal/runtime/pipeline.go` |
-| 1.2 | Add `sourceCharset` and `metadata` to `ToIntuJSON()` / `FromIntuJSON()` | GAP-1, GAP-2, GAP-3 | `internal/message/message.go` |
-| 1.3 | Add `id`, `correlationId`, `timestamp`, `channelId` to `ToIntuJSON()`; restore in `FromIntuJSON()` | GAP-4 | `internal/message/message.go` |
-| 1.4 | Update TypeScript `IntuMessage` interface: add `sourceCharset?` and `metadata?` | GAP-2, GAP-3 | `internal/bootstrap/templates.go` |
-| 1.5 | Add `metadata` to `parseIntuResult()` round-trip | GAP-3 | `internal/runtime/pipeline.go` |
-| 1.6 | Update tests for round-trip fidelity | GAP-1, GAP-4 | `internal/message/`, `internal/runtime/` |
+| #   | Task | Gaps | Files | Status |
+|-----|------|------|-------|--------|
+| 1.1 | Add `sourceCharset` and `metadata` to `buildIntuMessage()` | GAP-2, GAP-3 | `internal/runtime/pipeline.go` | ✅ |
+| 1.2 | Add `sourceCharset` and `metadata` to `ToIntuJSON()` / `FromIntuJSON()` | GAP-1, GAP-2, GAP-3 | `internal/message/message.go` | ✅ |
+| 1.3 | Add `id`, `correlationId`, `timestamp`, `channelId` to `ToIntuJSON()`; restore in `FromIntuJSON()` | GAP-4 | `internal/message/message.go` | ✅ |
+| 1.4 | Update TypeScript `IntuMessage` interface: add `sourceCharset?` and `metadata?` | GAP-2, GAP-3 | `internal/bootstrap/templates.go` | ✅ |
+| 1.5 | Add `metadata` to `parseIntuResult()` round-trip | GAP-3 | `internal/runtime/pipeline.go` | ✅ |
+| 1.6 | Update tests for round-trip fidelity | GAP-1, GAP-4 | `internal/message/`, `internal/runtime/` | ✅ |
 
-### Phase 2: Consistency & Specification (Medium Priority)
+### Phase 2: Consistency & Specification (Medium Priority) ✅ IMPLEMENTED
 
-| #   | Task | Gaps | Files |
-|-----|------|------|-------|
-| 2.1 | Unify dashboard reprocess to use `FromIntuJSON()` | GAP-5 | `cmd/serve.go`, `internal/dashboard/server.go` |
-| 2.2 | Add `version` field to `.intuJSON` envelope | GAP-6 | `internal/message/message.go` |
-| 2.3 | Create `docs/schema/intumessage.schema.json` | GAP-6 | `docs/schema/` |
-| 2.4 | Add `stage` to `IntuContext`, set in each pipeline step | GAP-8 | `internal/runtime/pipeline.go`, `internal/bootstrap/templates.go` |
-| 2.5 | Replace `redisQueueItem` with `ToIntuJSON` / `FromIntuJSON` | GAP-9 | `internal/retry/redis_queue.go` |
+| #   | Task | Gaps | Files | Status |
+|-----|------|------|-------|--------|
+| 2.1 | Unify dashboard reprocess to use `FromIntuJSON()` via `message.Rebuild()` | GAP-5 | `cmd/serve.go`, `internal/dashboard/server.go` | ✅ |
+| 2.2 | Add `version` field to `.intuJSON` envelope | GAP-6 | `internal/message/message.go` | ✅ |
+| 2.3 | Create `docs/schema/intumessage.schema.json` | GAP-6 | `docs/schema/` | ✅ |
+| 2.4 | Add `stage` to `IntuContext`, set in each pipeline step | GAP-8 | `internal/runtime/pipeline.go`, `internal/bootstrap/templates.go` | ✅ |
+| 2.5 | Replace `redisQueueItem` with `ToIntuJSON` / `FromIntuJSON` | GAP-9 | `internal/retry/redis_queue.go` | ✅ |
 
-### Phase 3: Plugin Architecture (Future)
+### Phase 3: Plugin Architecture ✅ IMPLEMENTED
 
-| #   | Task | Gaps |
-|-----|------|------|
-| 3.1 | Design `PipelineStage` Go interface: `Name()`, `Phase()`, `Process()` | GAP-7 |
-| 3.2 | Add plugin registration in channel YAML (`plugins:` block) | GAP-7 |
-| 3.3 | Implement plugin execution loop in `Pipeline.Execute()` | GAP-7 |
-| 3.4 | Support TypeScript-based plugins via Node.js runner | GAP-7 |
-| 3.5 | Publish plugin SDK types in `intu-dev` npm package | GAP-7 |
+| #   | Task | Gaps | Files | Status |
+|-----|------|------|-------|--------|
+| 3.1 | Design `PipelineStage` Go interface: `Name()`, `Phase()`, `Process()` | GAP-7 | `internal/runtime/plugin.go` | ✅ |
+| 3.2 | Add plugin registration in channel YAML (`plugins:` block) | GAP-7 | `pkg/config/channel.go` | ✅ |
+| 3.3 | Implement plugin execution loop in `Pipeline.Execute()` | GAP-7 | `internal/runtime/pipeline.go` | ✅ |
+| 3.4 | Support TypeScript-based plugins via Node.js runner | GAP-7 | `internal/runtime/plugin.go` | ✅ |
+| 3.5 | Publish plugin SDK types in `intu-dev` npm package | GAP-7 | `npm/types/intu.d.ts` | ✅ |
