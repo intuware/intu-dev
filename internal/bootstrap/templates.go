@@ -857,7 +857,7 @@ VS Code setup (.vscode/settings.json):
 
 ## Documentation
 
-https://intu.dev/documentation/index.html
+https://intu.dev/getting-started/
 `
 
 const dockerfile = `# --- Build stage ---

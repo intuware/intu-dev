@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <a href="https://intu.dev">Website</a> · <a href="https://intu.dev/documentation/index.html">Docs</a> · <a href="https://www.npmjs.com/package/intu-dev">npm</a> · <a href="https://github.com/intuware/intu-dev/issues">Issues</a>
+  <a href="https://intu.dev">Website</a> · <a href="https://intu.dev/getting-started/">Docs</a> · <a href="https://www.npmjs.com/package/intu-dev">npm</a> · <a href="https://github.com/intuware/intu-dev/issues">Issues</a>
 </p>
 
 ---
@@ -153,7 +153,7 @@ Every byte flowing through intu is wrapped in an **IntuMessage** — a universal
 └─────────────────────────────────────────────────────┘
 ```
 
-TypeScript transformers receive `IntuMessage` as their first argument and return a (possibly modified) `IntuMessage`. The contract is the same for validators, filters, preprocessors, and postprocessors. See the full [IntuMessage specification](https://intu.dev/documentation/intumessage.html) for the Go struct, TypeScript interface, serialization formats, and design principles.
+TypeScript transformers receive `IntuMessage` as their first argument and return a (possibly modified) `IntuMessage`. The contract is the same for validators, filters, preprocessors, and postprocessors. See the full [IntuMessage specification](https://intu.dev/getting-started/intumessage/) for the Go struct, TypeScript interface, serialization formats, and design principles.
 
 ## Sources & Destinations
 

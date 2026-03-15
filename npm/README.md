@@ -7,7 +7,7 @@
 [![CI](https://github.com/intuware/intu-dev/actions/workflows/ci.yml/badge.svg)](https://github.com/intuware/intu-dev/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MPL--2.0-blue)](https://github.com/intuware/intu-dev/blob/main/LICENSE)
 
-[Website](https://intu.dev) · [Docs](https://intu.dev/documentation/index.html) · [GitHub](https://github.com/intuware/intu-dev) · [Issues](https://github.com/intuware/intu-dev/issues)
+[Website](https://intu.dev) · [Docs](https://intu.dev/getting-started/) · [GitHub](https://github.com/intuware/intu-dev) · [Issues](https://github.com/intuware/intu-dev/issues)
 
 ---
 
@@ -105,7 +105,7 @@ Each channel is a folder with `channel.yaml` (config) and TypeScript files (tran
 
 All commands accept `--dir` (project root) and `--log-level (debug|info|warn|error)`.
 
-See the [full CLI docs](https://intu.dev/documentation/cli.html) for all flags and options.
+See the [full CLI docs](https://intu.dev/reference/cli/) for all flags and options.
 
 ## Connectors
 
