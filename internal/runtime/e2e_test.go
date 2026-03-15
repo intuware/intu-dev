@@ -545,6 +545,11 @@ exports.transform = function transform(msg, ctx) {
 		t.Fatalf("expected family=Smith, got %v", name0["family"])
 	}
 
+	// Wait for file source to move both HL7 files to processedDir (may lag slightly after dest receives)
+	waitFor(t, 3*time.Second, func() bool {
+		entries, _ := os.ReadDir(processedDir)
+		return len(entries) >= 2
+	})
 	processedEntries, _ := os.ReadDir(processedDir)
 	if len(processedEntries) != 2 {
 		t.Fatalf("expected 2 processed HL7 files, got %d", len(processedEntries))
