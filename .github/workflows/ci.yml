@@ -46,14 +46,21 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@latest
 
-      - name: Test
-        run: gotestsum --junitfile junit.xml --format testdox -- go test ./... -v -race -count=1
+      - name: Run unit and contract tests
+        run: gotestsum --junitfile junit.xml --format testdox -- go test -v -race -count=1 -coverprofile=coverage.out ./...
 
-      - name: Upload JUnit XML
+      - name: Extract coverage percentage
+        run: |
+          go tool cover -func=coverage.out | grep total | awk '{gsub(/%/,""); print $3}' > coverage.txt
+          cat coverage.txt
+
+      - name: Upload JUnit XML and coverage
         uses: actions/upload-artifact@v4
         with:
           name: junit-unit-and-contract
-          path: junit.xml
+          path: |
+            junit.xml
+            coverage.txt
           retention-days: 30
 
   build:
@@ -100,7 +107,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download JUnit XML
+      - name: Download JUnit XML and coverage
         uses: actions/download-artifact@v4
         with:
           name: junit-unit-and-contract
@@ -122,10 +129,18 @@ jobs:
           mkdir -p badges
           echo "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"${TESTS}\",\"color\":\"${COLOR}\"}" > badges/tests.json
 
-      - name: Commit and push badge
+      - name: Write coverage badge JSON
+        run: |
+          COVER=$(cat coverage.txt 2>/dev/null || echo "0")
+          if [ -z "$COVER" ]; then COVER=0; fi
+          COLOR=red
+          if awk "BEGIN {exit !($COVER >= 80)}"; then COLOR=green; elif awk "BEGIN {exit !($COVER >= 50)}"; then COLOR=yellow; fi
+          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COVER}%\",\"color\":\"${COLOR}\"}" > badges/coverage.json
+
+      - name: Commit and push badges
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add badges/tests.json
-          git diff --staged --quiet || git commit -m "chore: update test count badge [skip ci]"
+          git add badges/tests.json badges/coverage.json
+          git diff --staged --quiet || git commit -m "chore: update test and coverage badges [skip ci]"
           git push

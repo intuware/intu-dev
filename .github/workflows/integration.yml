@@ -36,12 +36,7 @@ jobs:
         run: go install gotest.tools/gotestsum@latest
 
       - name: Run integration tests
-        run: |
-          gotestsum --junitfile junit-integration.xml --format testdox -- \
-            go test ./internal/integration/... \
-              -v -race -count=1 \
-              -tags=integration \
-              -timeout=15m
+        run: gotestsum --junitfile junit-integration.xml --format testdox -- go test -v -race -count=1 -tags=integration -timeout=15m ./internal/integration/...
 
       - name: Upload JUnit XML
         uses: actions/upload-artifact@v4

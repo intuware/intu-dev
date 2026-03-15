@@ -315,6 +315,14 @@ func TestMultiDest_KafkaToSFTPAndDB(t *testing.T) {
 	require.NoError(t, json.Unmarshal(sftpData, &sftpResult))
 	assert.Equal(t, "kafka-to-sftp-db", sftpResult["channelId"])
 
+	// Wait for DB write to complete (destinations are sequential but DB round-trip can lag in CI)
+	testutil.WaitFor(t, 10*time.Second, func() bool {
+		var c int
+		if err := db.QueryRow("SELECT COUNT(*) FROM audit_log WHERE channel_id = 'kafka-to-sftp-db'").Scan(&c); err != nil {
+			return false
+		}
+		return c >= 1
+	})
 	var count int
 	err = db.QueryRow("SELECT COUNT(*) FROM audit_log WHERE channel_id = 'kafka-to-sftp-db'").Scan(&count)
 	require.NoError(t, err)
