@@ -33,9 +33,29 @@ func TestBootstrapProjectCreatesProject(t *testing.T) {
 			t.Fatalf("expected file %s to exist: %v", absPath, err)
 		}
 	}
+
+	// AGENTS.md and Cursor rule are created for AI guidance
+	agentsPath := filepath.Join(root, "AGENTS.md")
+	if _, err := os.Stat(agentsPath); err != nil {
+		t.Fatalf("expected AGENTS.md to exist: %v", err)
+	}
+	agentsContent, err := os.ReadFile(agentsPath)
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	for _, key := range []string{"listener", "intu validate", "destinations"} {
+		if !strings.Contains(string(agentsContent), key) {
+			t.Errorf("AGENTS.md should contain %q", key)
+		}
+	}
+
+	rulePath := filepath.Join(root, ".cursor", "rules", "intu-yaml.mdc")
+	if _, err := os.Stat(rulePath); err != nil {
+		t.Fatalf("expected .cursor/rules/intu-yaml.mdc to exist: %v", err)
+	}
 }
 
-func TestBootstrapProjectIsIdempotentWithoutForce(t *testing.T) {
+func TestBootstrapProjectErrorsWhenDirExists(t *testing.T) {
 	dir := t.TempDir()
 	scaffolder := NewScaffolder(slog.Default())
 
@@ -43,13 +63,12 @@ func TestBootstrapProjectIsIdempotentWithoutForce(t *testing.T) {
 		t.Fatalf("first bootstrap failed: %v", err)
 	}
 
-	result, err := scaffolder.BootstrapProject(dir, "test", false)
-	if err != nil {
-		t.Fatalf("second bootstrap failed: %v", err)
+	_, err := scaffolder.BootstrapProject(dir, "test", false)
+	if err == nil {
+		t.Fatal("second bootstrap without force should fail when project dir exists")
 	}
-
-	if result.Skipped != len(projectFiles("test")) {
-		t.Fatalf("expected %d skipped files, got %d", len(projectFiles("test")), result.Skipped)
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected error to mention directory already exists, got: %v", err)
 	}
 }
 

@@ -10,6 +10,7 @@ var projectDirectories = []string{
 	"src/channels/fhir-to-adt",
 	"src/types",
 	".vscode",
+	".cursor/rules",
 }
 
 func projectFiles(projectName string) map[string]string {
@@ -28,6 +29,8 @@ func projectFiles(projectName string) map[string]string {
 		"tsconfig.json":                        tsConfigJSON,
 		"src/types/intu.d.ts":                  intuDTS,
 		"README.md":                            projectREADME,
+		"AGENTS.md":                            agentsMD,
+		".cursor/rules/intu-yaml.mdc":          cursorRuleIntuYaml,
 		"Dockerfile":                           dockerfile,
 		"docker-compose.yml":                   fmt.Sprintf(dockerComposeTpl, projectName, projectName, projectName, projectName),
 		".dockerignore":                        dockerignore,
@@ -860,6 +863,121 @@ VS Code setup (.vscode/settings.json):
 ## Documentation
 
 https://intu.dev/getting-started/
+`
+
+const agentsMD = `# AGENTS.md — AI guidance for intu projects
+
+This project was bootstrapped with **intu** (healthcare interoperability framework). Follow the rules below so AI assistants can work efficiently on channels, config, and TypeScript.
+
+## Strict YAML structure
+
+### Channel config (src/channels/**/channel.yaml)
+
+- **Required top-level keys**: id, enabled, listener.
+- **Listener**: Set listener.type to exactly one supported source type (see tables below). Provide **exactly one** type-specific block under listener whose key matches the type (e.g. listener.type: http → listener.http with port, optional path, methods, tls, auth). Do not add listener blocks for other types.
+- **Destinations**: Either a list of strings (names from intu.yaml → destinations) or a list of objects. Each object must have type (one supported destination type) and the matching type-specific block (e.g. type: file → file: directory, filename_pattern). Use ref when referencing a named destination from the root config.
+- **Scripts**: validator.entrypoint and transformer.entrypoint (or pipeline.*) refer to files in the same channel directory (e.g. validator.ts, transformer.ts).
+- **Schema**: https://intu.dev/schema/channel.schema.json — .vscode/settings.json maps this to channel YAML files.
+
+### Profile config (intu.yaml, intu.dev.yaml, intu.prod.yaml)
+
+- **Top-level keys**: Use only keys from the profile schema: runtime, channels_dir, destinations, kafka, secrets, dead_letter, message_storage, pruning, observability, alerts, access_control, roles, audit, cluster, global, tenancy, dashboard, code_templates, logging.
+- **Named destinations**: Under destinations, each entry must have type and the corresponding block (e.g. type: file → file: directory, filename_pattern).
+- **Secrets**: Use environment variable references in YAML (e.g. ${INTU_POSTGRES_DSN}); resolved from .env or OS at runtime.
+- **Schema**: https://intu.dev/schema/profile.schema.json
+
+### Validation
+
+After editing YAML or TypeScript, run **intu validate --dir .** from the project root. Do not invent new listener or destination types; use only the types listed below and in the schemas.
+
+## intu CLI
+
+Most commands accept **--dir <path>** (default: current directory). Run from the project root or pass --dir to it.
+
+| Command | Description |
+|---------|-------------|
+| intu init <name> | Bootstrap a new project (already done for this project) |
+| intu serve | Run engine + dashboard (hot-reload, auto-compile TS) |
+| npm run dev | Same as intu serve with dev profile |
+| intu validate | Validate project YAML and channel definitions — run after config/TS changes |
+| intu c <name> | Add a new channel (shorthand for intu channel add) |
+| intu channel add <name> | Add channel under src/channels/<name>/ |
+| intu channel list | List all channels |
+| intu channel describe <id> | Describe a channel |
+| intu channel clone <src> <dest> | Clone a channel |
+| intu deploy <id> | Enable a channel |
+| intu undeploy <id> | Disable a channel |
+| intu stats [id] | Channel statistics |
+| intu message list / get / count | Browse and search messages |
+| intu reprocess message <id> | Reprocess a message |
+| intu build | Compile TypeScript (optional; intu serve auto-compiles) |
+| intu prune | Prune old message data |
+| intu import mirth <file> | Import Mirth Connect channel XML |
+| intu dashboard | Dashboard only (also included in intu serve) |
+
+## Supported sources (listener types)
+
+Set **listener.type** to one of these and provide the matching block under **listener**.
+
+| Type | Description | Key config block |
+|------|-------------|------------------|
+| http | HTTP/REST listener | listener.http: port, path, methods, tls, auth |
+| tcp | TCP/MLLP (e.g. HL7v2) | listener.tcp: port, mode (raw/mllp), ack, response |
+| file | File/directory poller (local, S3, FTP, SMB) | listener.file: directory, file_pattern, poll_interval, scheme, s3/ftp/smb |
+| channel | Receive from another channel | listener.channel: source_channel_id |
+| sftp | SFTP poller | listener.sftp: host, port, directory, file_pattern, auth |
+| database | DB polling | listener.database: driver, dsn, poll_interval, query |
+| kafka | Kafka consumer | listener.kafka: brokers, topic, group_id, offset |
+| email | IMAP/POP3 | listener.email: protocol, host, port, auth, folder |
+| dicom | DICOM C-STORE SCP | listener.dicom: port, ae_title, calling_ae_titles |
+| soap | SOAP endpoint | listener.soap: port, wsdl_path, service_name |
+| fhir | FHIR R4 server (REST + optional subscription) | listener.fhir: port, base_path, resources, version |
+| fhir_poll | FHIR HTTP polling (external server) | listener.fhir_poll: base_url, poll_interval, resources, poll_range |
+| fhir_subscription | FHIR R4B Subscription (rest-hook / websocket) | listener.fhir_subscription: channel_type, port/path or websocket_url |
+| ihe | IHE profile | listener.ihe: profile, port |
+
+## Supported destinations
+
+Set **type** to one of these and provide the matching block (or **ref** to a named destination in intu.yaml).
+
+| Type | Description | Key config block |
+|------|-------------|------------------|
+| http | HTTP/REST | http: url, method, headers, auth, tls |
+| file | Local/file | file: directory, filename_pattern (supports {{channelId}}, {{messageId}}, {{timestamp}}) |
+| channel | Route to another channel | channel: target_channel_id |
+| tcp | TCP/MLLP | tcp: host, port, mode, timeout_ms, tls |
+| kafka | Kafka producer | kafka: brokers, topic, auth, tls |
+| database | DB insert/upsert | database: driver, dsn, statement |
+| smtp | Email (SMTP) | smtp: host, port, from, to, subject, auth, tls |
+| dicom | DICOM C-STORE SCU | dicom: host, port, ae_title, called_ae_title |
+| jms | JMS queue | jms: provider, url, queue, auth |
+| sftp | SFTP | sftp: host, port, directory, filename_pattern, auth |
+| fhir | FHIR server | fhir: base_url, version, operations, auth |
+| direct | Direct messaging | direct: to, from, certificate, smtp |
+| log | Log only (no external system) | no block |
+
+## Project layout
+
+- **intu.yaml**, **intu.dev.yaml**, **intu.prod.yaml** — root profile and named destinations.
+- **src/channels/<channel-id>/** — one directory per channel: channel.yaml, optional transformer.ts, validator.ts.
+- **src/types/intu.d.ts** — TypeScript types for IntuMessage, IntuContext.
+- **.vscode/settings.json** — YAML schema mapping (already configured).
+- **intu validate** loads all channel and profile YAMLs; duplicate listener port+path are rejected.
+`
+
+const cursorRuleIntuYaml = `---
+description: intu channel and profile YAML — follow schema and type blocks
+globs: ["**/channel.yaml", "intu.yaml", "intu.*.yaml"]
+alwaysApply: false
+---
+
+# intu YAML rules
+
+- Follow the JSON schemas: channel → https://intu.dev/schema/channel.schema.json, profile → https://intu.dev/schema/profile.schema.json.
+- For each channel: set **listener.type** to one supported source type and provide exactly one matching block under **listener** (e.g. **listener.http** when type is http).
+- For each destination: set **type** and the matching block (e.g. **file** with directory, filename_pattern when type is file). Use **ref** for named destinations in intu.yaml.
+- Use ${VAR} for secrets in YAML; do not hardcode credentials.
+- After editing, run **intu validate --dir .** from the project root to check config and channel definitions.
 `
 
 const dockerfile = `# --- Build stage ---

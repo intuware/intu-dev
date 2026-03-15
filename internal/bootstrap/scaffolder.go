@@ -29,6 +29,14 @@ func (s *Scaffolder) BootstrapProject(dir, projectName string, force bool) (*Res
 	cleanRoot := filepath.Clean(root)
 	result := &Result{Root: cleanRoot}
 
+	if stat, err := os.Stat(cleanRoot); err == nil {
+		if stat.IsDir() && !force {
+			return nil, fmt.Errorf("project directory already exists: %s (use --force to overwrite)", cleanRoot)
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("stat %s: %w", cleanRoot, err)
+	}
+
 	if err := os.MkdirAll(cleanRoot, 0o755); err != nil {
 		return nil, fmt.Errorf("create root directory: %w", err)
 	}
