@@ -13,8 +13,8 @@
 
 <p align="center">
   <a href="https://github.com/intuware/intu-dev/actions/workflows/ci.yml"><img src="https://github.com/intuware/intu-dev/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/intuware/intu-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fintuware%2Fintu-dev%2Fmain%2Fbadges%2Ftests.json" alt="tests"></a>
-  <a href="https://github.com/intuware/intu-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fintuware%2Fintu-dev%2Fmain%2Fbadges%2Fcoverage.json" alt="coverage"></a>
+  <a href="https://github.com/intuware/intu-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fintuware%2Fintu-dev%2Fbadges%2Fbadges%2Ftests.json" alt="tests"></a>
+  <a href="https://github.com/intuware/intu-dev/actions/workflows/ci.yml"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fintuware%2Fintu-dev%2Fbadges%2Fbadges%2Fcoverage.json" alt="coverage"></a>
   <a href="https://www.npmjs.com/package/intu-dev"><img src="https://img.shields.io/npm/v/intu-dev?color=cb3837&label=npm" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/intu-dev"><img src="https://img.shields.io/npm/dm/intu-dev?color=38bdf8" alt="npm downloads"></a>
   <a href="https://github.com/intuware/intu-dev/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MPL--2.0-blue" alt="License"></a>
