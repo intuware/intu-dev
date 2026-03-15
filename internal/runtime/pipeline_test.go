@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"path/filepath"
@@ -11,6 +12,98 @@ import (
 	"github.com/intuware/intu-dev/internal/message"
 	"github.com/intuware/intu-dev/pkg/config"
 )
+
+func TestExecutePostprocessor_NoConfig(t *testing.T) {
+	p := &Pipeline{
+		channelID: "ch-1",
+		config:    &config.ChannelConfig{},
+		logger:    discardLogger(),
+	}
+
+	err := p.ExecutePostprocessor(context.Background(), message.New("ch1", []byte("data")), "output", nil)
+	if err != nil {
+		t.Errorf("expected nil for no postprocessor, got %v", err)
+	}
+}
+
+func TestExecutePostprocessor_NilPipeline(t *testing.T) {
+	p := &Pipeline{
+		channelID: "ch-1",
+		config:    &config.ChannelConfig{Pipeline: nil},
+		logger:    discardLogger(),
+	}
+
+	err := p.ExecutePostprocessor(context.Background(), message.New("ch1", []byte("data")), "output", nil)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
+
+func TestExecutePostprocessor_EmptyPostprocessor(t *testing.T) {
+	p := &Pipeline{
+		channelID: "ch-1",
+		config: &config.ChannelConfig{
+			Pipeline: &config.PipelineConfig{Postprocessor: ""},
+		},
+		logger: discardLogger(),
+	}
+
+	err := p.ExecutePostprocessor(context.Background(), message.New("ch1", []byte("data")), "output", nil)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
+
+func TestExecuteResponseTransformer_NoConfig(t *testing.T) {
+	p := &Pipeline{
+		channelID: "ch-1",
+		config:    &config.ChannelConfig{},
+		logger:    discardLogger(),
+	}
+
+	dest := config.ChannelDestination{Name: "d1"}
+	resp := &message.Response{StatusCode: 200, Body: []byte("ok")}
+	err := p.ExecuteResponseTransformer(context.Background(), message.New("ch1", []byte("data")), dest, resp)
+	if err != nil {
+		t.Errorf("expected nil for no response transformer, got %v", err)
+	}
+}
+
+func TestExecuteResponseTransformer_NilResponseTransformer(t *testing.T) {
+	p := &Pipeline{
+		channelID: "ch-1",
+		config:    &config.ChannelConfig{},
+		logger:    discardLogger(),
+	}
+
+	dest := config.ChannelDestination{
+		Name:                "d1",
+		ResponseTransformer: nil,
+	}
+	resp := &message.Response{StatusCode: 200}
+	err := p.ExecuteResponseTransformer(context.Background(), message.New("ch1", []byte("data")), dest, resp)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
+
+func TestExecuteResponseTransformer_EmptyEntrypoint(t *testing.T) {
+	p := &Pipeline{
+		channelID: "ch-1",
+		config:    &config.ChannelConfig{},
+		logger:    discardLogger(),
+	}
+
+	dest := config.ChannelDestination{
+		Name:                "d1",
+		ResponseTransformer: &config.ScriptRef{Entrypoint: ""},
+	}
+	resp := &message.Response{StatusCode: 200}
+	err := p.ExecuteResponseTransformer(context.Background(), message.New("ch1", []byte("data")), dest, resp)
+	if err != nil {
+		t.Errorf("expected nil, got %v", err)
+	}
+}
 
 func TestResolveDestTransformer(t *testing.T) {
 	tests := []struct {

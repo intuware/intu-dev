@@ -260,6 +260,39 @@ func TestNewConnectorMapIndependence(t *testing.T) {
 	}
 }
 
+func TestConnectorMap_Operations(t *testing.T) {
+	m := NewConnectorMap()
+
+	m.Put("key1", "val1")
+	val, ok := m.Get("key1")
+	if !ok || val != "val1" {
+		t.Fatalf("expected val1, got %v", val)
+	}
+
+	_, ok = m.Get("nonexistent")
+	if ok {
+		t.Fatal("expected false for missing key")
+	}
+
+	m.Put("key2", "val2")
+	snap := m.Snapshot()
+	if len(snap) != 2 {
+		t.Fatalf("expected 2, got %d", len(snap))
+	}
+
+	m.Remove("key1")
+	_, ok = m.Get("key1")
+	if ok {
+		t.Fatal("expected false after remove")
+	}
+
+	m.Clear()
+	snap = m.Snapshot()
+	if len(snap) != 0 {
+		t.Fatalf("expected 0 after clear, got %d", len(snap))
+	}
+}
+
 // --- ExportForChannel ---
 
 func TestExportForChannel(t *testing.T) {
