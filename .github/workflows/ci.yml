@@ -47,7 +47,7 @@ jobs:
         run: go install gotest.tools/gotestsum@latest
 
       - name: Run unit and contract tests
-        run: gotestsum --junitfile junit.xml --format testdox -- go test -v -race -count=1 -coverprofile=coverage.out ./...
+        run: gotestsum --junitfile junit.xml --format testdox -- -v -race -count=1 -coverprofile=coverage.out ./...
 
       - name: Extract coverage percentage
         run: |
