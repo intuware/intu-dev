@@ -2,6 +2,8 @@ package connector
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,16 +15,20 @@ import (
 	"github.com/intuware/intu-dev/pkg/config"
 )
 
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 // --- Source contract tests ---
 // Every SourceConnector must: Start without error, report a Type, and Stop cleanly.
 
 func TestSourceContract_HTTP(t *testing.T) {
-	src := NewHTTPSource(&config.HTTPListener{Port: 0}, testLogger())
+	src := NewHTTPSource(&config.HTTPListener{Port: 0}, discardLogger())
 	assertSourceContract(t, src, "http")
 }
 
 func TestSourceContract_TCP(t *testing.T) {
-	src := NewTCPSource(&config.TCPListener{Port: 0, Mode: "raw", TimeoutMs: 1000}, testLogger())
+	src := NewTCPSource(&config.TCPListener{Port: 0, Mode: "raw", TimeoutMs: 1000}, discardLogger())
 	assertSourceContract(t, src, "tcp")
 }
 
@@ -32,12 +38,12 @@ func TestSourceContract_File(t *testing.T) {
 		Directory:    dir,
 		FilePattern:  "*.dat",
 		PollInterval: "1s",
-	}, testLogger())
+	}, discardLogger())
 	assertSourceContract(t, src, "file/")
 }
 
 func TestSourceContract_Channel(t *testing.T) {
-	src := NewChannelSource(&config.ChannelListener{SourceChannelID: "test-ch-contract"}, testLogger())
+	src := NewChannelSource(&config.ChannelListener{SourceChannelID: "test-ch-contract"}, discardLogger())
 	assertSourceContract(t, src, "channel")
 }
 
@@ -47,7 +53,7 @@ func TestSourceContract_SFTP(t *testing.T) {
 		Port:         0,
 		Directory:    "/nonexistent",
 		PollInterval: "10s",
-	}, testLogger())
+	}, discardLogger())
 	if src.Type() != "sftp" {
 		t.Fatalf("expected type sftp, got %s", src.Type())
 	}
@@ -58,7 +64,7 @@ func TestSourceContract_Kafka(t *testing.T) {
 		Brokers: []string{"localhost:19092"},
 		Topic:   "test-topic",
 		GroupID: "test-group",
-	}, testLogger())
+	}, discardLogger())
 	if src.Type() != "kafka" {
 		t.Fatalf("expected type kafka, got %s", src.Type())
 	}
@@ -70,7 +76,7 @@ func TestSourceContract_Database(t *testing.T) {
 		DSN:          "postgres://localhost/test",
 		PollInterval: "10s",
 		Query:        "SELECT 1",
-	}, testLogger())
+	}, discardLogger())
 	if src.Type() != "database" {
 		t.Fatalf("expected type database, got %s", src.Type())
 	}
@@ -82,24 +88,24 @@ func TestSourceContract_Email(t *testing.T) {
 		Host:         "localhost",
 		Port:         143,
 		PollInterval: "10s",
-	}, testLogger())
+	}, discardLogger())
 	if src.Type() != "email/imap" {
 		t.Fatalf("expected type email/imap, got %s", src.Type())
 	}
 }
 
 func TestSourceContract_DICOM(t *testing.T) {
-	src := NewDICOMSource(&config.DICOMListener{Port: 0, AETitle: "TEST"}, testLogger())
+	src := NewDICOMSource(&config.DICOMListener{Port: 0, AETitle: "TEST"}, discardLogger())
 	assertSourceContract(t, src, "dicom")
 }
 
 func TestSourceContract_SOAP(t *testing.T) {
-	src := NewSOAPSource(&config.SOAPListener{Port: 0, ServiceName: "TestService"}, testLogger())
+	src := NewSOAPSource(&config.SOAPListener{Port: 0, ServiceName: "TestService"}, discardLogger())
 	assertSourceContract(t, src, "soap")
 }
 
 func TestSourceContract_FHIR(t *testing.T) {
-	src := NewFHIRSource(&config.FHIRListener{Port: 0, Version: "R4"}, testLogger())
+	src := NewFHIRSource(&config.FHIRListener{Port: 0, Version: "R4"}, discardLogger())
 	assertSourceContract(t, src, "fhir")
 }
 
@@ -115,7 +121,7 @@ func TestSourceContract_FHIRPoll(t *testing.T) {
 		BaseURL:      srv.URL,
 		Resources:    []string{"Patient"},
 		PollInterval: "1h",
-	}, testLogger())
+	}, discardLogger())
 	assertSourceContract(t, src, "fhir_poll")
 }
 
@@ -124,7 +130,7 @@ func TestSourceContract_FHIRSubscription_RestHook(t *testing.T) {
 		ChannelType: "rest-hook",
 		Port:        0,
 		Path:        "/fhir/subscription-notification",
-	}, testLogger())
+	}, discardLogger())
 	assertSourceContract(t, src, "fhir_subscription")
 }
 
@@ -132,7 +138,7 @@ func TestSourceContract_FHIRSubscription_WebSocket(t *testing.T) {
 	src := NewFHIRSubscriptionSource(&config.FHIRSubscriptionListener{
 		ChannelType: "websocket",
 		WebSocketURL: "ws://localhost:0/nonexistent",
-	}, testLogger())
+	}, discardLogger())
 	if src.Type() != "fhir_subscription" {
 		t.Fatalf("expected type fhir_subscription, got %s", src.Type())
 	}
@@ -150,12 +156,12 @@ func TestSourceContract_FHIRSubscription_WebSocket(t *testing.T) {
 }
 
 func TestSourceContract_IHE(t *testing.T) {
-	src := NewIHESource(&config.IHEListener{Profile: "XDS.b", Port: 0}, testLogger())
+	src := NewIHESource(&config.IHEListener{Profile: "XDS.b", Port: 0}, discardLogger())
 	assertSourceContract(t, src, "ihe/xds.b")
 }
 
 func TestSourceContract_Stub(t *testing.T) {
-	src := NewStubSource("custom", testLogger())
+	src := NewStubSource("custom", discardLogger())
 	assertSourceContract(t, src, "custom")
 }
 
@@ -193,7 +199,7 @@ func TestDestContract_HTTP(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	dest := NewHTTPDest("test", &config.HTTPDestConfig{URL: srv.URL}, testLogger())
+	dest := NewHTTPDest("test", &config.HTTPDestConfig{URL: srv.URL}, discardLogger())
 	assertDestContract(t, dest, "http")
 	assertDestCanSend(t, dest)
 }
@@ -203,7 +209,7 @@ func TestDestContract_File(t *testing.T) {
 	dest := NewFileDest("test", &config.FileDestMapConfig{
 		Directory:       dir,
 		FilenamePattern: "msg_{{messageId}}.json",
-	}, testLogger())
+	}, discardLogger())
 	assertDestContract(t, dest, "file")
 	assertDestCanSend(t, dest)
 
@@ -214,14 +220,14 @@ func TestDestContract_File(t *testing.T) {
 }
 
 func TestDestContract_Channel(t *testing.T) {
-	dest := NewChannelDest("test", "target-ch", testLogger())
+	dest := NewChannelDest("test", "target-ch", discardLogger())
 	assertDestContract(t, dest, "channel")
 }
 
 func TestDestContract_TCP(t *testing.T) {
 	dest := NewTCPDest("test", &config.TCPDestMapConfig{
 		Host: "127.0.0.1", Port: 0, Mode: "raw",
-	}, testLogger())
+	}, discardLogger())
 	if dest.Type() != "tcp" {
 		t.Fatalf("expected type tcp, got %s", dest.Type())
 	}
@@ -230,7 +236,7 @@ func TestDestContract_TCP(t *testing.T) {
 func TestDestContract_Kafka(t *testing.T) {
 	dest := NewKafkaDest("test", &config.KafkaDestConfig{
 		Brokers: []string{"localhost:19092"}, Topic: "test",
-	}, testLogger())
+	}, discardLogger())
 	if dest.Type() != "kafka" {
 		t.Fatalf("expected type kafka, got %s", dest.Type())
 	}
@@ -239,7 +245,7 @@ func TestDestContract_Kafka(t *testing.T) {
 func TestDestContract_Database(t *testing.T) {
 	dest := NewDatabaseDest("test", &config.DBDestMapConfig{
 		Driver: "postgres", DSN: "postgres://localhost/test",
-	}, testLogger())
+	}, discardLogger())
 	if dest.Type() != "database" {
 		t.Fatalf("expected type database, got %s", dest.Type())
 	}
@@ -248,7 +254,7 @@ func TestDestContract_Database(t *testing.T) {
 func TestDestContract_SMTP(t *testing.T) {
 	dest := NewSMTPDest("test", &config.SMTPDestMapConfig{
 		Host: "localhost", Port: 1025,
-	}, testLogger())
+	}, discardLogger())
 	if dest.Type() != "smtp" {
 		t.Fatalf("expected type smtp, got %s", dest.Type())
 	}
@@ -257,7 +263,7 @@ func TestDestContract_SMTP(t *testing.T) {
 func TestDestContract_DICOM(t *testing.T) {
 	dest := NewDICOMDest("test", &config.DICOMDestMapConfig{
 		Host: "localhost", Port: 104, AETitle: "TEST",
-	}, testLogger())
+	}, discardLogger())
 	if dest.Type() != "dicom" {
 		t.Fatalf("expected type dicom, got %s", dest.Type())
 	}
@@ -266,7 +272,7 @@ func TestDestContract_DICOM(t *testing.T) {
 func TestDestContract_JMS(t *testing.T) {
 	dest := NewJMSDest("test", &config.JMSDestMapConfig{
 		Provider: "activemq", URL: "http://localhost:8161", Queue: "test",
-	}, testLogger())
+	}, discardLogger())
 	if dest.Type() != "jms" {
 		t.Fatalf("expected type jms, got %s", dest.Type())
 	}
@@ -275,7 +281,7 @@ func TestDestContract_JMS(t *testing.T) {
 func TestDestContract_SFTP(t *testing.T) {
 	dest := NewSFTPDest("test", &config.SFTPDestMapConfig{
 		Host: "localhost", Port: 0, Directory: "/tmp",
-	}, testLogger())
+	}, discardLogger())
 	if dest.Type() != "sftp" {
 		t.Fatalf("expected type sftp, got %s", dest.Type())
 	}
@@ -292,21 +298,21 @@ func TestDestContract_FHIR(t *testing.T) {
 	dest := NewFHIRDest("test", &config.FHIRDestMapConfig{
 		BaseURL: srv.URL, Version: "R4",
 		Operations: []string{"Patient:create"},
-	}, testLogger())
+	}, discardLogger())
 	assertDestContract(t, dest, "fhir")
 }
 
 func TestDestContract_Direct(t *testing.T) {
 	dest := NewDirectDest("test", &config.DirectDestMapConfig{
 		To: "test@example.com", From: "intu@example.com",
-	}, testLogger())
+	}, discardLogger())
 	if dest.Type() != "direct" {
 		t.Fatalf("expected type direct, got %s", dest.Type())
 	}
 }
 
 func TestDestContract_Log(t *testing.T) {
-	dest := NewLogDest("test", testLogger())
+	dest := NewLogDest("test", discardLogger())
 	assertDestContract(t, dest, "log")
 	assertDestCanSend(t, dest)
 }
@@ -336,7 +342,7 @@ func assertDestCanSend(t *testing.T, dest DestinationConnector) {
 // --- Factory contract: every source and destination type creates without error ---
 
 func TestFactory_AllSourceTypes_ReturnCorrectType(t *testing.T) {
-	f := NewFactory(testLogger())
+	f := NewFactory(discardLogger())
 
 	dir := t.TempDir()
 	cases := []struct {
@@ -374,7 +380,7 @@ func TestFactory_AllSourceTypes_ReturnCorrectType(t *testing.T) {
 }
 
 func TestFactory_AllDestTypes_ReturnCorrectType(t *testing.T) {
-	f := NewFactory(testLogger())
+	f := NewFactory(discardLogger())
 
 	dir := filepath.Join(t.TempDir(), "output")
 	os.MkdirAll(dir, 0o755)
