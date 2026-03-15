@@ -439,7 +439,9 @@ func TestDashboardCmdCustomPort(t *testing.T) {
 	if f == nil {
 		t.Fatal("dashboard cmd missing --port flag")
 	}
-	cmd.SetArgs([]string{"--port", "4000"})
+	if err := f.Value.Set("4000"); err != nil {
+		t.Fatalf("set port flag: %v", err)
+	}
 	val, err := cmd.Flags().GetInt("port")
 	if err != nil {
 		t.Fatalf("get port flag: %v", err)
