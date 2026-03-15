@@ -1,0 +1,673 @@
+package runtime
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/intuware/intu-dev/pkg/config"
+)
+
+func TestNewHotReloader(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	cfg := minimalConfig()
+	cfg.ChannelsDir = "channels"
+	engine := NewDefaultEngine(projectDir, cfg, nil, discardLogger())
+
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	if hr.engine != engine {
+		t.Error("engine not set correctly")
+	}
+	if hr.channelsDir != channelsDir {
+		t.Errorf("channelsDir = %q, want %q", hr.channelsDir, channelsDir)
+	}
+	if hr.watcher == nil {
+		t.Error("watcher should not be nil")
+	}
+	if hr.debounce == nil {
+		t.Error("debounce map should be initialized")
+	}
+}
+
+func TestHotReloader_ChannelIDFromDir(t *testing.T) {
+	channelDir := t.TempDir()
+	channelYAML := `id: test-channel-id
+enabled: true
+listener:
+  type: http
+  http:
+    port: 0
+`
+	os.WriteFile(filepath.Join(channelDir, "channel.yaml"), []byte(channelYAML), 0o644)
+
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	id := hr.channelIDFromDir(channelDir)
+	if id != "test-channel-id" {
+		t.Errorf("channelIDFromDir() = %q, want 'test-channel-id'", id)
+	}
+}
+
+func TestHotReloader_ChannelIDFromDir_NoConfig(t *testing.T) {
+	emptyDir := t.TempDir()
+
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	id := hr.channelIDFromDir(emptyDir)
+	if id != "" {
+		t.Errorf("channelIDFromDir() = %q, want empty for dir without channel.yaml", id)
+	}
+}
+
+func TestHotReloader_ChannelIDFromDir_InvalidYAML(t *testing.T) {
+	channelDir := t.TempDir()
+	os.WriteFile(filepath.Join(channelDir, "channel.yaml"), []byte("{{invalid yaml"), 0o644)
+
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	id := hr.channelIDFromDir(channelDir)
+	if id != "" {
+		t.Errorf("channelIDFromDir() = %q, want empty for invalid YAML", id)
+	}
+}
+
+func TestHotReloader_ShouldDebounce(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	t.Run("first call returns false", func(t *testing.T) {
+		if hr.shouldDebounce("ch-1") {
+			t.Error("first call should return false (not debounced)")
+		}
+	})
+
+	t.Run("immediate second call returns true", func(t *testing.T) {
+		if !hr.shouldDebounce("ch-1") {
+			t.Error("immediate second call should return true (debounced)")
+		}
+	})
+
+	t.Run("different channel not debounced", func(t *testing.T) {
+		if hr.shouldDebounce("ch-2") {
+			t.Error("different channel should not be debounced")
+		}
+	})
+
+	t.Run("after debounce window returns false", func(t *testing.T) {
+		hr.debounceMu.Lock()
+		hr.debounce["ch-expired"] = time.Now().Add(-3 * time.Second)
+		hr.debounceMu.Unlock()
+
+		if hr.shouldDebounce("ch-expired") {
+			t.Error("should not debounce after debounce window has passed")
+		}
+	})
+}
+
+func TestHotReloader_ShouldDebounce_ConcurrentChannels(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	for i := 0; i < 10; i++ {
+		chID := "concurrent-ch"
+		if i == 0 {
+			if hr.shouldDebounce(chID) {
+				t.Error("first call should not be debounced")
+			}
+		} else {
+			if !hr.shouldDebounce(chID) {
+				t.Errorf("call %d should be debounced", i)
+			}
+		}
+	}
+}
+
+func TestHotReloader_StartStop(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	channelDir := filepath.Join(channelsDir, "test-channel")
+	os.MkdirAll(channelDir, 0o755)
+	channelYAML := `id: test-channel
+enabled: true
+listener:
+  type: http
+  http:
+    port: 0
+`
+	os.WriteFile(filepath.Join(channelDir, "channel.yaml"), []byte(channelYAML), 0o644)
+
+	cfg := minimalConfig()
+	cfg.ChannelsDir = "channels"
+	engine := NewDefaultEngine(projectDir, cfg, nil, discardLogger())
+
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := hr.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	hr.Stop()
+}
+
+func TestHotReloader_StartWithEmptyChannelsDir(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	cfg := minimalConfig()
+	cfg.ChannelsDir = "channels"
+	engine := NewDefaultEngine(projectDir, cfg, nil, discardLogger())
+
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := hr.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	hr.Stop()
+}
+
+func TestHotReloader_StartWithMultipleChannels(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+
+	for _, name := range []string{"ch-a", "ch-b"} {
+		chDir := filepath.Join(channelsDir, name)
+		os.MkdirAll(chDir, 0o755)
+		yaml := "id: " + name + "\nenabled: true\nlistener:\n  type: http\n  http:\n    port: 0\n"
+		os.WriteFile(filepath.Join(chDir, "channel.yaml"), []byte(yaml), 0o644)
+	}
+
+	cfg := minimalConfig()
+	cfg.ChannelsDir = "channels"
+	engine := NewDefaultEngine(projectDir, cfg, nil, discardLogger())
+
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := hr.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	hr.Stop()
+}
+
+func TestHotReloader_StopWithoutStart(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+
+	hr.Stop()
+}
+
+func TestHotReloader_WatchChannelDir(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	channelDir := filepath.Join(channelsDir, "test-channel")
+	os.MkdirAll(channelDir, 0o755)
+	os.WriteFile(filepath.Join(channelDir, "channel.yaml"), []byte("id: test\nenabled: true\nlistener:\n  type: http\n  http:\n    port: 0\n"), 0o644)
+	os.WriteFile(filepath.Join(channelDir, "transformer.ts"), []byte("export function transform() {}"), 0o644)
+	os.WriteFile(filepath.Join(channelDir, "README.md"), []byte("# readme"), 0o644)
+
+	subDir := filepath.Join(channelDir, "sub")
+	os.MkdirAll(subDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	hr.watchChannelDir(channelDir)
+}
+
+func TestHotReloader_ShouldDebounce_Precision(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	hr.debounceMu.Lock()
+	hr.debounce["fast-ch"] = time.Now().Add(-100 * time.Millisecond)
+	hr.debounceMu.Unlock()
+
+	if !hr.shouldDebounce("fast-ch") {
+		t.Error("100ms ago should still be debounced (within 2s window)")
+	}
+
+	hr.debounceMu.Lock()
+	hr.debounce["old-ch"] = time.Now().Add(-3 * time.Second)
+	hr.debounceMu.Unlock()
+
+	if hr.shouldDebounce("old-ch") {
+		t.Error("3s ago should NOT be debounced (outside 2s window)")
+	}
+}
+
+func TestHotReloader_ChannelIDFromDir_EmptyDir(t *testing.T) {
+	emptyDir := t.TempDir()
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	id := hr.channelIDFromDir(emptyDir)
+	if id != "" {
+		t.Errorf("expected empty ID for dir without channel.yaml, got %q", id)
+	}
+}
+
+func TestHotReloader_ChannelIDFromDir_NonexistentDir(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	id := hr.channelIDFromDir("/nonexistent/path/to/channel")
+	if id != "" {
+		t.Errorf("expected empty ID for nonexistent dir, got %q", id)
+	}
+}
+
+func TestHotReloader_WatchChannelDir_EmptyDir(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	channelDir := filepath.Join(channelsDir, "empty-channel")
+	os.MkdirAll(channelDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	hr.watchChannelDir(channelDir)
+}
+
+func TestHotReloader_WatchChannelDir_WithTSFiles(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	channelDir := filepath.Join(channelsDir, "ts-channel")
+	os.MkdirAll(channelDir, 0o755)
+
+	os.WriteFile(filepath.Join(channelDir, "channel.yaml"), []byte("id: ts\nenabled: true\nlistener:\n  type: http\n  http:\n    port: 0\n"), 0o644)
+	os.WriteFile(filepath.Join(channelDir, "transformer.ts"), []byte("export function transform(msg) { return msg; }"), 0o644)
+	os.WriteFile(filepath.Join(channelDir, "validator.ts"), []byte("export function validate(msg) { return msg; }"), 0o644)
+	os.WriteFile(filepath.Join(channelDir, "notes.txt"), []byte("not watched"), 0o644)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	hr.watchChannelDir(channelDir)
+}
+
+func TestHotReloader_WatchChannelDir_NonexistentDir(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	engine := NewDefaultEngine(projectDir, minimalConfig(), nil, discardLogger())
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	hr.watchChannelDir("/nonexistent/dir")
+}
+
+func TestHotReloader_StartStopMultipleTimes(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	cfg := minimalConfig()
+	cfg.ChannelsDir = "channels"
+	engine := NewDefaultEngine(projectDir, cfg, nil, discardLogger())
+
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := hr.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	hr.Stop()
+}
+
+func TestHotReloader_StartWithNestedChannels(t *testing.T) {
+	projectDir := t.TempDir()
+	channelsDir := filepath.Join(projectDir, "channels")
+
+	nestedDir := filepath.Join(channelsDir, "group", "subgroup", "deep-channel")
+	os.MkdirAll(nestedDir, 0o755)
+	os.WriteFile(filepath.Join(nestedDir, "channel.yaml"), []byte("id: deep-channel\nenabled: true\nlistener:\n  type: http\n  http:\n    port: 0\n"), 0o644)
+
+	cfg := minimalConfig()
+	cfg.ChannelsDir = "channels"
+	engine := NewDefaultEngine(projectDir, cfg, nil, discardLogger())
+
+	hr, err := NewHotReloader(engine, channelsDir, discardLogger())
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := hr.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	hr.Stop()
+}
+
+func TestHotReloader_HandleEvent_ChannelYAML_Write(t *testing.T) {
+	tmpDir := t.TempDir()
+	channelsDir := filepath.Join(tmpDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	chDir := filepath.Join(channelsDir, "test-ch")
+	os.MkdirAll(chDir, 0o755)
+	os.WriteFile(filepath.Join(chDir, "channel.yaml"), []byte("id: test-ch\nenabled: false\nlistener:\n  http:\n    port: 0\n"), 0o644)
+
+	cfg := &config.Config{
+		Runtime:     config.RuntimeConfig{Name: "test"},
+		ChannelsDir: "channels",
+	}
+	engine := NewDefaultEngine(tmpDir, cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	hr, err := NewHotReloader(engine, channelsDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	event := fsnotify.Event{
+		Name: filepath.Join(chDir, "channel.yaml"),
+		Op:   fsnotify.Write,
+	}
+	hr.handleEvent(event)
+}
+
+func TestHotReloader_HandleEvent_ChannelYAML_Remove(t *testing.T) {
+	tmpDir := t.TempDir()
+	channelsDir := filepath.Join(tmpDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	chDir := filepath.Join(channelsDir, "test-ch")
+	os.MkdirAll(chDir, 0o755)
+	os.WriteFile(filepath.Join(chDir, "channel.yaml"), []byte("id: test-ch\nenabled: true\nlistener:\n  http:\n    port: 0\n"), 0o644)
+
+	cfg := &config.Config{
+		Runtime:     config.RuntimeConfig{Name: "test"},
+		ChannelsDir: "channels",
+	}
+	engine := NewDefaultEngine(tmpDir, cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	hr, err := NewHotReloader(engine, channelsDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	event := fsnotify.Event{
+		Name: filepath.Join(chDir, "channel.yaml"),
+		Op:   fsnotify.Remove,
+	}
+	hr.handleEvent(event)
+}
+
+func TestHotReloader_HandleEvent_TSFile_NoChannel(t *testing.T) {
+	tmpDir := t.TempDir()
+	channelsDir := filepath.Join(tmpDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	chDir := filepath.Join(channelsDir, "test-ch")
+	os.MkdirAll(chDir, 0o755)
+
+	cfg := &config.Config{
+		Runtime:     config.RuntimeConfig{Name: "test"},
+		ChannelsDir: "channels",
+	}
+	engine := NewDefaultEngine(tmpDir, cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	hr, err := NewHotReloader(engine, channelsDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	event := fsnotify.Event{
+		Name: filepath.Join(chDir, "transformer.ts"),
+		Op:   fsnotify.Write,
+	}
+	hr.handleEvent(event)
+}
+
+func TestHotReloader_HandleEvent_NewDir_Create(t *testing.T) {
+	tmpDir := t.TempDir()
+	channelsDir := filepath.Join(tmpDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	cfg := &config.Config{
+		Runtime:     config.RuntimeConfig{Name: "test"},
+		ChannelsDir: "channels",
+	}
+	engine := NewDefaultEngine(tmpDir, cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	hr, err := NewHotReloader(engine, channelsDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	newChDir := filepath.Join(channelsDir, "new-channel")
+	os.MkdirAll(newChDir, 0o755)
+	os.WriteFile(filepath.Join(newChDir, "channel.yaml"), []byte("id: new-channel\nenabled: false\nlistener:\n  http:\n    port: 0\n"), 0o644)
+
+	event := fsnotify.Event{
+		Name: newChDir,
+		Op:   fsnotify.Create,
+	}
+	hr.handleEvent(event)
+}
+
+func TestHotReloader_HandleEvent_NonChannelFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	channelsDir := filepath.Join(tmpDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	cfg := &config.Config{
+		Runtime:     config.RuntimeConfig{Name: "test"},
+		ChannelsDir: "channels",
+	}
+	engine := NewDefaultEngine(tmpDir, cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	hr, err := NewHotReloader(engine, channelsDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+	defer hr.watcher.Close()
+
+	event := fsnotify.Event{
+		Name: filepath.Join(channelsDir, "readme.md"),
+		Op:   fsnotify.Write,
+	}
+	hr.handleEvent(event)
+}
+
+func TestHotReloader_WatchLoop_CancelledContext(t *testing.T) {
+	tmpDir := t.TempDir()
+	channelsDir := filepath.Join(tmpDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	cfg := &config.Config{
+		Runtime:     config.RuntimeConfig{Name: "test"},
+		ChannelsDir: "channels",
+	}
+	engine := NewDefaultEngine(tmpDir, cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	hr, err := NewHotReloader(engine, channelsDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewHotReloader: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	hr.ctx = ctx
+	hr.cancel = cancel
+
+	done := make(chan struct{})
+	hr.wg.Add(1)
+	go func() {
+		hr.watchLoop()
+		close(done)
+	}()
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("watchLoop did not exit")
+	}
+	hr.watcher.Close()
+}
+
+func TestHotReloader_WatchLoop_FileChange(t *testing.T) {
+	tmpDir := t.TempDir()
+	channelsDir := filepath.Join(tmpDir, "channels")
+	os.MkdirAll(channelsDir, 0o755)
+
+	chDir := filepath.Join(channelsDir, "ch1")
+	os.MkdirAll(chDir, 0o755)
+	yamlPath := filepath.Join(chDir, "channel.yaml")
+	os.WriteFile(yamlPath, []byte("id: ch1\nenabled: false\nlistener:\n  http:\n    port: 0\n"), 0o644)
+
+	cfg := &config.Config{
+		Runtime:     config.RuntimeConfig{Name: "test"},
+		ChannelsDir: "channels",
+	}
+	engine := NewDefaultEngine(tmpDir, cfg, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := engine.WatchChannels(ctx)
+	if err != nil {
+		t.Fatalf("WatchChannels: %v", err)
+	}
+
+	os.WriteFile(yamlPath, []byte("id: ch1\nenabled: false\nlistener:\n  http:\n    port: 9999\n"), 0o644)
+	time.Sleep(200 * time.Millisecond)
+
+	cancel()
+	time.Sleep(100 * time.Millisecond)
+}
