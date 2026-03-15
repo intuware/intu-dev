@@ -123,6 +123,55 @@ func TestListenerEndpoint_EmptyPathDefaultsToSlash(t *testing.T) {
 	}
 }
 
+func TestListenerEndpoint_FHIRPollReturnsZero(t *testing.T) {
+	ch := &ChannelConfig{
+		ID: "fhir-poll-ch",
+		Listener: ListenerConfig{
+			Type:     "fhir_poll",
+			FHIRPoll: &FHIRPollListener{BaseURL: "http://localhost", Resources: []string{"Patient"}},
+		},
+	}
+	port, path := ListenerEndpoint(ch)
+	if port != 0 || path != "" {
+		t.Fatalf("fhir_poll should return 0,\"\", got %d %q", port, path)
+	}
+}
+
+func TestListenerEndpoint_FHIRSubscriptionRestHookReturnsPortPath(t *testing.T) {
+	ch := &ChannelConfig{
+		ID: "fhir-sub-ch",
+		Listener: ListenerConfig{
+			Type: "fhir_subscription",
+			FHIRSubscription: &FHIRSubscriptionListener{
+				ChannelType: "rest-hook",
+				Port:        9090,
+				Path:        "/notify",
+			},
+		},
+	}
+	port, path := ListenerEndpoint(ch)
+	if port != 9090 || path != "/notify" {
+		t.Fatalf("fhir_subscription rest-hook should return 9090 /notify, got %d %q", port, path)
+	}
+}
+
+func TestListenerEndpoint_FHIRSubscriptionWebSocketReturnsZero(t *testing.T) {
+	ch := &ChannelConfig{
+		ID: "fhir-ws-ch",
+		Listener: ListenerConfig{
+			Type: "fhir_subscription",
+			FHIRSubscription: &FHIRSubscriptionListener{
+				ChannelType:  "websocket",
+				WebSocketURL: "ws://localhost:8080/ws",
+			},
+		},
+	}
+	port, path := ListenerEndpoint(ch)
+	if port != 0 || path != "" {
+		t.Fatalf("fhir_subscription websocket should return 0,\"\", got %d %q", port, path)
+	}
+}
+
 func TestMatchesProfile_EmptyProfilesMatchesAll(t *testing.T) {
 	ch := &ChannelConfig{ID: "ch-1", Profiles: nil}
 	if !ch.MatchesProfile("dev") {

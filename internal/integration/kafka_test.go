@@ -209,11 +209,12 @@ func buildIntegrationChannelRuntime(
 }
 
 // TestMain starts containers once and shares them across all tests in this package.
-// When Docker is not available, all containers are nil and individual tests skip.
+// When Docker is not available, container-based tests skip; FHIR tests (Go server) still run.
 func TestMain(m *testing.M) {
 	if !testutil.DockerAvailable() {
-		fmt.Fprintf(os.Stderr, "SKIP: %s — integration tests require Docker\n", testutil.DockerReason())
-		os.Exit(0)
+		fmt.Fprintf(os.Stderr, "WARN: %s — container-based tests will be skipped; FHIR (Go server) tests will run.\n", testutil.DockerReason())
+		code := m.Run()
+		os.Exit(code)
 	}
 
 	ctx := context.Background()

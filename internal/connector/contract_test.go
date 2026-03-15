@@ -109,6 +109,52 @@ func TestSourceContract_FHIR(t *testing.T) {
 	assertSourceContract(t, src, "fhir")
 }
 
+func TestSourceContract_FHIRPoll(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/fhir+json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"resourceType":"Bundle","type":"searchset","entry":[]}`))
+	}))
+	defer srv.Close()
+
+	src := NewFHIRPollSource(&config.FHIRPollListener{
+		BaseURL:      srv.URL,
+		Resources:    []string{"Patient"},
+		PollInterval: "1h",
+	}, discardLogger())
+	assertSourceContract(t, src, "fhir_poll")
+}
+
+func TestSourceContract_FHIRSubscription_RestHook(t *testing.T) {
+	src := NewFHIRSubscriptionSource(&config.FHIRSubscriptionListener{
+		ChannelType: "rest-hook",
+		Port:        0,
+		Path:        "/fhir/subscription-notification",
+	}, discardLogger())
+	assertSourceContract(t, src, "fhir_subscription")
+}
+
+func TestSourceContract_FHIRSubscription_WebSocket(t *testing.T) {
+	src := NewFHIRSubscriptionSource(&config.FHIRSubscriptionListener{
+		ChannelType: "websocket",
+		WebSocketURL: "ws://localhost:0/nonexistent",
+	}, discardLogger())
+	if src.Type() != "fhir_subscription" {
+		t.Fatalf("expected type fhir_subscription, got %s", src.Type())
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	err := src.Start(ctx, func(context.Context, *message.Message) error { return nil })
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+	if err := src.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+}
+
 func TestSourceContract_IHE(t *testing.T) {
 	src := NewIHESource(&config.IHEListener{Profile: "XDS.b", Port: 0}, discardLogger())
 	assertSourceContract(t, src, "ihe/xds.b")
@@ -315,6 +361,8 @@ func TestFactory_AllSourceTypes_ReturnCorrectType(t *testing.T) {
 		{"dicom", config.ListenerConfig{Type: "dicom", DICOM: &config.DICOMListener{Port: 0}}, "dicom"},
 		{"soap", config.ListenerConfig{Type: "soap", SOAP: &config.SOAPListener{Port: 0}}, "soap"},
 		{"fhir", config.ListenerConfig{Type: "fhir", FHIR: &config.FHIRListener{Port: 0}}, "fhir"},
+		{"fhir_poll", config.ListenerConfig{Type: "fhir_poll", FHIRPoll: &config.FHIRPollListener{BaseURL: "http://localhost", Resources: []string{"Patient"}}}, "fhir_poll"},
+		{"fhir_subscription", config.ListenerConfig{Type: "fhir_subscription", FHIRSubscription: &config.FHIRSubscriptionListener{ChannelType: "rest-hook", Port: 0}}, "fhir_subscription"},
 		{"ihe", config.ListenerConfig{Type: "ihe", IHE: &config.IHEListener{Profile: "XDS.b", Port: 0}}, "ihe/xds.b"},
 	}
 

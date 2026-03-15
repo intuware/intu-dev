@@ -77,8 +77,10 @@ type ListenerConfig struct {
 	Email    *EmailListener   `yaml:"email,omitempty"`
 	DICOM    *DICOMListener   `yaml:"dicom,omitempty"`
 	SOAP     *SOAPListener    `yaml:"soap,omitempty"`
-	FHIR     *FHIRListener    `yaml:"fhir,omitempty"`
-	IHE      *IHEListener     `yaml:"ihe,omitempty"`
+	FHIR             *FHIRListener             `yaml:"fhir,omitempty"`
+	FHIRPoll         *FHIRPollListener         `yaml:"fhir_poll,omitempty"`
+	FHIRSubscription *FHIRSubscriptionListener `yaml:"fhir_subscription,omitempty"`
+	IHE              *IHEListener              `yaml:"ihe,omitempty"`
 }
 
 type HTTPListener struct {
@@ -214,6 +216,34 @@ type FHIRListener struct {
 	SubscriptionType string      `yaml:"subscription_type,omitempty"`
 	TLS              *TLSConfig  `yaml:"tls,omitempty"`
 	Auth             *AuthConfig `yaml:"auth,omitempty"`
+}
+
+// FHIRPollListener configures outbound FHIR HTTP polling (GET search at interval).
+type FHIRPollListener struct {
+	BaseURL       string      `yaml:"base_url"`
+	PollInterval  string      `yaml:"poll_interval,omitempty"`
+	PollRange     string      `yaml:"poll_range,omitempty"`  // e.g. "15m", "2h" — last N duration for _lastUpdated
+	Since         string      `yaml:"since,omitempty"`       // alias for poll_range
+	DateParam     string      `yaml:"date_param,omitempty"` // default _lastUpdated; or date, onset-date, etc.
+	Resources     []string    `yaml:"resources,omitempty"`
+	SearchQueries []string    `yaml:"search_queries,omitempty"`
+	Version       string      `yaml:"version,omitempty"`
+	TLS           *TLSConfig  `yaml:"tls,omitempty"`
+	Auth          *AuthConfig `yaml:"auth,omitempty"`
+}
+
+// FHIRSubscriptionListener configures FHIR R4B Subscription source (rest-hook or websocket).
+type FHIRSubscriptionListener struct {
+	ChannelType           string      `yaml:"channel_type"` // "rest-hook" | "websocket"
+	Port                  int         `yaml:"port,omitempty"`
+	Path                  string      `yaml:"path,omitempty"`
+	WebSocketURL          string      `yaml:"websocket_url,omitempty"`
+	ReconnectBackoff      string      `yaml:"reconnect_backoff,omitempty"`       // e.g. "2s"
+	MaxReconnectAttempts  int         `yaml:"max_reconnect_attempts,omitempty"` // 0 = unlimited
+	Version               string      `yaml:"version,omitempty"`
+	SubscriptionID        string      `yaml:"subscription_id,omitempty"`
+	TLS                   *TLSConfig  `yaml:"tls,omitempty"`
+	Auth                  *AuthConfig `yaml:"auth,omitempty"`
 }
 
 type IHEListener struct {
@@ -659,6 +689,15 @@ func ListenerEndpoint(ch *ChannelConfig) (port int, path string) {
 		if l.IHE != nil {
 			port = l.IHE.Port
 			path = "/" + l.IHE.Profile
+		}
+	case "fhir_poll":
+		return 0, ""
+	case "fhir_subscription":
+		if l.FHIRSubscription != nil && l.FHIRSubscription.ChannelType == "rest-hook" {
+			port = l.FHIRSubscription.Port
+			path = l.FHIRSubscription.Path
+		} else {
+			return 0, ""
 		}
 	default:
 		return 0, ""

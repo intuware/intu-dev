@@ -1589,6 +1589,20 @@ func TestFactory_CreateAllSourceTypes(t *testing.T) {
 			},
 		},
 		{
+			name: "fhir_poll",
+			cfg: config.ListenerConfig{
+				Type: "fhir_poll",
+				FHIRPoll: &config.FHIRPollListener{BaseURL: "http://localhost", Resources: []string{"Patient"}},
+			},
+		},
+		{
+			name: "fhir_subscription",
+			cfg: config.ListenerConfig{
+				Type: "fhir_subscription",
+				FHIRSubscription: &config.FHIRSubscriptionListener{ChannelType: "rest-hook", Port: 0},
+			},
+		},
+		{
 			name: "ihe",
 			cfg: config.ListenerConfig{
 				Type: "ihe",
@@ -1633,6 +1647,22 @@ func TestFactory_NilConfig(t *testing.T) {
 	_, err := factory.CreateSource(config.ListenerConfig{Type: "http"})
 	if err == nil {
 		t.Fatal("expected error for nil http config")
+	}
+}
+
+func TestFactory_NilFHIRPollConfig(t *testing.T) {
+	factory := NewFactory(testLogger())
+	_, err := factory.CreateSource(config.ListenerConfig{Type: "fhir_poll"})
+	if err == nil {
+		t.Fatal("expected error for nil fhir_poll config")
+	}
+}
+
+func TestFactory_NilFHIRSubscriptionConfig(t *testing.T) {
+	factory := NewFactory(testLogger())
+	_, err := factory.CreateSource(config.ListenerConfig{Type: "fhir_subscription"})
+	if err == nil {
+		t.Fatal("expected error for nil fhir_subscription config")
 	}
 }
 

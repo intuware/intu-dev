@@ -2142,6 +2142,154 @@ exports.transform = function transform(msg, ctx) {
 }
 
 // ===================================================================
+// Test 23b: FHIR Poll Source -> Transformer -> HTTP Dest
+// ===================================================================
+
+func TestE2E_FHIRPollSourceToHTTPDest(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	bundle := `{"resourceType":"Bundle","type":"searchset","entry":[{"resource":{"resourceType":"Patient","id":"poll-1","name":[{"family":"Poll","given":["Test"]}]}}]}`
+	fhirServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/fhir+json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(bundle))
+	}))
+	defer fhirServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: { source: msg.transport, resource_type: msg.metadata?.resource_type, patient: msg.body } };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-fhir-poll-to-http",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "fhir_poll",
+			FHIRPoll: &config.FHIRPollListener{
+				BaseURL:      fhirServer.URL,
+				Resources:    []string{"Patient"},
+				PollInterval: "200ms",
+				PollRange:    "1h",
+			},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	fhirPollSrc := connector.NewFHIRPollSource(chCfg.Listener.FHIRPoll, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, fhirPollSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	waitFor(t, 5*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["source"] != "fhir_poll" {
+		t.Fatalf("expected source=fhir_poll, got %v", result["source"])
+	}
+	if result["resource_type"] != "Patient" {
+		t.Fatalf("expected resource_type=Patient, got %v", result["resource_type"])
+	}
+}
+
+// ===================================================================
+// Test 23c: FHIR Subscription (rest-hook) Source -> Transformer -> HTTP Dest
+// ===================================================================
+
+func TestE2E_FHIRSubscriptionRestHookToHTTPDest(t *testing.T) {
+	capture := &destCapture{}
+	destServer := httptest.NewServer(capture.handler())
+	defer destServer.Close()
+
+	channelDir := t.TempDir()
+	writeJS(t, channelDir, "transformer.js", `
+exports.transform = function transform(msg, ctx) {
+	return { body: { source: msg.transport, subscription: msg.metadata?.subscription_id, payload: msg.body } };
+};`)
+
+	chCfg := &config.ChannelConfig{
+		ID:      "e2e-fhir-sub-to-http",
+		Enabled: true,
+		Pipeline: &config.PipelineConfig{
+			Transformer: "transformer.js",
+		},
+		Listener: config.ListenerConfig{
+			Type: "fhir_subscription",
+			FHIRSubscription: &config.FHIRSubscriptionListener{
+				ChannelType: "rest-hook",
+				Port:        0,
+				Path:        "/fhir/subscription-notification",
+			},
+		},
+		Destinations: []config.ChannelDestination{
+			{Name: "dest"},
+		},
+	}
+
+	subSrc := connector.NewFHIRSubscriptionSource(chCfg.Listener.FHIRSubscription, e2eLogger())
+	httpDest := connector.NewHTTPDest("dest", &config.HTTPDestConfig{URL: destServer.URL}, e2eLogger())
+
+	cr := buildChannelRuntime(t, chCfg.ID, chCfg, subSrc, map[string]connector.DestinationConnector{
+		"dest": httpDest,
+	}, channelDir)
+
+	ctx := context.Background()
+	if err := cr.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer cr.Stop(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+	addr := subSrc.Addr()
+	if addr == "" {
+		t.Fatal("FHIR subscription rest-hook has no address")
+	}
+	// Use 127.0.0.1 so client connects reliably (listener may report [::]:port)
+	port := addr
+	if idx := strings.LastIndex(addr, ":"); idx != -1 {
+		port = addr[idx+1:]
+	}
+	postURL := "http://127.0.0.1:" + port + "/fhir/subscription-notification"
+
+	notification := `{"resourceType":"SubscriptionStatus","subscription":"sub-1","eventNumber":1,"status":"active"}`
+	req, _ := http.NewRequest("POST", postURL, strings.NewReader(notification))
+	req.Header.Set("Content-Type", "application/fhir+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	waitFor(t, 2*time.Second, func() bool { return capture.count() >= 1 })
+
+	var result map[string]any
+	json.Unmarshal(capture.body(0), &result)
+	if result["source"] != "fhir_subscription" {
+		t.Fatalf("expected source=fhir_subscription, got %v", result["source"])
+	}
+}
+
+// ===================================================================
 // Test 24: IHE Source (XDS Repository) -> Transformer -> HTTP Dest
 // ===================================================================
 

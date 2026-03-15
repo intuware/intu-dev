@@ -67,7 +67,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["http", "tcp", "file", "kafka", "database", "sftp", "channel", "email", "dicom", "soap", "fhir", "ihe"],
+          "enum": ["http", "tcp", "file", "kafka", "database", "sftp", "channel", "email", "dicom", "soap", "fhir", "fhir_poll", "fhir_subscription", "ihe"],
           "description": "Listener type"
         },
         "http": {
@@ -260,6 +260,40 @@
             "auth": { "$ref": "#/definitions/auth" }
           },
           "required": ["port"]
+        },
+        "fhir_poll": {
+          "type": "object",
+          "description": "FHIR HTTP polling source. Periodically GETs an external FHIR server with optional date range (e.g. _lastUpdated, date). Many FHIR resources support date-range search params.",
+          "properties": {
+            "base_url": { "type": "string", "description": "FHIR server base URL (e.g. https://fhir.example.com/fhir/r4)" },
+            "poll_interval": { "type": "string", "description": "Polling interval (e.g. 30s, 5m)", "default": "1m" },
+            "poll_range": { "type": "string", "description": "Sliding window for date filter (e.g. 15m, 2h). Resources updated in this window are requested." },
+            "since": { "type": "string", "description": "Alias for poll_range" },
+            "date_param": { "type": "string", "description": "FHIR search param for range (default _lastUpdated). Use date, onset-date, recorded-date, etc. for resource-specific params." },
+            "resources": { "type": "array", "items": { "type": "string" }, "description": "Resource types to poll (e.g. Patient, Observation)" },
+            "search_queries": { "type": "array", "items": { "type": "string" }, "description": "Search URLs relative to base (e.g. Patient?_count=100)" },
+            "version": { "type": "string", "enum": ["R4", "R4B"] },
+            "tls": { "$ref": "#/definitions/tls" },
+            "auth": { "$ref": "#/definitions/auth" }
+          },
+          "required": ["base_url"]
+        },
+        "fhir_subscription": {
+          "type": "object",
+          "description": "FHIR R4B Subscription source. rest-hook: receive POST notifications. websocket: connect to server and receive events with auto-retry on disconnect.",
+          "properties": {
+            "channel_type": { "type": "string", "enum": ["rest-hook", "websocket"], "description": "rest-hook or websocket" },
+            "port": { "type": "integer", "description": "For rest-hook: port to listen on" },
+            "path": { "type": "string", "description": "For rest-hook: path (e.g. /fhir/r4b/subscription-notification)" },
+            "websocket_url": { "type": "string", "description": "For websocket: full WebSocket URL" },
+            "reconnect_backoff": { "type": "string", "description": "For websocket: backoff between reconnects (e.g. 2s)" },
+            "max_reconnect_attempts": { "type": "integer", "description": "For websocket: max reconnects (0 = unlimited)" },
+            "version": { "type": "string", "enum": ["R4B"] },
+            "subscription_id": { "type": "string", "description": "For logging/correlation" },
+            "tls": { "$ref": "#/definitions/tls" },
+            "auth": { "$ref": "#/definitions/auth" }
+          },
+          "required": ["channel_type"]
         },
         "ihe": {
           "type": "object",

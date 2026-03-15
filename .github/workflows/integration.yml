@@ -32,12 +32,23 @@ jobs:
       - name: Install intu-dev runtime
         run: npm install -g intu-dev
 
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
       - name: Run integration tests
         run: |
-          go test ./internal/integration/... \
-            -v -race -count=1 \
-            -tags=integration \
-            -timeout=15m
+          gotestsum --junitfile junit-integration.xml --format testdox -- \
+            go test ./internal/integration/... \
+              -v -race -count=1 \
+              -tags=integration \
+              -timeout=15m
+
+      - name: Upload JUnit XML
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-integration
+          path: junit-integration.xml
+          retention-days: 30
 
       - name: Upload test logs on failure
         if: failure()

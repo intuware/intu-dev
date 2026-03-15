@@ -83,6 +83,18 @@ func (f *Factory) CreateSource(listenerCfg config.ListenerConfig) (SourceConnect
 		}
 		return NewFHIRSource(listenerCfg.FHIR, f.logger), nil
 
+	case "fhir_poll":
+		if listenerCfg.FHIRPoll == nil {
+			return nil, fmt.Errorf("fhir_poll listener config is nil")
+		}
+		return NewFHIRPollSource(listenerCfg.FHIRPoll, f.logger), nil
+
+	case "fhir_subscription":
+		if listenerCfg.FHIRSubscription == nil {
+			return nil, fmt.Errorf("fhir_subscription listener config is nil")
+		}
+		return NewFHIRSubscriptionSource(listenerCfg.FHIRSubscription, f.logger), nil
+
 	case "ihe":
 		if listenerCfg.IHE == nil {
 			return nil, fmt.Errorf("ihe listener config is nil")

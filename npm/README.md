@@ -109,7 +109,7 @@ See the [full CLI docs](https://intu.dev/reference/cli/) for all flags and optio
 
 ## Connectors
 
-**12 sources**: HTTP, TCP/MLLP, FHIR R4, Kafka, Database, File, SFTP, Email, DICOM, SOAP, IHE (XDS/PIX/PDQ), Channel
+**14 sources**: HTTP, TCP/MLLP, FHIR R4, FHIR Poll, FHIR Subscription (R4b), Kafka, Database, File, SFTP, Email, DICOM, SOAP, IHE (XDS/PIX/PDQ), Channel
 
 **13 destinations**: HTTP, Kafka, TCP/MLLP, File, Database, SFTP, SMTP, Channel, DICOM, JMS, FHIR R4, Direct, Log
 

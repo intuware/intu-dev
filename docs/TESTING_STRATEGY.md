@@ -51,6 +51,8 @@ This document defines a comprehensive, fully automated testing strategy for `int
 | DICOM | ✅ existing | ✅ new | ✅ existing | Custom TCP protocol |
 | SOAP | ✅ existing | ✅ new | ✅ existing | `httptest` (stdlib) |
 | FHIR | ✅ existing | ✅ new | ✅ existing | `httptest` (stdlib) |
+| FHIR Poll | ✅ | ✅ | ✅ **new** | In-process Go FHIR test server (`testutil/fhir_server.go`) |
+| FHIR Subscription | ✅ | ✅ | ✅ **new** | In-process Go FHIR test server (rest-hook; no Docker) |
 | IHE | ✅ existing | ✅ new | ✅ existing | `httptest` (stdlib) |
 
 ### Destinations
@@ -83,6 +85,7 @@ All integration/e2e tests that need external services use [testcontainers-go](ht
 | **PostgreSQL** | `postgres:16-alpine` | Database source/dest integration | 5432 |
 | **SFTP** | `atmoz/sftp:alpine` | SFTP source/dest integration | 22 |
 | **MailHog** | `mailhog/mailhog:latest` | SMTP dest + Email source integration | 1025 (SMTP), 8025 (API) |
+| **FHIR (in-process)** | — | In-process Go test server (`internal/integration/testutil/fhir_server.go`): metadata, Patient GET/POST, Subscription rest-hook. No Docker required for FHIR integration tests. | (httptest) |
 
 ### Testcontainer Lifecycle
 

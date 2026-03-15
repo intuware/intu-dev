@@ -796,6 +796,8 @@ Test the channels:
 - Database (polling)
 - SFTP
 - FHIR R4 server
+- FHIR HTTP polling (poll external FHIR server with date range)
+- FHIR Subscription R4b (rest-hook and websocket)
 - DICOM
 - Email (IMAP / POP3)
 - SMTP
