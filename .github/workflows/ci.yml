@@ -115,9 +115,9 @@ jobs:
 
       - name: Switch to badges branch
         run: |
-          git fetch origin badges || true
-          if git rev-parse --verify origin/badges >/dev/null 2>&1; then
-            git checkout badges
+          git fetch origin refs/heads/badges:refs/remotes/origin/badges 2>/dev/null || true
+          if git rev-parse --verify refs/remotes/origin/badges >/dev/null 2>&1; then
+            git checkout -B badges refs/remotes/origin/badges
           else
             git checkout --orphan badges
             git rm -rf . 2>/dev/null || true
