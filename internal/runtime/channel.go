@@ -298,6 +298,17 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 			}
 			destSpan.SetStatus(codes.Error, sendErr.Error())
 			destSpan.End()
+			// Store sent/FAILED so dashboard shows final stage instead of stuck on transform (e.g. retries exhausted with 4xx/5xx)
+			destStatus := "FAILED"
+			if resp != nil {
+				_ = cr.Pipeline.ExecuteResponseTransformer(ctx, msg, destCfg, resp)
+				destType := dest.Type()
+				if destType == "http" || destType == "fhir" {
+					cr.storeResponseMessage(msg, resp, destStatus)
+				}
+			}
+			outMsg.Metadata["destination"] = destName
+			cr.storeIntuMessage(outMsg, "sent", destStatus, time.Since(startTime).Milliseconds())
 			destResults = append(destResults, DestinationResult{
 				Name:    destName,
 				Success: false,

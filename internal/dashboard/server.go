@@ -395,6 +395,7 @@ var statusPriority = map[string]int{
 	"TRANSFORMED": 2,
 	"FILTERED":    3,
 	"SENT":        4,
+	"FAILED":      4, // same as SENT so dedupe shows final send stage (failed) over transform
 	"ERROR":       5,
 	"REPROCESSED": 6,
 }
