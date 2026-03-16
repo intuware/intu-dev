@@ -256,6 +256,46 @@ listener:
 	}
 }
 
+// TestLoadChannelConfig_EnvFromDotEnv verifies channel YAML sees vars from .env when Load() was called first (e.g. serve loads .env then engine loads channels).
+func TestLoadChannelConfig_EnvFromDotEnv(t *testing.T) {
+	root := t.TempDir()
+	os.Unsetenv("INTU_CHANNEL_PORT_FROM_DOTENV")
+	envContent := "INTU_CHANNEL_PORT_FROM_DOTENV=3001\n"
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte(envContent), 0o600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+	baseYAML := "runtime:\n  name: test\nchannels_dir: channels\n"
+	if err := os.WriteFile(filepath.Join(root, "intu.yaml"), []byte(baseYAML), 0o644); err != nil {
+		t.Fatalf("write intu.yaml: %v", err)
+	}
+	channelDir := filepath.Join(root, "channels", "my-ch")
+	if err := os.MkdirAll(channelDir, 0o755); err != nil {
+		t.Fatalf("mkdir channel: %v", err)
+	}
+	channelYAML := `id: my-ch
+enabled: true
+listener:
+  type: http
+  http:
+    port: ${INTU_CHANNEL_PORT_FROM_DOTENV}
+`
+	if err := os.WriteFile(filepath.Join(channelDir, "channel.yaml"), []byte(channelYAML), 0o644); err != nil {
+		t.Fatalf("write channel.yaml: %v", err)
+	}
+
+	loader := NewLoader(root)
+	if _, err := loader.Load(""); err != nil {
+		t.Fatalf("Load (which loads .env) failed: %v", err)
+	}
+	cfg, err := LoadChannelConfig(channelDir)
+	if err != nil {
+		t.Fatalf("LoadChannelConfig: %v", err)
+	}
+	if cfg.Listener.HTTP == nil || cfg.Listener.HTTP.Port != 3001 {
+		t.Fatalf("expected port 3001 from .env, got %v", cfg.Listener.HTTP)
+	}
+}
+
 func TestLoadChannelConfig_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 	_, err := LoadChannelConfig(dir)

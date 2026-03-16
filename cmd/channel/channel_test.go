@@ -18,7 +18,7 @@ func scaffoldProject(t *testing.T) string {
 	dir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	scaffolder := bootstrap.NewScaffolder(logger)
-	result, err := scaffolder.BootstrapProject(dir, "test-proj", false)
+	result, err := scaffolder.BootstrapProject(dir, "test-proj", false, false)
 	if err != nil {
 		t.Fatalf("scaffold project: %v", err)
 	}

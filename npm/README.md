@@ -29,6 +29,8 @@ cd my-project
 npm run dev
 ```
 
+To create the project in the current directory: `intu init my-project --dir .`
+
 That's it. `intu init` scaffolds the project and runs `npm install`. `npm run dev` starts the engine with hot-reload — edit YAML or TypeScript and channels restart automatically.
 
 **Dashboard**: http://localhost:3000 (admin / admin)
@@ -90,7 +92,7 @@ Each channel is a folder with `channel.yaml` (config) and TypeScript files (tran
 
 | Command | Description |
 |---------|-------------|
-| `intu init <name>` | Scaffold a new project |
+| `intu init <name> [--dir] [--force]` | Scaffold a new project; `--dir .` creates in current dir |
 | `intu serve` | Start the runtime engine |
 | `intu c <name>` | Add a new channel |
 | `intu validate` | Validate config and channels |

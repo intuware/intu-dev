@@ -8,7 +8,7 @@
 
 | Command | Description |
 |---------|-------------|
-| `intu init <name>` | Scaffold project, runs `npm install` |
+| `intu init <name>` | Scaffold project, runs `npm install`; use `--dir .` to create in current dir (no subfolder) |
 | `intu serve` | Start engine (auto-compiles TS, dashboard, hot-reload) |
 | `intu build` | Compile TypeScript (optional; `serve` auto-compiles) |
 | `intu validate` | Validate project and channel config |
@@ -52,8 +52,11 @@ Use `--dir` for project directory (default `.`). Run from source: `go run . <com
 ## Quick demo
 
 ```bash
+# Create project in a new subdirectory (default)
 go run . init demo-project --dir /tmp
 cd /tmp/demo-project
+
+# Or create in current directory: intu init my-app --dir .
 go run <path-to-intu> c my-channel --dir .
 go run <path-to-intu> validate --dir .
 go run <path-to-intu> serve --dir .

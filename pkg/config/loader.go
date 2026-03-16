@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -18,7 +19,48 @@ func NewLoader(root string) *Loader {
 	return &Loader{root: root}
 }
 
+// loadEnvFile reads a .env file and sets env vars that are not already set (OS env wins).
+func loadEnvFile(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.Index(line, "=")
+		if idx <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		val := strings.TrimSpace(line[idx+1:])
+		if key == "" {
+			continue
+		}
+		// Remove optional surrounding quotes
+		if len(val) >= 2 && (val[0] == '"' && val[len(val)-1] == '"' || val[0] == '\'' && val[len(val)-1] == '\'') {
+			val = val[1 : len(val)-1]
+		}
+		if os.Getenv(key) == "" {
+			os.Setenv(key, val)
+		}
+	}
+	return scanner.Err()
+}
+
 func (l *Loader) Load(profile string) (*Config, error) {
+	// Load .env from project root so ${VAR} in profile and channel YAML resolve (os.ExpandEnv uses process env)
+	if err := loadEnvFile(filepath.Join(l.root, ".env")); err != nil {
+		return nil, fmt.Errorf("load .env: %w", err)
+	}
+
 	v := viper.New()
 	v.SetConfigType("yaml")
 	v.SetEnvPrefix("INTU")

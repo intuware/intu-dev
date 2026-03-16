@@ -246,7 +246,14 @@ exports.transform = function transform(msg, ctx) {
 	}
 	defer cr.Stop(ctx)
 
-	waitFor(t, 3*time.Second, func() bool { return capture.count() >= 2 })
+	// Wait for both HTTP requests and files moved to processed (move happens after handler returns, so wait for both)
+	waitFor(t, 3*time.Second, func() bool {
+		if capture.count() < 2 {
+			return false
+		}
+		entries, _ := os.ReadDir(processedDir)
+		return len(entries) >= 2
+	})
 
 	for i := 0; i < 2; i++ {
 		var result map[string]any

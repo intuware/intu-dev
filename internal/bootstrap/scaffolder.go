@@ -23,18 +23,29 @@ func NewScaffolder(logger *slog.Logger) *Scaffolder {
 	return &Scaffolder{logger: logger}
 }
 
-// BootstrapProject creates a full intu project in dir/projectName.
-func (s *Scaffolder) BootstrapProject(dir, projectName string, force bool) (*Result, error) {
-	root := filepath.Join(dir, projectName)
+// BootstrapProject creates a full intu project. When inPlace is true, files are created in dir;
+// otherwise a subdirectory dir/projectName is created.
+func (s *Scaffolder) BootstrapProject(dir, projectName string, force bool, inPlace bool) (*Result, error) {
+	var root string
+	if inPlace {
+		root = dir
+		if root == "" {
+			root = "."
+		}
+	} else {
+		root = filepath.Join(dir, projectName)
+	}
 	cleanRoot := filepath.Clean(root)
 	result := &Result{Root: cleanRoot}
 
-	if stat, err := os.Stat(cleanRoot); err == nil {
-		if stat.IsDir() && !force {
-			return nil, fmt.Errorf("project directory already exists: %s (use --force to overwrite)", cleanRoot)
+	if !inPlace {
+		if stat, err := os.Stat(cleanRoot); err == nil {
+			if stat.IsDir() && !force {
+				return nil, fmt.Errorf("project directory already exists: %s (use --force to overwrite)", cleanRoot)
+			}
+		} else if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("stat %s: %w", cleanRoot, err)
 		}
-	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("stat %s: %w", cleanRoot, err)
 	}
 
 	if err := os.MkdirAll(cleanRoot, 0o755); err != nil {

@@ -236,3 +236,33 @@ func TestLoaderLoad_ProfileEnvVarExpansion(t *testing.T) {
 		t.Fatalf("expected mode=cluster from profile env, got %s", cfg.Runtime.Mode)
 	}
 }
+
+// TestLoaderLoad_DotEnvFillsProfileYAML ensures .env is loaded before profile YAML so ${VAR} in intu.yaml / intu.<profile>.yaml resolve.
+func TestLoaderLoad_DotEnvFillsProfileYAML(t *testing.T) {
+	dir := t.TempDir()
+	os.Unsetenv("INTU_DOTENV_TEST_NAME") // so .env can fill it
+	envContent := "INTU_DOTENV_TEST_NAME=from-dotenv\n"
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+	yaml := "runtime:\n  name: ${INTU_DOTENV_TEST_NAME}\n  log_level: info\nchannels_dir: channels\n"
+	if err := os.WriteFile(filepath.Join(dir, "intu.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatalf("write intu.yaml: %v", err)
+	}
+
+	l := NewLoader(dir)
+	cfg, err := l.Load("")
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.Runtime.Name != "from-dotenv" {
+		t.Fatalf("expected runtime.name=from-dotenv from .env, got %q", cfg.Runtime.Name)
+	}
+}
+
+func TestLoadEnvFile_Optional(t *testing.T) {
+	dir := t.TempDir()
+	if err := loadEnvFile(filepath.Join(dir, ".env")); err != nil {
+		t.Fatalf("loadEnvFile on missing .env should not error: %v", err)
+	}
+}

@@ -12,7 +12,7 @@ func TestBootstrapProjectCreatesProject(t *testing.T) {
 	dir := t.TempDir()
 	scaffolder := NewScaffolder(slog.Default())
 
-	result, err := scaffolder.BootstrapProject(dir, "test-project", false)
+	result, err := scaffolder.BootstrapProject(dir, "test-project", false, false)
 	if err != nil {
 		t.Fatalf("bootstrap failed: %v", err)
 	}
@@ -59,11 +59,11 @@ func TestBootstrapProjectErrorsWhenDirExists(t *testing.T) {
 	dir := t.TempDir()
 	scaffolder := NewScaffolder(slog.Default())
 
-	if _, err := scaffolder.BootstrapProject(dir, "test", false); err != nil {
+	if _, err := scaffolder.BootstrapProject(dir, "test", false, false); err != nil {
 		t.Fatalf("first bootstrap failed: %v", err)
 	}
 
-	_, err := scaffolder.BootstrapProject(dir, "test", false)
+	_, err := scaffolder.BootstrapProject(dir, "test", false, false)
 	if err == nil {
 		t.Fatal("second bootstrap without force should fail when project dir exists")
 	}
@@ -76,7 +76,7 @@ func TestBootstrapProjectForceOverwritesFiles(t *testing.T) {
 	dir := t.TempDir()
 	scaffolder := NewScaffolder(slog.Default())
 
-	if _, err := scaffolder.BootstrapProject(dir, "test", false); err != nil {
+	if _, err := scaffolder.BootstrapProject(dir, "test", false, false); err != nil {
 		t.Fatalf("bootstrap failed: %v", err)
 	}
 
@@ -85,7 +85,7 @@ func TestBootstrapProjectForceOverwritesFiles(t *testing.T) {
 		t.Fatalf("mutate file: %v", err)
 	}
 
-	result, err := scaffolder.BootstrapProject(dir, "test", true)
+	result, err := scaffolder.BootstrapProject(dir, "test", true, false)
 	if err != nil {
 		t.Fatalf("bootstrap with force failed: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestBootstrapChannelCreatesChannel(t *testing.T) {
 	scaffolder := NewScaffolder(slog.Default())
 
 	// Bootstrap project first
-	if _, err := scaffolder.BootstrapProject(dir, "test", false); err != nil {
+	if _, err := scaffolder.BootstrapProject(dir, "test", false, false); err != nil {
 		t.Fatalf("bootstrap project failed: %v", err)
 	}
 
@@ -135,7 +135,7 @@ func TestScaffoldedChannelsContainDescription(t *testing.T) {
 	dir := t.TempDir()
 	scaffolder := NewScaffolder(slog.Default())
 
-	if _, err := scaffolder.BootstrapProject(dir, "test", false); err != nil {
+	if _, err := scaffolder.BootstrapProject(dir, "test", false, false); err != nil {
 		t.Fatalf("bootstrap project failed: %v", err)
 	}
 
@@ -161,7 +161,7 @@ func TestBootstrapProject_FileContents(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	result, err := s.BootstrapProject(dir, "my-project", false)
+	result, err := s.BootstrapProject(dir, "my-project", false, false)
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestBootstrapProject_Directories(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	result, err := s.BootstrapProject(dir, "dir-test", false)
+	result, err := s.BootstrapProject(dir, "dir-test", false, false)
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestBootstrapProject_ResultCreatedCount(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	result, err := s.BootstrapProject(dir, "count-test", false)
+	result, err := s.BootstrapProject(dir, "count-test", false, false)
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestBootstrapChannel_CustomChannelsDir(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	if _, err := s.BootstrapProject(dir, "ch-dir-test", false); err != nil {
+	if _, err := s.BootstrapProject(dir, "ch-dir-test", false, false); err != nil {
 		t.Fatalf("bootstrap project: %v", err)
 	}
 
@@ -282,7 +282,7 @@ func TestBootstrapChannel_DefaultChannelsDir(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	if _, err := s.BootstrapProject(dir, "default-dir-test", false); err != nil {
+	if _, err := s.BootstrapProject(dir, "default-dir-test", false, false); err != nil {
 		t.Fatalf("bootstrap project: %v", err)
 	}
 
@@ -302,7 +302,7 @@ func TestBootstrapChannel_IdempotentWithoutForce(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	if _, err := s.BootstrapProject(dir, "idem-test", false); err != nil {
+	if _, err := s.BootstrapProject(dir, "idem-test", false, false); err != nil {
 		t.Fatalf("bootstrap project: %v", err)
 	}
 
@@ -328,7 +328,7 @@ func TestBootstrapChannel_ForceOverwrites(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	if _, err := s.BootstrapProject(dir, "force-ch-test", false); err != nil {
+	if _, err := s.BootstrapProject(dir, "force-ch-test", false, false); err != nil {
 		t.Fatalf("bootstrap project: %v", err)
 	}
 
@@ -364,7 +364,7 @@ func TestBootstrapChannel_ContainsChannelID(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	if _, err := s.BootstrapProject(dir, "id-test", false); err != nil {
+	if _, err := s.BootstrapProject(dir, "id-test", false, false); err != nil {
 		t.Fatalf("bootstrap project: %v", err)
 	}
 
@@ -445,7 +445,7 @@ func TestBootstrapProject_DevProfile(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	result, err := s.BootstrapProject(dir, "profile-test", false)
+	result, err := s.BootstrapProject(dir, "profile-test", false, false)
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -463,7 +463,7 @@ func TestBootstrapProject_ProdProfile(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	result, err := s.BootstrapProject(dir, "profile-test-2", false)
+	result, err := s.BootstrapProject(dir, "profile-test-2", false, false)
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -481,7 +481,7 @@ func TestBootstrapProject_SampleChannels(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	result, err := s.BootstrapProject(dir, "sample-ch-test", false)
+	result, err := s.BootstrapProject(dir, "sample-ch-test", false, false)
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -501,7 +501,7 @@ func TestBootstrapProject_VSCode(t *testing.T) {
 	dir := t.TempDir()
 	s := NewScaffolder(slog.Default())
 
-	result, err := s.BootstrapProject(dir, "vscode-test", false)
+	result, err := s.BootstrapProject(dir, "vscode-test", false, false)
 	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
@@ -511,5 +511,25 @@ func TestBootstrapProject_VSCode(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s: %v", f, err)
 		}
+	}
+}
+
+func TestBootstrapProject_InPlace(t *testing.T) {
+	dir := t.TempDir()
+	s := NewScaffolder(slog.Default())
+
+	result, err := s.BootstrapProject(dir, "sample", false, true)
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	// In-place: root is dir, not dir/sample
+	if result.Root != dir {
+		t.Fatalf("expected root %q when in-place, got %q", dir, result.Root)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "intu.yaml")); err != nil {
+		t.Fatalf("expected intu.yaml in dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sample")); err == nil {
+		t.Fatal("expected no project-name subfolder when in-place")
 	}
 }

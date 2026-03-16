@@ -62,6 +62,8 @@ cd my-project
 npm run dev
 ```
 
+To create the project in the current directory instead of a subfolder: `intu init my-project --dir .`
+
 `intu init` scaffolds the project and runs `npm install`. `npm run dev` starts the engine with auto-compile and hot-reload.
 
 Add a channel:
@@ -109,7 +111,7 @@ All commands accept `--log-level (debug|info|warn|error)` (default: `info`).
 
 | Command | Description |
 |---------|-------------|
-| `intu init <name> [--dir] [--force]` | Scaffold a new project and install dependencies |
+| `intu init <name> [--dir] [--force]` | Scaffold a new project and install dependencies; `--dir .` creates in current dir |
 | `intu serve [--dir] [--profile]` | Start the runtime engine (auto-compiles TypeScript) |
 | `intu validate [--dir] [--profile]` | Validate project config and channel layout |
 | `intu build [--dir]` | Compile TypeScript transformers |
