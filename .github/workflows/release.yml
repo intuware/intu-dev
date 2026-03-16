@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+            dir: darwin-arm64
+          - goos: darwin
+            goarch: amd64
+            dir: darwin-x64
+          - goos: linux
+            goarch: amd64
+            dir: linux-x64
+          - goos: linux
+            goarch: arm64
+            dir: linux-arm64
+          - goos: windows
+            goarch: amd64
+            dir: win32-x64
+          - goos: windows
+            goarch: arm64
+            dir: win32-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          go build -ldflags "-s -w -X github.com/intuware/intu-dev/cmd.Version=${VERSION}" -o "intu${ext}" .
+
+      - name: Package
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "intu-${{ matrix.dir }}.zip" intu.exe
+          else
+            tar czf "intu-${{ matrix.dir }}.tar.gz" intu
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: intu-${{ matrix.dir }}
+          path: intu-${{ matrix.dir }}.*
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
+
+  publish-npm:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build all platforms
+        working-directory: npm
+        run: node build.js
+
+      - name: Publish with provenance
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance

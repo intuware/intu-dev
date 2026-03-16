@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+  test:
+    name: Unit & Contract Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install intu-dev runtime
+        run: npm install -g intu-dev
+
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
+      - name: Run unit and contract tests
+        run: gotestsum --junitfile junit.xml --format testdox -- -v -race -count=1 -coverprofile=coverage.out ./...
+
+      - name: Extract coverage percentage
+        run: |
+          go tool cover -func=coverage.out | grep total | awk '{gsub(/%/,""); print $3}' > coverage.txt
+          cat coverage.txt
+
+      - name: Upload JUnit XML and coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-unit-and-contract
+          path: |
+            junit.xml
+            coverage.txt
+          retention-days: 30
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          go build -ldflags "-s -w" -o "intu-${GOOS}-${GOARCH}${ext}" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: intu-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: intu-*
+
+  badge:
+    name: Test count badge
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Download JUnit XML and coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: junit-unit-and-contract
+
+      - name: Switch to badges branch
+        run: |
+          git fetch origin refs/heads/badges:refs/remotes/origin/badges 2>/dev/null || true
+          if git rev-parse --verify refs/remotes/origin/badges >/dev/null 2>&1; then
+            git checkout -B badges refs/remotes/origin/badges
+          else
+            git checkout --orphan badges
+            git rm -rf . 2>/dev/null || true
+          fi
+
+      - name: Parse test count and write badge JSON
+        run: |
+          TESTS=$(python3 -c "
+          import xml.etree.ElementTree as E
+          r = E.parse('junit.xml').getroot()
+          print(r.get('tests', '0'))
+          ")
+          FAILURES=$(python3 -c "
+          import xml.etree.ElementTree as E
+          r = E.parse('junit.xml').getroot()
+          print(r.get('failures', '0'))
+          ")
+          COLOR=green
+          if [ "${FAILURES}" != '0' ] && [ -n "${FAILURES}" ]; then COLOR=red; fi
+          mkdir -p badges
+          echo "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"${TESTS}\",\"color\":\"${COLOR}\"}" > badges/tests.json
+
+      - name: Write coverage badge JSON
+        run: |
+          COVER=$(cat coverage.txt 2>/dev/null || echo "0")
+          if [ -z "$COVER" ]; then COVER=0; fi
+          COLOR=red
+          if awk "BEGIN {exit !($COVER >= 80)}"; then COLOR=green; elif awk "BEGIN {exit !($COVER >= 50)}"; then COLOR=yellow; fi
+          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COVER}%\",\"color\":\"${COLOR}\"}" > badges/coverage.json
+
+      - name: Commit and push badges
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add badges/tests.json badges/coverage.json
+          git diff --staged --quiet || git commit -m "chore: update test and coverage badges [skip ci]"
+          git push origin badges

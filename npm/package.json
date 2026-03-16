@@ -1,0 +1,35 @@
+{
+  "name": "intu-dev",
+  "version": "1.0.13",
+  "description": "Git-native, AI-friendly healthcare interoperability framework. Build, version, and deploy integration pipelines with YAML config and TypeScript transformers.",
+  "bin": {
+    "intu": "./bin/intu.js"
+  },
+  "files": [
+    "bin",
+    "platform",
+    "types",
+    "README.md"
+  ],
+  "types": "./types/intu.d.ts",
+  "scripts": {
+    "build": "node build.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "healthcare",
+    "interoperability",
+    "hl7",
+    "fhir",
+    "integration"
+  ],
+  "license": "MPL-2.0",
+  "homepage": "https://intu.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/intuware/intu-dev"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,15 @@
+# Binaries
+npm/platform/
+intu
+sample/
+
+# Go
+*.exe
+*.test
+*.out
+
+# Node
+node_modules/
+dist/
+.env
+.env.local
