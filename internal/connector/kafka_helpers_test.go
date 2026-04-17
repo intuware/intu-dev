@@ -397,13 +397,13 @@ func TestDatabaseDest_DriverName_AllVariants(t *testing.T) {
 		driver string
 		want   string
 	}{
-		{"postgres", "postgres"},
-		{"postgresql", "postgres"},
+		{"postgres", "pgx"},
+		{"postgresql", "pgx"},
 		{"mysql", "mysql"},
 		{"mssql", "sqlserver"},
 		{"sqlserver", "sqlserver"},
-		{"sqlite", "sqlite3"},
-		{"sqlite3", "sqlite3"},
+		{"sqlite", "sqlite"},
+		{"sqlite3", "sqlite"},
 		{"oracle", "oracle"},
 	}
 	for _, tc := range cases {

@@ -256,10 +256,21 @@ type MessageStorageConfig struct {
 	Driver    string                  `mapstructure:"driver"`
 	Mode      string                  `mapstructure:"mode"`
 	Stages    []string                `mapstructure:"stages"`
+	DSN       string                  `mapstructure:"dsn"`
+	Database  *StorageDatabaseConfig  `mapstructure:"database"`
 	Memory    *StorageMemoryConfig    `mapstructure:"memory"`
 	Postgres  *StoragePostgresConfig  `mapstructure:"postgres"`
 	S3        *StorageS3Config        `mapstructure:"s3"`
 	Retention *StorageRetentionConfig `mapstructure:"retention"`
+}
+
+// StorageDatabaseConfig is a generic SQL storage config used by
+// mysql, mssql, and sqlite drivers.
+type StorageDatabaseConfig struct {
+	DSN          string `mapstructure:"dsn"`
+	TablePrefix  string `mapstructure:"table_prefix"`
+	MaxOpenConns int    `mapstructure:"max_open_conns"`
+	MaxIdleConns int    `mapstructure:"max_idle_conns"`
 }
 
 type StorageMemoryConfig struct {
@@ -360,6 +371,7 @@ type RoleConfig struct {
 type AuditConfig struct {
 	Enabled     bool     `mapstructure:"enabled"`
 	Destination string   `mapstructure:"destination"`
+	DSN         string   `mapstructure:"dsn"`
 	Events      []string `mapstructure:"events"`
 }
 

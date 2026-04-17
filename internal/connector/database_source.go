@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/intuware/intu-dev/internal/dbutil"
 	"github.com/intuware/intu-dev/internal/message"
 	"github.com/intuware/intu-dev/pkg/config"
 )
@@ -60,14 +61,14 @@ func (d *DatabaseSource) Start(ctx context.Context, handler MessageHandler) erro
 }
 
 func (d *DatabaseSource) poll(ctx context.Context, handler MessageHandler) error {
-	db, err := sql.Open(d.driverName(), d.cfg.DSN)
+	db, err := dbutil.OpenDB(d.cfg.Driver, d.cfg.DSN, &dbutil.DBOptions{
+		MaxOpenConns:    5,
+		ConnMaxLifetime: 30 * time.Second,
+	})
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer db.Close()
-
-	db.SetMaxOpenConns(5)
-	db.SetConnMaxLifetime(30 * time.Second)
 
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping database: %w", err)
@@ -165,19 +166,10 @@ func (d *DatabaseSource) executePostProcess(ctx context.Context, db *sql.DB, row
 	}
 }
 
+// driverName is kept for backward compatibility with existing tests.
+// New code should use dbutil.ResolveDriverName directly.
 func (d *DatabaseSource) driverName() string {
-	switch strings.ToLower(d.cfg.Driver) {
-	case "postgres", "postgresql":
-		return "postgres"
-	case "mysql":
-		return "mysql"
-	case "mssql", "sqlserver":
-		return "sqlserver"
-	case "sqlite", "sqlite3":
-		return "sqlite3"
-	default:
-		return d.cfg.Driver
-	}
+	return dbutil.ResolveDriverName(d.cfg.Driver)
 }
 
 func (d *DatabaseSource) Stop(ctx context.Context) error {

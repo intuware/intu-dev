@@ -257,7 +257,7 @@ function renderStats(d) {
     { label: 'Messages / 60s', value: mc.last_60s || 0, color: 'violet' },
     { label: 'Messages / 5m', value: mc.last_5m || 0, color: 'amber' },
     { label: 'Messages / 1h', value: mc.last_1h || 0, color: 'blue' },
-    { label: 'Messages / 24h', value: mc.last_24h || 0, color: 'rose' }
+    { label: 'Messages / 24h', value: mc.last_24h || 0, color: 'sky' }
   ];
   var colorMap = {
     sky:     'bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-400/20',

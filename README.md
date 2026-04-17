@@ -188,7 +188,7 @@ TypeScript transformers receive `IntuMessage` as their first argument and return
 | Kafka | Producer with TLS and SASL |
 | TCP/MLLP | TCP sender with MLLP support |
 | File | Filesystem writer with templated filenames |
-| Database | SQL writer with parameterized statements |
+| Database | SQL writer with parameterized statements (Postgres, MySQL, MSSQL, SQLite) |
 | SFTP | SFTP file writer |
 | SMTP | Email sender with TLS/STARTTLS |
 | Channel | In-memory routing |

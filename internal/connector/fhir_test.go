@@ -641,13 +641,13 @@ func TestDatabaseDest_DriverName_CaseInsensitive(t *testing.T) {
 	cases := []struct {
 		input, want string
 	}{
-		{"POSTGRES", "postgres"},
-		{"PostgreSQL", "postgres"},
+		{"POSTGRES", "pgx"},
+		{"PostgreSQL", "pgx"},
 		{"MYSQL", "mysql"},
 		{"MSSQL", "sqlserver"},
 		{"SQLServer", "sqlserver"},
-		{"SQLITE", "sqlite3"},
-		{"SQLITE3", "sqlite3"},
+		{"SQLITE", "sqlite"},
+		{"SQLITE3", "sqlite"},
 		{"oracle", "oracle"},
 	}
 
@@ -668,13 +668,13 @@ func TestDatabaseSource_DriverName(t *testing.T) {
 	cases := []struct {
 		input, want string
 	}{
-		{"postgres", "postgres"},
-		{"postgresql", "postgres"},
+		{"postgres", "pgx"},
+		{"postgresql", "pgx"},
 		{"mysql", "mysql"},
 		{"mssql", "sqlserver"},
 		{"sqlserver", "sqlserver"},
-		{"sqlite", "sqlite3"},
-		{"sqlite3", "sqlite3"},
+		{"sqlite", "sqlite"},
+		{"sqlite3", "sqlite"},
 		{"custom", "custom"},
 	}
 

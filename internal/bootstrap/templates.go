@@ -109,7 +109,7 @@ runtime:
 
 # --- Message Storage ---------------------------------------------------------
 # Controls how messages are persisted globally. Channels can override per-channel.
-# Drivers: memory | postgres | s3
+# Drivers: memory | postgres | mysql | mssql | sqlite | s3
 # Modes: none (disabled) | status (metadata only, no payloads) | full (full payloads)
 message_storage:
   driver: postgres
@@ -166,7 +166,7 @@ dashboard:
 # --- Audit -------------------------------------------------------------------
 audit:
   enabled: true
-  destination: postgres      # memory | postgres
+  destination: postgres      # memory | postgres | mysql | mssql | sqlite
   events:                    # Restrict to specific events (omit for all)
     - message.reprocess
     - channel.deploy

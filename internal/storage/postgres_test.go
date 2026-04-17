@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/intuware/intu-dev/internal/dbutil"
 	"github.com/intuware/intu-dev/pkg/config"
 )
 
@@ -16,7 +17,7 @@ func newMockPostgresStore(t *testing.T) (*PostgresStore, sqlmock.Sqlmock) {
 	if err != nil {
 		t.Fatalf("failed to create sqlmock: %v", err)
 	}
-	return &PostgresStore{db: db, tablePrefix: "intu_"}, mock
+	return &PostgresStore{db: db, tablePrefix: "intu_", dialect: dbutil.PostgresDialect{}}, mock
 }
 
 func TestNewPostgresStoreNilConfig(t *testing.T) {
@@ -43,7 +44,7 @@ func TestPostgresStoreTableName(t *testing.T) {
 		{"", "messages"},
 	}
 	for _, tt := range tests {
-		store := &PostgresStore{tablePrefix: tt.prefix}
+		store := &PostgresStore{tablePrefix: tt.prefix, dialect: dbutil.PostgresDialect{}}
 		got := store.tableName()
 		if got != tt.want {
 			t.Errorf("tableName(prefix=%q) = %q, want %q", tt.prefix, got, tt.want)

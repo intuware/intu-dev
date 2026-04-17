@@ -71,6 +71,15 @@ func NewMessageStore(cfg *config.MessageStorageConfig) (MessageStore, error) {
 		if err != nil {
 			return nil, fmt.Errorf("create postgres store: %w", err)
 		}
+	case "mysql", "mssql", "sqlserver", "sqlite", "sqlite3":
+		dsn, prefix, maxOpen, maxIdle := resolveSQLStorageConfig(cfg)
+		if dsn == "" {
+			return nil, fmt.Errorf("database dsn is required when driver is %s", cfg.Driver)
+		}
+		inner, err = NewSQLStore(cfg.Driver, dsn, prefix, maxOpen, maxIdle)
+		if err != nil {
+			return nil, fmt.Errorf("create %s store: %w", cfg.Driver, err)
+		}
 	case "s3":
 		if cfg.S3 == nil {
 			return nil, fmt.Errorf("s3 config is required when driver is s3")
@@ -92,6 +101,15 @@ func NewMessageStore(cfg *config.MessageStorageConfig) (MessageStore, error) {
 	}
 
 	return inner, nil
+}
+
+// resolveSQLStorageConfig extracts DSN and pool settings from config,
+// checking the generic Database block first, then the top-level DSN field.
+func resolveSQLStorageConfig(cfg *config.MessageStorageConfig) (dsn, prefix string, maxOpen, maxIdle int) {
+	if cfg.Database != nil {
+		return cfg.Database.DSN, cfg.Database.TablePrefix, cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns
+	}
+	return cfg.DSN, "", 0, 0
 }
 
 type MemoryStore struct {

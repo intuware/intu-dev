@@ -2,7 +2,7 @@
 
 **Product**: Go-based healthcare interoperability engine — project scaffolding, channel management, config validation, TypeScript compilation, runtime engine, web dashboard.
 
-**Prerequisites**: Go 1.25+ and Node.js ≥18. Install Node runtime: `npm install -g intu-dev`. Dev/test uses in-memory storage; no external services required. Production may use PostgreSQL, Redis, Kafka, S3, Vault (optional).
+**Prerequisites**: Go 1.25+ and Node.js ≥18. Install Node runtime: `npm install -g intu-dev`. Dev/test uses in-memory storage; no external services required. Production may use PostgreSQL, MySQL, SQL Server, SQLite, Redis, Kafka, S3, Vault (optional).
 
 ## CLI
 
@@ -37,7 +37,7 @@ Use `--dir` for project directory (default `.`). Run from source: `go run . <com
 | `cmd/` | Cobra CLI, channel subcommands |
 | `internal/runtime/` | Engine, pipeline, Node runner, Goja fallback, hot-reload |
 | `internal/dashboard/` | Dashboard server + embedded SPA |
-| `internal/storage/` | Memory, postgres, s3, composite stores |
+| `internal/storage/` | Memory, postgres, mysql, mssql, sqlite, s3, composite stores |
 | `internal/connector/` | Sources & destinations (HTTP, TCP, Kafka, file, DB, FHIR, etc.) |
 | `internal/bootstrap/` | Project/channel scaffolding |
 | `internal/auth/` | OIDC, LDAP, basic auth, RBAC, audit |
