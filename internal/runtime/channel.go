@@ -317,13 +317,17 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 			continue
 		}
 
-		// For HTTP/FHIR destinations, 4xx or 5xx response means message status FAILED
+		// Any resp.Error (from any destination type) or an HTTP/FHIR 4xx/5xx
+		// response counts as a failed destination write and is stored as FAILED
+		// so the dashboard and metrics agree.
 		destStatus := "SENT"
 		if resp != nil {
 			_ = cr.Pipeline.ExecuteResponseTransformer(ctx, msg, destCfg, resp)
 
 			destType := dest.Type()
-			if (destType == "http" || destType == "fhir") && resp.StatusCode >= 400 {
+			if resp.Error != nil {
+				destStatus = "FAILED"
+			} else if (destType == "http" || destType == "fhir") && resp.StatusCode >= 400 {
 				destStatus = "FAILED"
 			}
 			if destType == "http" || destType == "fhir" {
@@ -344,6 +348,17 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 			dr.Response = resp
 			if resp.Error != nil {
 				dr.Error = resp.Error.Error()
+				// Emit an ERROR log so the stdout trail matches the dashboard
+				// "Errored" counter. Connectors that report failures through
+				// Response.Error (SFTP, TCP, SMTP, JMS, DICOM, database, etc.)
+				// used to increment the error metric silently here.
+				cr.Logger.Error("destination returned error response",
+					"channel", cr.ID,
+					"destination", destName,
+					"messageId", msg.ID,
+					"statusCode", resp.StatusCode,
+					"error", resp.Error,
+				)
 				if cr.Metrics != nil {
 					cr.Metrics.IncrErrored(cr.ID, destName)
 				}
