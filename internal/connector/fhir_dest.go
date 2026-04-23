@@ -150,6 +150,24 @@ func (f *FHIRDest) determineOperation(msg *message.Message) string {
 		return f.cfg.Operations[0]
 	}
 
+	// Auto-detect: if the outbound body is a Bundle of type transaction or
+	// batch, map Bundle.type to the corresponding FHIR interaction so the
+	// engine POSTs to the base URL instead of {base}/Bundle (which HAPI and
+	// most FHIR servers reject with 422 because a transaction/batch Bundle
+	// is not meant to be stored as a Bundle resource).
+	var env struct {
+		ResourceType string `json:"resourceType"`
+		Type         string `json:"type"`
+	}
+	if json.Unmarshal(msg.Raw, &env) == nil && env.ResourceType == "Bundle" {
+		switch strings.ToLower(env.Type) {
+		case "transaction":
+			return "transaction"
+		case "batch":
+			return "batch"
+		}
+	}
+
 	return "create"
 }
 

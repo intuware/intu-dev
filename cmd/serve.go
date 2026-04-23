@@ -136,15 +136,39 @@ func newServeCmd() *cobra.Command {
 				auditLogger = auth.NewAuditLogger(cfg.Audit, logger)
 
 				var auditStore auth.AuditStore
-				switch {
-				case cfg.Audit.Destination == "postgres" && cfg.Runtime.Storage.PostgresDSN != "":
-					pgStore, pgErr := auth.NewPostgresAuditStore(cfg.Runtime.Storage.PostgresDSN, "intu_")
-					if pgErr != nil {
-						logger.Warn("postgres audit store init failed, using memory", "error", pgErr)
-						auditStore = auth.NewMemoryAuditStore()
+				auditDest := cfg.Audit.Destination
+				switch auditDest {
+				case "postgres":
+					dsn := cfg.Audit.DSN
+					if dsn == "" {
+						dsn = cfg.Runtime.Storage.PostgresDSN
+					}
+					if dsn != "" {
+						sqlStore, sqlErr := auth.NewSQLAuditStore("postgres", dsn, "intu_")
+						if sqlErr != nil {
+							logger.Warn("postgres audit store init failed, using memory", "error", sqlErr)
+							auditStore = auth.NewMemoryAuditStore()
+						} else {
+							auditStore = sqlStore
+							defer sqlStore.Close()
+						}
 					} else {
-						auditStore = pgStore
-						defer pgStore.Close()
+						auditStore = auth.NewMemoryAuditStore()
+					}
+				case "mysql", "mssql", "sqlserver", "sqlite", "sqlite3":
+					dsn := cfg.Audit.DSN
+					if dsn != "" {
+						sqlStore, sqlErr := auth.NewSQLAuditStore(auditDest, dsn, "intu_")
+						if sqlErr != nil {
+							logger.Warn("audit store init failed, using memory", "driver", auditDest, "error", sqlErr)
+							auditStore = auth.NewMemoryAuditStore()
+						} else {
+							auditStore = sqlStore
+							defer sqlStore.Close()
+						}
+					} else {
+						logger.Warn("audit dsn not set, using memory store", "driver", auditDest)
+						auditStore = auth.NewMemoryAuditStore()
 					}
 				default:
 					auditStore = auth.NewMemoryAuditStore()

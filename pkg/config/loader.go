@@ -56,7 +56,7 @@ func loadEnvFile(path string) error {
 }
 
 func (l *Loader) Load(profile string) (*Config, error) {
-	// Load .env from project root so ${VAR} in profile and channel YAML resolve (os.ExpandEnv uses process env)
+	// Load .env from project root so ${VAR} in profile and channel YAML resolve
 	if err := loadEnvFile(filepath.Join(l.root, ".env")); err != nil {
 		return nil, fmt.Errorf("load .env: %w", err)
 	}
@@ -89,13 +89,26 @@ func (l *Loader) Load(profile string) (*Config, error) {
 	return &cfg, nil
 }
 
+// expandKnownEnv expands ${VAR} and $VAR references only when the
+// environment variable actually exists. Unknown references are left
+// intact so that runtime template placeholders (e.g. ${charge_id} in
+// SQL statements) survive config loading.
+func expandKnownEnv(s string) string {
+	return os.Expand(s, func(key string) string {
+		if val, ok := os.LookupEnv(key); ok {
+			return val
+		}
+		return "${" + key + "}"
+	})
+}
+
 func readExpandedYAML(v *viper.Viper, path string, merge bool) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read config file %s: %w", path, err)
 	}
 
-	expanded := os.ExpandEnv(string(raw))
+	expanded := expandKnownEnv(string(raw))
 	reader := bytes.NewBufferString(expanded)
 
 	if merge {

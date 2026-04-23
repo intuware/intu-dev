@@ -762,7 +762,7 @@ func LoadChannelConfig(channelDir string) (*ChannelConfig, error) {
 		return nil, fmt.Errorf("read channel config %s: %w", path, err)
 	}
 
-	expanded := os.ExpandEnv(string(data))
+	expanded := expandKnownEnv(string(data))
 
 	var cfg ChannelConfig
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {

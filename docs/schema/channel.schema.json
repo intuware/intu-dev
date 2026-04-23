@@ -170,7 +170,7 @@
           "type": "object",
           "description": "Database poller configuration",
           "properties": {
-            "driver": { "type": "string", "enum": ["postgres", "mysql", "mssql", "oracle"] },
+            "driver": { "type": "string", "enum": ["postgres", "mysql", "mssql", "sqlite"] },
             "dsn": { "type": "string", "description": "Database connection string" },
             "poll_interval": { "type": "string" },
             "query": { "type": "string", "description": "SQL query to poll for new records" },

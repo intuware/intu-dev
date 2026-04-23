@@ -1476,13 +1476,13 @@ func TestDatabaseDest_DriverMapping(t *testing.T) {
 		driver   string
 		expected string
 	}{
-		{"postgres", "postgres"},
-		{"postgresql", "postgres"},
+		{"postgres", "pgx"},
+		{"postgresql", "pgx"},
 		{"mysql", "mysql"},
 		{"mssql", "sqlserver"},
 		{"sqlserver", "sqlserver"},
-		{"sqlite", "sqlite3"},
-		{"sqlite3", "sqlite3"},
+		{"sqlite", "sqlite"},
+		{"sqlite3", "sqlite"},
 		{"custom", "custom"},
 	}
 

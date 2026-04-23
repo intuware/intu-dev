@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/intuware/intu-dev/internal/dbutil"
 )
 
 func newMockAuditStore(t *testing.T) (*PostgresAuditStore, sqlmock.Sqlmock) {
@@ -14,7 +15,7 @@ func newMockAuditStore(t *testing.T) (*PostgresAuditStore, sqlmock.Sqlmock) {
 	if err != nil {
 		t.Fatalf("failed to create sqlmock: %v", err)
 	}
-	return &PostgresAuditStore{db: db, tablePrefix: "intu_"}, mock
+	return &PostgresAuditStore{db: db, tablePrefix: "intu_", dialect: dbutil.PostgresDialect{}}, mock
 }
 
 func TestNewPostgresAuditStoreEmptyDSN(t *testing.T) {
@@ -34,7 +35,7 @@ func TestPostgresAuditStoreTableName(t *testing.T) {
 		{"", "audit_log"},
 	}
 	for _, tt := range tests {
-		store := &PostgresAuditStore{tablePrefix: tt.prefix}
+		store := &PostgresAuditStore{tablePrefix: tt.prefix, dialect: dbutil.PostgresDialect{}}
 		got := store.tableName()
 		if got != tt.want {
 			t.Errorf("tableName(prefix=%q) = %q, want %q", tt.prefix, got, tt.want)

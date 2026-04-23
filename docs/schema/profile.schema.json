@@ -20,7 +20,7 @@
           "type": "object",
           "description": "Storage backend for message persistence",
           "properties": {
-            "driver": { "type": "string", "enum": ["memory", "postgres"], "description": "Storage driver" },
+            "driver": { "type": "string", "enum": ["memory", "postgres", "mysql", "mssql", "sqlite"], "description": "Storage driver" },
             "postgres_dsn": { "type": "string", "description": "PostgreSQL connection string (supports ${ENV_VAR} syntax)" }
           }
         },
@@ -112,7 +112,7 @@
             "type": "object",
             "description": "Database destination configuration",
             "properties": {
-              "driver": { "type": "string", "enum": ["postgres", "mysql", "mssql"] },
+              "driver": { "type": "string", "enum": ["postgres", "mysql", "mssql", "sqlite"] },
               "dsn": { "type": "string" },
               "statement": { "type": "string", "description": "SQL INSERT/UPDATE statement with $1, $2 placeholders" },
               "max_conns": { "type": "integer" }
@@ -252,7 +252,7 @@
       "type": "object",
       "description": "Global message storage configuration. Drivers: memory (default), postgres, s3. Modes: none (disabled), status (metadata only), full (payloads + metadata).",
       "properties": {
-        "driver": { "type": "string", "enum": ["memory", "postgres", "s3"], "default": "memory", "description": "Storage backend driver" },
+        "driver": { "type": "string", "enum": ["memory", "postgres", "mysql", "mssql", "sqlite", "s3"], "default": "memory", "description": "Storage backend driver" },
         "mode": { "type": "string", "enum": ["none", "status", "full"], "default": "full", "description": "Storage mode: none (no storage), status (metadata only), full (full payloads)" },
         "stages": { "type": "array", "items": { "type": "string", "enum": ["received", "transformed", "filtered", "sent", "error", "response"] }, "description": "When mode is full, restrict storage to these pipeline stages only" },
         "memory": {

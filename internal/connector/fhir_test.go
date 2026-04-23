@@ -96,6 +96,89 @@ func TestFHIRDest_DetermineOperation_Default(t *testing.T) {
 	}
 }
 
+func TestFHIRDest_DetermineOperation_TransactionBundle_AutoDetected(t *testing.T) {
+	dest := NewFHIRDest("t", &config.FHIRDestMapConfig{BaseURL: "http://x"}, testLogger())
+	msg := message.New("ch", []byte(`{"resourceType":"Bundle","type":"transaction","entry":[]}`))
+	got := dest.determineOperation(msg)
+	if got != "transaction" {
+		t.Fatalf("expected transaction (auto-detected), got %q", got)
+	}
+}
+
+func TestFHIRDest_DetermineOperation_BatchBundle_AutoDetected(t *testing.T) {
+	dest := NewFHIRDest("t", &config.FHIRDestMapConfig{BaseURL: "http://x"}, testLogger())
+	msg := message.New("ch", []byte(`{"resourceType":"Bundle","type":"batch","entry":[]}`))
+	got := dest.determineOperation(msg)
+	if got != "batch" {
+		t.Fatalf("expected batch (auto-detected), got %q", got)
+	}
+}
+
+func TestFHIRDest_DetermineOperation_PlainBundle_DefaultsToCreate(t *testing.T) {
+	cases := []string{"document", "collection", "message", "searchset", "history", ""}
+	for _, bundleType := range cases {
+		t.Run("type="+bundleType, func(t *testing.T) {
+			dest := NewFHIRDest("t", &config.FHIRDestMapConfig{BaseURL: "http://x"}, testLogger())
+			body := `{"resourceType":"Bundle","type":"` + bundleType + `"}`
+			msg := message.New("ch", []byte(body))
+			got := dest.determineOperation(msg)
+			if got != "create" {
+				t.Fatalf("type=%q: expected create, got %q", bundleType, got)
+			}
+		})
+	}
+}
+
+func TestFHIRDest_DetermineOperation_MetadataOverridesAutoDetect(t *testing.T) {
+	dest := NewFHIRDest("t", &config.FHIRDestMapConfig{BaseURL: "http://x"}, testLogger())
+	msg := message.New("ch", []byte(`{"resourceType":"Bundle","type":"transaction"}`))
+	msg.Metadata["fhir_operation"] = "create"
+	got := dest.determineOperation(msg)
+	if got != "create" {
+		t.Fatalf("expected metadata 'create' to win over auto-detect, got %q", got)
+	}
+}
+
+func TestFHIRDest_DetermineOperation_ConfigOperationsOverridesAutoDetect(t *testing.T) {
+	dest := NewFHIRDest("t", &config.FHIRDestMapConfig{BaseURL: "http://x", Operations: []string{"create"}}, testLogger())
+	msg := message.New("ch", []byte(`{"resourceType":"Bundle","type":"transaction"}`))
+	got := dest.determineOperation(msg)
+	if got != "create" {
+		t.Fatalf("expected cfg.Operations 'create' to win over auto-detect, got %q", got)
+	}
+}
+
+func TestFHIRDest_DetermineOperation_TransactionBundle_CaseInsensitive(t *testing.T) {
+	dest := NewFHIRDest("t", &config.FHIRDestMapConfig{BaseURL: "http://x"}, testLogger())
+	msg := message.New("ch", []byte(`{"resourceType":"Bundle","type":"TRANSACTION"}`))
+	got := dest.determineOperation(msg)
+	if got != "transaction" {
+		t.Fatalf("expected transaction (case-insensitive), got %q", got)
+	}
+}
+
+func TestFHIRDest_DetermineOperation_NonBundleIgnored(t *testing.T) {
+	dest := NewFHIRDest("t", &config.FHIRDestMapConfig{BaseURL: "http://x"}, testLogger())
+	msg := message.New("ch", []byte(`{"resourceType":"Patient","type":"transaction"}`))
+	got := dest.determineOperation(msg)
+	if got != "create" {
+		t.Fatalf("expected create (non-Bundle resource), got %q", got)
+	}
+}
+
+func TestFHIRDest_BuildURL_AutoDetectedTransaction_TargetsBase(t *testing.T) {
+	dest := NewFHIRDest("t", &config.FHIRDestMapConfig{BaseURL: "http://fhir.test/r4"}, testLogger())
+	msg := message.New("ch", []byte(`{"resourceType":"Bundle","type":"transaction","entry":[]}`))
+	op := dest.determineOperation(msg)
+	got := dest.buildURL("Bundle", op, msg)
+	if op != "transaction" {
+		t.Fatalf("expected auto-detected op 'transaction', got %q", op)
+	}
+	if got != "http://fhir.test/r4" {
+		t.Fatalf("expected base URL, got %q", got)
+	}
+}
+
 // ===================================================================
 // FHIRDest — buildURL
 // ===================================================================
@@ -641,13 +724,13 @@ func TestDatabaseDest_DriverName_CaseInsensitive(t *testing.T) {
 	cases := []struct {
 		input, want string
 	}{
-		{"POSTGRES", "postgres"},
-		{"PostgreSQL", "postgres"},
+		{"POSTGRES", "pgx"},
+		{"PostgreSQL", "pgx"},
 		{"MYSQL", "mysql"},
 		{"MSSQL", "sqlserver"},
 		{"SQLServer", "sqlserver"},
-		{"SQLITE", "sqlite3"},
-		{"SQLITE3", "sqlite3"},
+		{"SQLITE", "sqlite"},
+		{"SQLITE3", "sqlite"},
 		{"oracle", "oracle"},
 	}
 
@@ -668,13 +751,13 @@ func TestDatabaseSource_DriverName(t *testing.T) {
 	cases := []struct {
 		input, want string
 	}{
-		{"postgres", "postgres"},
-		{"postgresql", "postgres"},
+		{"postgres", "pgx"},
+		{"postgresql", "pgx"},
 		{"mysql", "mysql"},
 		{"mssql", "sqlserver"},
 		{"sqlserver", "sqlserver"},
-		{"sqlite", "sqlite3"},
-		{"sqlite3", "sqlite3"},
+		{"sqlite", "sqlite"},
+		{"sqlite3", "sqlite"},
 		{"custom", "custom"},
 	}
 

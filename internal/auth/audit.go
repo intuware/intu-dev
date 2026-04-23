@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/intuware/intu-dev/internal/dbutil"
 	"github.com/intuware/intu-dev/pkg/config"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type AuditStore interface {
@@ -186,36 +186,50 @@ func (m *MemoryAuditStore) Close() error {
 	return nil
 }
 
-type PostgresAuditStore struct {
+// SQLAuditStore is a database-backed AuditStore that works with any SQL
+// backend supported by the dbutil.Dialect abstraction.
+type SQLAuditStore struct {
 	db          *sql.DB
 	tablePrefix string
+	dialect     dbutil.Dialect
 }
 
-func NewPostgresAuditStore(dsn, tablePrefix string) (*PostgresAuditStore, error) {
+// PostgresAuditStore is a backward-compatible alias for SQLAuditStore.
+type PostgresAuditStore = SQLAuditStore
+
+// NewSQLAuditStore creates a database-backed audit store for the given
+// config-level driver name and DSN.
+func NewSQLAuditStore(driver, dsn, tablePrefix string) (*SQLAuditStore, error) {
 	if dsn == "" {
-		return nil, fmt.Errorf("postgres DSN is required for audit store")
+		return nil, dbutil.ErrDSNRequired
 	}
 
-	db, err := sql.Open("pgx", dsn)
+	dialect, err := dbutil.DialectFor(driver)
 	if err != nil {
-		return nil, fmt.Errorf("open postgres connection: %w", err)
+		return nil, err
 	}
 
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(3)
+	db, err := dbutil.OpenDB(driver, dsn, &dbutil.DBOptions{
+		MaxOpenConns: 10,
+		MaxIdleConns: 3,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open database connection: %w", err)
+	}
 
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("postgres ping failed: %w", err)
+		return nil, fmt.Errorf("database ping failed: %w", err)
 	}
 
 	if tablePrefix == "" {
 		tablePrefix = "intu_"
 	}
 
-	store := &PostgresAuditStore{
+	store := &SQLAuditStore{
 		db:          db,
 		tablePrefix: tablePrefix,
+		dialect:     dialect,
 	}
 
 	if err := store.ensureTable(); err != nil {
@@ -226,32 +240,25 @@ func NewPostgresAuditStore(dsn, tablePrefix string) (*PostgresAuditStore, error)
 	return store, nil
 }
 
-func (p *PostgresAuditStore) tableName() string {
-	return p.tablePrefix + "audit_log"
+// NewPostgresAuditStore creates a PostgreSQL-backed audit store.
+// This is a convenience wrapper around NewSQLAuditStore.
+func NewPostgresAuditStore(dsn, tablePrefix string) (*PostgresAuditStore, error) {
+	return NewSQLAuditStore("postgres", dsn, tablePrefix)
 }
 
-func (p *PostgresAuditStore) ensureTable() error {
-	table := p.tableName()
-	query := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s (
-			id SERIAL PRIMARY KEY,
-			timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			event TEXT NOT NULL,
-			username TEXT NOT NULL,
-			details JSONB,
-			source_ip TEXT
-		)`, table)
-	if _, err := p.db.Exec(query); err != nil {
+func (s *SQLAuditStore) tableName() string {
+	return s.tablePrefix + "audit_log"
+}
+
+func (s *SQLAuditStore) ensureTable() error {
+	table := s.tableName()
+	query := s.dialect.CreateAuditTable(table)
+	if _, err := s.db.Exec(query); err != nil {
 		return fmt.Errorf("create audit table: %w", err)
 	}
 
-	indexes := []string{
-		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%saudit_event ON %s (event)", p.tablePrefix, table),
-		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%saudit_user ON %s (username)", p.tablePrefix, table),
-		fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%saudit_ts ON %s (timestamp)", p.tablePrefix, table),
-	}
-	for _, idx := range indexes {
-		if _, err := p.db.Exec(idx); err != nil {
+	for _, idx := range s.dialect.CreateAuditIndexes(table, s.tablePrefix) {
+		if _, err := s.db.Exec(idx); err != nil {
 			return fmt.Errorf("create audit index: %w", err)
 		}
 	}
@@ -259,17 +266,15 @@ func (p *PostgresAuditStore) ensureTable() error {
 	return nil
 }
 
-func (p *PostgresAuditStore) Save(entry *AuditEntry) error {
+func (s *SQLAuditStore) Save(entry *AuditEntry) error {
 	detailsJSON, err := json.Marshal(entry.Details)
 	if err != nil {
 		detailsJSON = []byte("{}")
 	}
 
-	query := fmt.Sprintf(`
-		INSERT INTO %s (timestamp, event, username, details, source_ip)
-		VALUES ($1, $2, $3, $4, $5)`, p.tableName())
+	query := s.dialect.InsertAudit(s.tableName())
 
-	_, err = p.db.Exec(query,
+	_, err = s.db.Exec(query,
 		entry.Timestamp,
 		entry.Event,
 		entry.User,
@@ -282,35 +287,36 @@ func (p *PostgresAuditStore) Save(entry *AuditEntry) error {
 	return nil
 }
 
-func (p *PostgresAuditStore) Query(opts AuditQueryOpts) ([]AuditEntry, error) {
+func (s *SQLAuditStore) Query(opts AuditQueryOpts) ([]AuditEntry, error) {
+	p := s.dialect.Placeholder
 	var conditions []string
 	var args []any
 	argIdx := 1
 
 	if opts.Event != "" {
-		conditions = append(conditions, fmt.Sprintf("event = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("event = %s", p(argIdx)))
 		args = append(args, opts.Event)
 		argIdx++
 	}
 	if opts.User != "" {
-		conditions = append(conditions, fmt.Sprintf("username = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("username = %s", p(argIdx)))
 		args = append(args, opts.User)
 		argIdx++
 	}
 	if !opts.Since.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("timestamp >= $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("timestamp >= %s", p(argIdx)))
 		args = append(args, opts.Since)
 		argIdx++
 	}
 	if !opts.Before.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("timestamp <= $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("timestamp <= %s", p(argIdx)))
 		args = append(args, opts.Before)
 		argIdx++
 	}
 
 	where := ""
 	if len(conditions) > 0 {
-		where = " WHERE " + joinStrings(conditions, " AND ")
+		where = " WHERE " + strings.Join(conditions, " AND ")
 	}
 
 	limit := opts.Limit
@@ -319,13 +325,13 @@ func (p *PostgresAuditStore) Query(opts AuditQueryOpts) ([]AuditEntry, error) {
 	}
 
 	query := fmt.Sprintf("SELECT timestamp, event, username, details, source_ip FROM %s%s ORDER BY timestamp DESC LIMIT %d",
-		p.tableName(), where, limit)
+		s.tableName(), where, limit)
 
 	if opts.Offset > 0 {
 		query += fmt.Sprintf(" OFFSET %d", opts.Offset)
 	}
 
-	rows, err := p.db.Query(query, args...)
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query audit log: %w", err)
 	}
@@ -354,17 +360,10 @@ func (p *PostgresAuditStore) Query(opts AuditQueryOpts) ([]AuditEntry, error) {
 	return entries, rows.Err()
 }
 
-func (p *PostgresAuditStore) Close() error {
-	return p.db.Close()
+func (s *SQLAuditStore) Close() error {
+	return s.db.Close()
 }
 
 func joinStrings(parts []string, sep string) string {
-	result := ""
-	for i, p := range parts {
-		if i > 0 {
-			result += sep
-		}
-		result += p
-	}
-	return result
+	return strings.Join(parts, sep)
 }

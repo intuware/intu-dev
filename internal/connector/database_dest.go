@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/intuware/intu-dev/internal/dbutil"
 	"github.com/intuware/intu-dev/internal/message"
 	"github.com/intuware/intu-dev/pkg/config"
 )
@@ -27,19 +28,10 @@ func NewDatabaseDest(name string, cfg *config.DBDestMapConfig, logger *slog.Logg
 	return &DatabaseDest{name: name, cfg: cfg, logger: logger}
 }
 
+// driverName is kept for backward compatibility with existing tests.
+// New code should use dbutil.ResolveDriverName directly.
 func (d *DatabaseDest) driverName() string {
-	switch strings.ToLower(d.cfg.Driver) {
-	case "postgres", "postgresql":
-		return "postgres"
-	case "mysql":
-		return "mysql"
-	case "mssql", "sqlserver":
-		return "sqlserver"
-	case "sqlite", "sqlite3":
-		return "sqlite3"
-	default:
-		return d.cfg.Driver
-	}
+	return dbutil.ResolveDriverName(d.cfg.Driver)
 }
 
 func (d *DatabaseDest) getDB() (*sql.DB, error) {
@@ -50,17 +42,13 @@ func (d *DatabaseDest) getDB() (*sql.DB, error) {
 		return d.db, nil
 	}
 
-	db, err := sql.Open(d.driverName(), d.cfg.DSN)
+	db, err := dbutil.OpenDB(d.cfg.Driver, d.cfg.DSN, &dbutil.DBOptions{
+		MaxOpenConns:    d.cfg.MaxConns,
+		ConnMaxLifetime: 5 * time.Minute,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-
-	maxConns := 5
-	if d.cfg.MaxConns > 0 {
-		maxConns = d.cfg.MaxConns
-	}
-	db.SetMaxOpenConns(maxConns)
-	db.SetConnMaxLifetime(5 * time.Minute)
 
 	d.db = db
 	return db, nil
@@ -91,13 +79,11 @@ func (d *DatabaseDest) Send(ctx context.Context, msg *message.Message) (*message
 
 	stmt := d.cfg.Statement
 
-	// Replace template placeholders with message data
 	stmt = strings.ReplaceAll(stmt, "${messageId}", msg.ID)
 	stmt = strings.ReplaceAll(stmt, "${channelId}", msg.ChannelID)
 	stmt = strings.ReplaceAll(stmt, "${correlationId}", msg.CorrelationID)
 	stmt = strings.ReplaceAll(stmt, "${timestamp}", msg.Timestamp.Format(time.RFC3339))
 
-	// If the message body is JSON, extract fields for parameterized replacement
 	var jsonData map[string]any
 	if json.Unmarshal(msg.Raw, &jsonData) == nil {
 		for k, v := range jsonData {
