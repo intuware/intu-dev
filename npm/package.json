@@ -1,6 +1,6 @@
 {
   "name": "intu-dev",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "Git-native, AI-friendly healthcare interoperability framework. Build, version, and deploy integration pipelines with YAML config and TypeScript transformers.",
   "bin": {
     "intu": "./bin/intu.js"
