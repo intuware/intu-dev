@@ -67,3 +67,12 @@ go run <path-to-intu> serve --dir .
 - Dashboard: port 3000, basic auth `admin`/`admin` in dev.
 - JS runtime: Node (default); Goja fallback.
 - HTTP sources on same port use shared listener with path-based routing; duplicate port+path caught at validate.
+
+## Cursor Cloud specific instructions
+
+- **Environment**: Go 1.25.7 and Node.js 22 are pre-installed. The update script runs `go mod download` and `npm install -g intu-dev` on every session start.
+- **Running the engine**: Use `go run . serve --dir <project-dir>` from the repo root. A demo project can be scaffolded with `go run . init demo-project --dir /tmp` (creates `/tmp/demo-project`). The engine listens on ports 8081 (HTTP source), 8082 (FHIR source), and 3000 (dashboard).
+- **Dashboard auth**: `admin`/`admin` in dev profile (basic auth).
+- **Tests are pure Go**: `go test ./... -v` requires no external services. Integration tests (`-tags=integration`) require Docker for testcontainers but are not needed for standard development.
+- **No CGO required**: The build uses `CGO_ENABLED=0`; SQLite uses the pure-Go `modernc.org/sqlite` driver.
+- **Port conflicts**: If port 3000, 8081, or 8082 is already in use, the engine will fail to start. Kill any prior `intu serve` process before restarting.
