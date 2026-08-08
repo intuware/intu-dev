@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,7 +37,15 @@ func newServeCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			buildLogger := logging.New(rootOpts.logLevel, nil)
 
-			if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
+			// A cloud deployment renders its project directory from a
+			// digest-verified bundle and compiles TypeScript ahead of `serve`,
+			// so there is nothing to build here. Shelling out to npm at task
+			// start would also make the running bytes depend on whatever the
+			// registry served that minute, which is exactly what the digest is
+			// supposed to rule out.
+			cloudProfile := isTruthyEnv(os.Getenv("INTU_CLOUD_PROFILE"))
+
+			if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil && !cloudProfile {
 				buildLogger.Info("building TypeScript channels")
 				npm := exec.Command("npm", "run", "build")
 				npm.Dir = dir
@@ -254,8 +263,24 @@ func newServeCmd() *cobra.Command {
 				return fmt.Errorf("engine start: %w", err)
 			}
 
-			if err := engine.WatchChannels(ctx); err != nil {
-				logger.Warn("channel hot-reload not available", "error", err)
+			// Hot reload is a local-development convenience and a correctness
+			// hazard anywhere else: a deployment that silently picks up a
+			// changed file is no longer running the revision it was gated on.
+			// INTU_HOT_RELOAD=false turns it off; the cloud profile defaults it
+			// off so a missing variable fails safe.
+			hotReload := true
+			if v := os.Getenv("INTU_HOT_RELOAD"); v != "" {
+				hotReload = isTruthyEnv(v)
+			} else if cloudProfile {
+				hotReload = false
+			}
+
+			if hotReload {
+				if err := engine.WatchChannels(ctx); err != nil {
+					logger.Warn("channel hot-reload not available", "error", err)
+				}
+			} else {
+				logger.Info("channel hot-reload disabled")
 			}
 
 			// --- Dashboard (embedded in serve) ---
@@ -442,5 +467,17 @@ func buildDashboardAuth(dashCfg *config.DashboardConfig, cfg *config.Config, log
 
 	default:
 		return dashboard.BasicAuthMiddleware("admin", "admin")
+	}
+}
+
+// isTruthyEnv reads the boolean spellings people actually write in a container
+// environment. Anything unrecognised is false, so a typo in a deployment
+// manifest disables a convenience rather than silently enabling one.
+func isTruthyEnv(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }

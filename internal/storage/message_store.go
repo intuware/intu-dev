@@ -14,7 +14,7 @@ type MessageRecord struct {
 	ChannelID     string
 	Stage         string
 	Content       []byte
-	ContentSize   int    `json:"ContentSize,omitempty"`
+	ContentSize   int `json:"ContentSize,omitempty"`
 	Status        string
 	Timestamp     time.Time
 	DurationMs    int64 `json:"DurationMs,omitempty"`
@@ -87,6 +87,11 @@ func NewMessageStore(cfg *config.MessageStorageConfig) (MessageStore, error) {
 		inner, err = NewS3Store(cfg.S3)
 		if err != nil {
 			return nil, fmt.Errorf("create s3 store: %w", err)
+		}
+	case "platform":
+		inner, err = NewPlatformStore(cfg.Platform, nil)
+		if err != nil {
+			return nil, fmt.Errorf("create platform store: %w", err)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported message store driver: %s", cfg.Driver)

@@ -50,6 +50,15 @@ type EncryptionConfig struct {
 }
 
 type HealthConfig struct {
+	// Bind is the interface the health server listens on. Empty means all
+	// interfaces, which is what a self-hosted operator wants.
+	//
+	// Cloud deployments set it to 127.0.0.1: under ECS awsvpc networking every
+	// listening socket is reachable on the task's own ENI, and an engine health
+	// port answering to the VPC is a port the deployment manifest never
+	// declared. A supervising runner proxies /health through the one control
+	// port that is declared.
+	Bind          string `mapstructure:"bind"`
 	Port          int    `mapstructure:"port"`
 	Path          string `mapstructure:"path"`
 	ReadinessPath string `mapstructure:"readiness_path"`
@@ -261,7 +270,28 @@ type MessageStorageConfig struct {
 	Memory    *StorageMemoryConfig    `mapstructure:"memory"`
 	Postgres  *StoragePostgresConfig  `mapstructure:"postgres"`
 	S3        *StorageS3Config        `mapstructure:"s3"`
+	Platform  *StoragePlatformConfig  `mapstructure:"platform"`
 	Retention *StorageRetentionConfig `mapstructure:"retention"`
+}
+
+// StoragePlatformConfig configures the `platform` driver, which posts message
+// and stage records to a managed control plane rather than storing them
+// locally. Used by cloud deployments, where the operator surface is the
+// platform's Messages view and the task deliberately holds no database
+// credentials.
+type StoragePlatformConfig struct {
+	// Endpoint is the full ingest URL.
+	Endpoint string `mapstructure:"endpoint"`
+	// Token authenticates the deployment. It is scoped to one deployment, so a
+	// leaked token cannot write another tenant's records.
+	Token string `mapstructure:"token"`
+	// DeploymentID is the record owner the control plane attributes writes to.
+	DeploymentID string `mapstructure:"deployment_id"`
+	// BatchSize is how many records accumulate before a send. Default 25.
+	BatchSize int `mapstructure:"batch_size"`
+	// FlushInterval is a Go duration string; a partial batch is sent when it
+	// elapses. Default 2s.
+	FlushInterval string `mapstructure:"flush_interval"`
 }
 
 // StorageDatabaseConfig is a generic SQL storage config used by

@@ -1378,7 +1378,7 @@ func TestChannelRuntime_StoreResponseMessage_NilStore(t *testing.T) {
 	msg := message.New("ch-1", []byte("test"))
 	resp := &message.Response{StatusCode: 200, Body: []byte("ok")}
 
-	cr.storeResponseMessage(msg, resp, "SENT")
+	cr.storeResponseMessage(msg, resp, "SENT", "primary")
 }
 
 func TestChannelRuntime_StoreResponseMessage_NilResponse(t *testing.T) {
@@ -1390,7 +1390,7 @@ func TestChannelRuntime_StoreResponseMessage_NilResponse(t *testing.T) {
 	}
 	msg := message.New("ch-1", []byte("test"))
 
-	cr.storeResponseMessage(msg, nil, "")
+	cr.storeResponseMessage(msg, nil, "", "primary")
 
 	records, _ := memStore.Query(storage.QueryOpts{ChannelID: "ch-1"})
 	if len(records) != 0 {
@@ -1412,7 +1412,7 @@ func TestChannelRuntime_StoreResponseMessage_Success(t *testing.T) {
 		Headers:    map[string]string{"Content-Type": "application/json"},
 	}
 
-	cr.storeResponseMessage(msg, resp, "SENT")
+	cr.storeResponseMessage(msg, resp, "SENT", "primary")
 
 	records, err := memStore.Query(storage.QueryOpts{ChannelID: "ch-1"})
 	if err != nil {

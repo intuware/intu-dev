@@ -304,7 +304,7 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 				_ = cr.Pipeline.ExecuteResponseTransformer(ctx, msg, destCfg, resp)
 				destType := dest.Type()
 				if destType == "http" || destType == "fhir" {
-					cr.storeResponseMessage(msg, resp, destStatus)
+					cr.storeResponseMessage(msg, resp, destStatus, destName)
 				}
 			}
 			outMsg.Metadata["destination"] = destName
@@ -331,7 +331,7 @@ func (cr *ChannelRuntime) handleMessage(ctx context.Context, msg *message.Messag
 				destStatus = "FAILED"
 			}
 			if destType == "http" || destType == "fhir" {
-				cr.storeResponseMessage(msg, resp, destStatus)
+				cr.storeResponseMessage(msg, resp, destStatus, destName)
 			}
 		}
 
@@ -442,7 +442,16 @@ func (cr *ChannelRuntime) storeIntuMessage(msg *message.Message, stage, status s
 	}
 }
 
-func (cr *ChannelRuntime) storeResponseMessage(msg *message.Message, resp *message.Response, status string) {
+// storeResponseMessage records a destination's response.
+//
+// destName is passed rather than read from msg.Metadata: msg is the shared
+// inbound message and the destination loop iterates over it, so writing the
+// name onto it would leave the last destination's name attached to the message
+// after the loop and make records built lazily ambiguous. The metadata is
+// copied for the same reason -- a stored record must not alias a map that
+// later iterations mutate. Without the name, a channel with two HTTP
+// destinations produces two response records that cannot be told apart.
+func (cr *ChannelRuntime) storeResponseMessage(msg *message.Message, resp *message.Response, status string, destName string) {
 	if cr.Store == nil || resp == nil {
 		return
 	}
@@ -459,6 +468,13 @@ func (cr *ChannelRuntime) storeResponseMessage(msg *message.Message, resp *messa
 	if status == "" {
 		status = "SENT"
 	}
+	meta := make(map[string]any, len(msg.Metadata)+1)
+	for k, v := range msg.Metadata {
+		meta[k] = v
+	}
+	if destName != "" {
+		meta["destination"] = destName
+	}
 	record := &storage.MessageRecord{
 		ID:            msg.ID,
 		CorrelationID: msg.CorrelationID,
@@ -467,7 +483,7 @@ func (cr *ChannelRuntime) storeResponseMessage(msg *message.Message, resp *messa
 		Content:       content,
 		Status:        status,
 		Timestamp:     time.Now(),
-		Metadata:      msg.Metadata,
+		Metadata:      meta,
 	}
 	if err := cr.Store.Save(record); err != nil {
 		cr.Logger.Warn("failed to store response", "error", err)

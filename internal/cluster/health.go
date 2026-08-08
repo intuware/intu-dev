@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -77,7 +79,7 @@ func (hc *HealthChecker) Start() error {
 	mux.HandleFunc(readinessPath, hc.handleReadiness)
 	mux.HandleFunc(livenessPath, hc.handleLiveness)
 
-	addr := fmt.Sprintf(":%d", hc.cfg.Port)
+	addr := net.JoinHostPort(hc.cfg.Bind, strconv.Itoa(hc.cfg.Port))
 	hc.logger.Info("health check server starting", "addr", addr)
 
 	go func() {
